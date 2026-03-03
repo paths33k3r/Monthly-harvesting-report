@@ -74,6 +74,30 @@
                         </ul>
                     </li>
                 </ul>
+                </li>
+                <li class="nav-item">
+                    <div class="nav-item-header has-children open">
+                        <span class="nav-icon">⚙️</span>
+                        <span class="nav-label">Data Management</span>
+                        <span class="nav-chevron">▼</span>
+                    </div>
+                    <ul class="nav-submenu">
+                        <li class="nav-item">
+                            <a href="#" id="sidebar-download-template" class="nav-link"
+                                style="display: flex; align-items: center;">
+                                <span style="margin-right:0.5rem;">📄</span> Download Template
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="#" id="sidebar-import-excel" class="nav-link"
+                                style="display: flex; align-items: center;">
+                                <span style="margin-right:0.5rem;">📥</span> Import Excel
+                            </a>
+                            <input type="file" id="sidebar-import-input" accept=".xlsx, .xls" style="display: none;" />
+                        </li>
+                    </ul>
+                </li>
+                </ul>
             </nav>
         </aside>
 
@@ -100,10 +124,6 @@
                             <h2 id="table-title">Planting Phase (O/P) Breakdown</h2>
                         </div>
                         <div class="toolbar-right" style="display: flex; gap: 0.5rem; align-items: center;">
-                            <button id="import-excel-btn" class="btn-primary" style="background-color: #10b981;">
-                                <span>📥</span> Import Excel
-                            </button>
-                            <input type="file" id="import-excel-input" accept=".xlsx, .xls" style="display: none;" />
                             <button id="delete-year-btn" class="btn-danger" title="Admin Only">
                                 <span>🗑️</span> Delete Year
                             </button>

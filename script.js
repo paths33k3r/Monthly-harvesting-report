@@ -254,6 +254,21 @@ document.addEventListener('DOMContentLoaded', () => {
         reader.readAsArrayBuffer(file);
     };
 
+    const handleDownloadTemplate = () => {
+        const ws_name = "Template";
+        const data = [
+            ["Harvesting Performance Import Template"],
+            ["Please fill in the data starting from row 5. Do not change the headers in row 3."],
+            ["GANG", "YEAR", "BLOCK", "HA"],
+            [],
+            ["Sample Gang", "2026", "A1", 10.5]
+        ];
+        const ws = XLSX.utils.aoa_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, ws_name);
+        XLSX.writeFile(wb, "Harvesting_Template.xlsx");
+    };
+
     // Helper for manual import if needed
     const handleAddReportYearManual = (newYearStr) => {
         const newYear = newYearStr.trim();
@@ -506,48 +521,72 @@ document.addEventListener('DOMContentLoaded', () => {
                 divYearHeader.className = `nav-item-header has-children ${isYearOpen}`;
                 divYearHeader.innerHTML = `<span class="nav-label">${year}</span><span class="nav-chevron">▼</span>`;
 
-                const ulMonths = document.createElement('ul');
-                ulMonths.className = 'nav-submenu';
-                ulMonths.style.display = isYearOpen ? 'block' : 'none';
+                const ulMonthsContainer = document.createElement('div');
+                ulMonthsContainer.className = 'nav-submenu';
+                ulMonthsContainer.style.display = isYearOpen ? 'block' : 'none';
+                ulMonthsContainer.style.padding = '0.5rem 1rem';
+
+                const selectMonth = document.createElement('select');
+                selectMonth.className = 'month-dropdown';
+                selectMonth.style.width = '100%';
+                selectMonth.style.padding = '0.4rem';
+                selectMonth.style.borderRadius = '4px';
+                selectMonth.style.border = '1px solid var(--border-color)';
+                selectMonth.style.background = 'var(--bg-secondary)';
+                selectMonth.style.color = 'var(--text-primary)';
+                selectMonth.style.outline = 'none';
+
+                // Add default placeholder option
+                const defaultOpt = document.createElement('option');
+                defaultOpt.value = '';
+                defaultOpt.textContent = 'Select Month...';
+                if (!state.activePerfMonth || state.selectedReportYear !== year) {
+                    defaultOpt.selected = true;
+                }
+                selectMonth.appendChild(defaultOpt);
 
                 divYearHeader.onclick = (e) => {
                     e.stopPropagation();
                     const isClosing = divYearHeader.classList.contains('open');
                     if (isClosing) {
                         divYearHeader.classList.remove('open');
-                        ulMonths.style.display = 'none';
+                        ulMonthsContainer.style.display = 'none';
                     } else {
                         divYearHeader.classList.add('open');
-                        ulMonths.style.display = 'block';
+                        ulMonthsContainer.style.display = 'block';
                     }
                 };
 
                 months.forEach(month => {
-                    const liMonth = document.createElement('li');
-                    liMonth.className = 'nav-item';
+                    const opt = document.createElement('option');
+                    opt.value = month;
+                    opt.textContent = month;
+                    if (state.activeViewType === 'perf_month' && state.selectedReportYear === year && state.activePerfMonth === month) {
+                        opt.selected = true;
+                    }
+                    selectMonth.appendChild(opt);
+                });
 
-                    const divMonthHeader = document.createElement('div');
-                    // Add active class if this is the currently selected month view
-                    const isMonthActive = (state.activeViewType === 'perf_month' && state.selectedReportYear === year && state.activePerfMonth === month) ? 'active' : '';
-                    divMonthHeader.className = `nav-item-header ${isMonthActive}`;
-                    divMonthHeader.innerHTML = `<span class="nav-label">${month}</span>`;
-
-                    divMonthHeader.onclick = (e) => {
-                        e.stopPropagation();
-                        // Switch to month view and render
+                selectMonth.onchange = (e) => {
+                    e.stopPropagation();
+                    const selectedMonth = e.target.value;
+                    if (selectedMonth) {
                         state.selectedReportYear = year;
-                        state.activePerfMonth = month;
+                        state.activePerfMonth = selectedMonth;
                         state.activeViewType = 'perf_month';
                         renderSidebar();
                         renderTable();
-                    };
+                    } else {
+                        state.activeViewType = 'report_year';
+                        renderSidebar();
+                        renderTable();
+                    }
+                };
 
-                    liMonth.appendChild(divMonthHeader);
-                    ulMonths.appendChild(liMonth);
-                });
+                ulMonthsContainer.appendChild(selectMonth);
 
                 liYear.appendChild(divYearHeader);
-                liYear.appendChild(ulMonths);
+                liYear.appendChild(ulMonthsContainer);
                 sidebarPerfYearList.appendChild(liYear);
             });
         }
@@ -1042,8 +1081,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const deleteYearBtn = document.getElementById('delete-year-btn');
             if (deleteYearBtn) deleteYearBtn.onclick = handleDeleteYear;
 
-            const importExcelBtn = document.getElementById('import-excel-btn');
-            const importExcelInput = document.getElementById('import-excel-input');
+            const downloadTemplateBtn = document.getElementById('sidebar-download-template');
+            if (downloadTemplateBtn) downloadTemplateBtn.onclick = handleDownloadTemplate;
+
+            const importExcelBtn = document.getElementById('sidebar-import-excel');
+            const importExcelInput = document.getElementById('sidebar-import-input');
 
             if (importExcelBtn && importExcelInput) {
                 importExcelBtn.onclick = () => importExcelInput.click();
