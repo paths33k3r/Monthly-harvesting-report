@@ -8,6 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 
 <body>
@@ -98,7 +99,11 @@
                         <div class="toolbar-left">
                             <h2 id="table-title">Planting Phase (O/P) Breakdown</h2>
                         </div>
-                        <div class="toolbar-right" style="display: flex; gap: 0.5rem;">
+                        <div class="toolbar-right" style="display: flex; gap: 0.5rem; align-items: center;">
+                            <button id="import-excel-btn" class="btn-primary" style="background-color: #10b981;">
+                                <span>📥</span> Import Excel
+                            </button>
+                            <input type="file" id="import-excel-input" accept=".xlsx, .xls" style="display: none;" />
                             <button id="delete-year-btn" class="btn-danger" title="Admin Only">
                                 <span>🗑️</span> Delete Year
                             </button>

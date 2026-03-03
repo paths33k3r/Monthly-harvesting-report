@@ -158,6 +158,112 @@ document.addEventListener('DOMContentLoaded', () => {
         recalculateTotals();
     };
 
+    const handleImportExcel = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const data = new Uint8Array(event.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+
+            // Convert to array of arrays, skipping empty rows initially to keep row index mapping simpler
+            const excelData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false });
+
+            if (excelData.length < 4) {
+                alert("Excel file does not contain enough data rows.");
+                return;
+            }
+
+            // In the provided sample, row 3 (index 2) has headers: 'GANG', 'YEAR', 'BLOCK', 'HA', 1, 2...
+            // Data actually starts from row 5 (index 4)
+            let currentGang = "Unassigned";
+            const newBlocks = [];
+
+            for (let i = 4; i < excelData.length; i++) {
+                const row = excelData[i];
+                if (!row || row.length === 0) continue;
+
+                // If column 0 has text, it's a new gang
+                const gangCol = row[0];
+                if (gangCol && typeof gangCol === 'string' && gangCol.trim() !== '') {
+                    currentGang = gangCol.trim();
+                }
+
+                // Year is column 1
+                const yearCol = row[1];
+                // Block is column 2
+                const blockCol = row[2];
+                // HA is column 3
+                const haCol = row[3];
+
+                if (yearCol && blockCol) {
+                    const parsedYear = String(yearCol).trim();
+                    if (parsedYear) {
+                        // We found a block row
+                        const blockId = String(blockCol).trim();
+                        const haValue = parseFloat(haCol) || 0;
+
+                        newBlocks.push({
+                            block_id: blockId,
+                            ha: haValue,
+                            op_year: parsedYear,
+                            gang: currentGang
+                        });
+                    }
+                }
+            }
+
+            if (newBlocks.length === 0) {
+                alert("No valid data found in the Excel file format.");
+                return;
+            }
+
+            // Ensure we have a report year to add to, or create a '2026' temporary one if state is empty
+            if (!state.selectedReportYear) {
+                handleAddReportYearManual("2026 Imported");
+            }
+
+            const targetYear = state.selectedReportYear;
+            if (!state.reports[targetYear]) state.reports[targetYear] = [];
+
+            // Merge imported blocks with existing ones. 
+            // We'll update HA and op_year, gang if block exists, or add new.
+            newBlocks.forEach(importedBlock => {
+                const existing = state.reports[targetYear].find(b => b.block_id === importedBlock.block_id);
+                if (existing) {
+                    existing.ha = importedBlock.ha;
+                    existing.op_year = importedBlock.op_year;
+                    existing.gang = importedBlock.gang;
+                } else {
+                    state.reports[targetYear].push(importedBlock);
+                }
+            });
+
+            // Reset input so the same file can be triggered again if needed
+            e.target.value = '';
+
+            // Update UI
+            alert(`Successfully imported ${newBlocks.length} blocks!`);
+            renderSidebar();
+            renderTable();
+            recalculateTotals();
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
+    // Helper for manual import if needed
+    const handleAddReportYearManual = (newYearStr) => {
+        const newYear = newYearStr.trim();
+        if (state.reports[newYear]) return;
+        state.reports[newYear] = [];
+        state.selectedReportYear = newYear;
+        state.activeViewType = 'report_year';
+        state.activeViewValue = newYear;
+    };
+
     const handleAddReportYear = (e) => {
         if (e) e.stopPropagation();
 
@@ -394,7 +500,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const liYear = document.createElement('li');
                 liYear.className = 'nav-item';
 
-                const isYearOpen = (state.activeViewType === 'perf_gang' && state.selectedReportYear === year) ? 'open' : '';
+                const isYearOpen = ((state.activeViewType === 'perf_gang' || state.activeViewType === 'perf_month') && state.selectedReportYear === year) ? 'open' : '';
 
                 const divYearHeader = document.createElement('div');
                 divYearHeader.className = `nav-item-header has-children ${isYearOpen}`;
@@ -420,65 +526,23 @@ document.addEventListener('DOMContentLoaded', () => {
                     const liMonth = document.createElement('li');
                     liMonth.className = 'nav-item';
 
-                    const isMonthOpen = (state.activeViewType === 'perf_gang' && state.selectedReportYear === year && state.activePerfMonth === month) ? 'open' : '';
-
                     const divMonthHeader = document.createElement('div');
-                    divMonthHeader.className = `nav-item-header has-children ${isMonthOpen}`;
-                    divMonthHeader.innerHTML = `<span class="nav-label">${month}</span><span class="nav-chevron">▼</span>`;
-
-                    const ulGangs = document.createElement('ul');
-                    ulGangs.className = 'nav-submenu';
-                    ulGangs.style.display = isMonthOpen ? 'block' : 'none';
+                    // Add active class if this is the currently selected month view
+                    const isMonthActive = (state.activeViewType === 'perf_month' && state.selectedReportYear === year && state.activePerfMonth === month) ? 'active' : '';
+                    divMonthHeader.className = `nav-item-header ${isMonthActive}`;
+                    divMonthHeader.innerHTML = `<span class="nav-label">${month}</span>`;
 
                     divMonthHeader.onclick = (e) => {
                         e.stopPropagation();
-                        const isClosing = divMonthHeader.classList.contains('open');
-                        if (isClosing) {
-                            divMonthHeader.classList.remove('open');
-                            ulGangs.style.display = 'none';
-                        } else {
-                            divMonthHeader.classList.add('open');
-                            ulGangs.style.display = 'block';
-                        }
+                        // Switch to month view and render
+                        state.selectedReportYear = year;
+                        state.activePerfMonth = month;
+                        state.activeViewType = 'perf_month';
+                        renderSidebar();
+                        renderTable();
                     };
 
-                    const blocks = state.reports[year] || [];
-                    const gangs = [...new Set(blocks.map(b => b.gang))].filter(Boolean).sort();
-
-                    gangs.forEach(gang => {
-                        const liGang = document.createElement('li');
-                        liGang.className = 'nav-item';
-                        if (state.activeViewType === 'perf_gang' && state.activeViewValue === gang && state.selectedReportYear === year && state.activePerfMonth === month) {
-                            liGang.classList.add('active');
-                        }
-
-                        const a = document.createElement('a');
-                        a.href = '#';
-                        a.className = 'nav-link';
-                        a.textContent = gang;
-
-                        a.onclick = (e) => {
-                            e.preventDefault();
-                            state.selectedReportYear = year;
-                            state.activeViewType = 'perf_gang';
-                            state.activeViewValue = gang;
-                            state.activePerfMonth = month;
-
-                            // Initialize state tree if not exists
-                            state.performance[year] = state.performance[year] || {};
-                            state.performance[year][month] = state.performance[year][month] || {};
-                            state.performance[year][month][gang] = state.performance[year][month][gang] || { manpower: 0, leave: 0, blocks: {} };
-
-                            renderSidebar();
-                            renderTable();
-                        };
-
-                        liGang.appendChild(a);
-                        ulGangs.appendChild(liGang);
-                    });
-
                     liMonth.appendChild(divMonthHeader);
-                    liMonth.appendChild(ulGangs);
                     ulMonths.appendChild(liMonth);
                 });
 
@@ -650,79 +714,174 @@ document.addEventListener('DOMContentLoaded', () => {
     const renderPerformanceTable = () => {
         const year = state.selectedReportYear;
         const month = state.activePerfMonth;
-        const gangName = state.activeViewValue;
 
-        if (perfTitle) perfTitle.textContent = `HARVESTER PERFORMANCE CHART FOR THE MONTH OF ${month.toUpperCase()} ${year}`;
-        if (perfTeamName) perfTeamName.textContent = gangName.toUpperCase();
-        if (perfBudgetYear) perfBudgetYear.textContent = year;
+        perfWrapper.innerHTML = ''; // Start clean
 
-        const perfData = state.performance[year][month][gangName];
+        // Ensure state tree
+        state.performance[year] = state.performance[year] || {};
+        state.performance[year][month] = state.performance[year][month] || {};
 
-        // Bind global headers
-        perfManpower.value = perfData.manpower || 0;
-        perfLeave.value = perfData.leave || 0;
+        const blocks = state.reports[year] || [];
+        const gangs = [...new Set(blocks.map(b => b.gang))].filter(b => b && b !== "Unassigned").sort();
 
-        perfManpower.oninput = (e) => { perfData.manpower = parseFloat(e.target.value) || 0; calculatePerformanceTotals(perfData, gBlocks); };
-        perfLeave.oninput = (e) => { perfData.leave = parseFloat(e.target.value) || 0; calculatePerformanceTotals(perfData, gBlocks); };
+        if (gangs.length === 0) {
+            perfWrapper.innerHTML = '<p style="padding: 2rem;">No harvesting gangs found for this year. Please assign blocks to gangs first.</p>';
+            return;
+        }
 
-        // Pull active blocks for this gang from the main dataset to ensure syncing of HA
-        const gBlocks = state.reports[year].filter(b => b.gang === gangName);
+        gangs.forEach((gangName, gangIndex) => {
+            const perfData = state.performance[year][month][gangName] || { manpower: 0, leave: 0, blocks: {} };
+            state.performance[year][month][gangName] = perfData;
 
-        const createPerfInput = (type, val, onChange) => {
-            const td = document.createElement('td');
-            const input = document.createElement('input');
-            input.type = 'number';
-            input.className = 'edit-input text-right';
-            input.step = '0.01';
-            input.value = (val || 0).toFixed(2);
-            input.oninput = (e) => {
-                const parsed = parseFloat(e.target.value) || 0;
-                onChange(parsed);
-                calculatePerformanceTotals(perfData, gBlocks);
+            const gBlocks = blocks.filter(b => b.gang === gangName);
+            if (gBlocks.length === 0) return; // skip empty gangs
+
+            // Create wrapper block for this gang
+            const gangWrapper = document.createElement('div');
+            // Adding specific bottom margin to separate gangs clearly
+            gangWrapper.style.marginBottom = '3rem';
+            gangWrapper.style.padding = '0'; // Clean grouping
+
+            const safeGangId = gangName.replace(/[^a-zA-Z0-9]/g, '_');
+
+            gangWrapper.innerHTML = `
+                <div class="performance-header">
+                    <h2>HARVESTER PERFORMANCE CHART FOR THE MONTH OF ${month.toUpperCase()} ${year}</h2>
+                    <div class="perf-stats">
+                        <div class="stat-row">
+                            <label>HARVESTER TEAM:</label>
+                            <span class="font-bold">${gangName.toUpperCase()}</span>
+                        </div>
+                        <div class="stat-row">
+                            <label>TOTAL MANPOWER:</label>
+                            <input type="number" id="perf-manpower-${safeGangId}" class="edit-input" style="width: 80px; padding: 0.25rem; border: 1px solid var(--border-color);" value="${perfData.manpower || 0}" min="0">
+                        </div>
+                        <div class="stat-row">
+                            <label>TOTAL ON LONG LEAVE:</label>
+                            <input type="number" id="perf-leave-${safeGangId}" class="edit-input" style="width: 80px; padding: 0.25rem; border: 1px solid var(--border-color);" value="${perfData.leave || 0}" min="0">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="grouped-table" id="perf-table-${safeGangId}">
+                        <thead>
+                            <tr>
+                                <th>Block</th>
+                                <th>HA per Block</th>
+                                <th>Budget ${year}</th>
+                                <th>1st Round</th>
+                                <th>2nd Round</th>
+                                <th>3rd Round</th>
+                                <th class="col-total">Total</th>
+                                <th>Manday</th>
+                                <th>MT / Manday</th>
+                            </tr>
+                        </thead>
+                        <tbody id="perf-table-body-${safeGangId}">
+                            <!-- Generated by JS -->
+                        </tbody>
+                        <tfoot>
+                            <tr class="row-grand-total">
+                                <td colspan="1" class="grand-total-label">Total</td>
+                                <td id="pTotalHa-${safeGangId}">0.00</td>
+                                <td id="pTotalBudget-${safeGangId}">0.00</td>
+                                <td id="pTotalR1-${safeGangId}">0.00</td>
+                                <td id="pTotalR2-${safeGangId}">0.00</td>
+                                <td id="pTotalR3-${safeGangId}">0.00</td>
+                                <td id="pTotalAll-${safeGangId}">0.00</td>
+                                <td id="pTotalManday-${safeGangId}">0.00</td>
+                                <td id="pTotalMtManday-${safeGangId}">0.00</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <div class="perf-dashboard-bottom">
+                    <div class="chart-container">
+                        <canvas id="performanceChart-${safeGangId}"></canvas>
+                    </div>
+                    <div class="summary-stats-side">
+                        <div class="side-stat-box">
+                            <div class="stat-title">MT per person</div>
+                            <div class="stat-val" id="statMtPerson-${safeGangId}">0.00</div>
+                        </div>
+                        <div class="side-stat-box">
+                            <div class="stat-title">HA per person</div>
+                            <div class="stat-val" id="statHaPerson-${safeGangId}">0.00</div>
+                        </div>
+                        <div class="side-stat-box">
+                            <div class="stat-title">Ratio HA to MT per person</div>
+                            <div class="stat-val" id="statRatio-${safeGangId}">0:0</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            perfWrapper.appendChild(gangWrapper);
+
+            const perfTableBody = document.getElementById(`perf-table-body-${safeGangId}`);
+            const inputManpower = document.getElementById(`perf-manpower-${safeGangId}`);
+            const inputLeave = document.getElementById(`perf-leave-${safeGangId}`);
+
+            inputManpower.oninput = (e) => { perfData.manpower = parseFloat(e.target.value) || 0; calculatePerformanceTotals(perfData, gBlocks, safeGangId); };
+            inputLeave.oninput = (e) => { perfData.leave = parseFloat(e.target.value) || 0; calculatePerformanceTotals(perfData, gBlocks, safeGangId); };
+
+            const createPerfInput = (bData, field, onChange) => {
+                const td = document.createElement('td');
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.className = 'edit-input text-right';
+                input.step = '0.01';
+                input.value = (bData[field] || 0).toFixed(2);
+                input.oninput = (e) => {
+                    const parsed = parseFloat(e.target.value) || 0;
+                    onChange(parsed);
+                    calculatePerformanceTotals(perfData, gBlocks, safeGangId);
+                };
+                input.onblur = (e) => { e.target.value = (parseFloat(e.target.value) || 0).toFixed(2); };
+                td.appendChild(input);
+                return td;
             };
-            input.onblur = (e) => { e.target.value = (parseFloat(e.target.value) || 0).toFixed(2); };
-            td.appendChild(input);
-            return td;
-        };
 
-        gBlocks.forEach(block => {
-            const bId = block.block_id;
-            // Init block data if missing
-            if (!perfData.blocks[bId]) {
-                perfData.blocks[bId] = { budget: 0, r1: 0, r2: 0, r3: 0, manday: 0 };
-            }
-            const bData = perfData.blocks[bId];
+            gBlocks.forEach(block => {
+                const bId = block.block_id;
+                if (!perfData.blocks[bId]) {
+                    perfData.blocks[bId] = { budget: 0, r1: 0, r2: 0, r3: 0, manday: 0 };
+                }
+                const bData = perfData.blocks[bId];
 
-            const tr = document.createElement('tr');
-            tr.innerHTML = `<td class="text-center cell-block">${bId}</td><td class="text-right">${formatHA(block.ha)}</td>`;
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td class="text-center cell-block">${bId}</td><td class="text-right">${formatHA(block.ha)}</td>`;
 
-            tr.appendChild(createPerfInput('budget', bData.budget, (v) => bData.budget = v));
-            tr.appendChild(createPerfInput('r1', bData.r1, (v) => bData.r1 = v));
-            tr.appendChild(createPerfInput('r2', bData.r2, (v) => bData.r2 = v));
-            tr.appendChild(createPerfInput('r3', bData.r3, (v) => bData.r3 = v));
+                tr.appendChild(createPerfInput(bData, 'budget', (v) => bData.budget = v));
+                tr.appendChild(createPerfInput(bData, 'r1', (v) => bData.r1 = v));
+                tr.appendChild(createPerfInput(bData, 'r2', (v) => bData.r2 = v));
+                tr.appendChild(createPerfInput(bData, 'r3', (v) => bData.r3 = v));
 
-            const tdTotal = document.createElement('td');
-            tdTotal.className = 'text-right font-bold col-total';
-            tdTotal.id = `perf-row-total-${bId}`;
-            tdTotal.textContent = formatHA(bData.r1 + bData.r2 + bData.r3);
-            tr.appendChild(tdTotal);
+                const tdTotal = document.createElement('td');
+                tdTotal.className = 'text-right font-bold col-total';
+                tdTotal.id = `perf-row-total-${safeGangId}-${bId}`;
+                tdTotal.textContent = formatHA(bData.r1 + bData.r2 + bData.r3);
+                tr.appendChild(tdTotal);
 
-            tr.appendChild(createPerfInput('manday', bData.manday, (v) => bData.manday = v));
+                tr.appendChild(createPerfInput(bData, 'manday', (v) => bData.manday = v));
 
-            const tdMtManday = document.createElement('td');
-            tdMtManday.className = 'text-right font-bold';
-            tdMtManday.id = `perf-row-mt-${bId}`;
-            const totalRound = bData.r1 + bData.r2 + bData.r3;
-            tdMtManday.textContent = bData.manday > 0 ? (totalRound / bData.manday).toFixed(2) : "0.00";
-            tr.appendChild(tdMtManday);
+                const tdMtManday = document.createElement('td');
+                tdMtManday.className = 'text-right font-bold';
+                tdMtManday.id = `perf-row-mt-${safeGangId}-${bId}`;
+                const totalRound = bData.r1 + bData.r2 + bData.r3;
+                tdMtManday.textContent = bData.manday > 0 ? (totalRound / bData.manday).toFixed(2) : "0.00";
+                tr.appendChild(tdMtManday);
 
-            perfTableBody.appendChild(tr);
+                perfTableBody.appendChild(tr);
+            });
+
+            calculatePerformanceTotals(perfData, gBlocks, safeGangId);
         });
-
-        calculatePerformanceTotals(perfData, gBlocks);
     };
 
-    const calculatePerformanceTotals = (perfData, blocks) => {
+    const calculatePerformanceTotals = (perfData, blocks, safeGangId) => {
         let tHa = 0, tBudget = 0, tR1 = 0, tR2 = 0, tR3 = 0, tTotal = 0, tManday = 0;
 
         blocks.forEach(block => {
@@ -739,13 +898,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 tTotal += rowTotal;
                 tManday += bData.manday;
 
-                const rowTotalEl = document.getElementById(`perf-row-total-${bId}`);
-                const rowMtEl = document.getElementById(`perf-row-mt-${bId}`);
+                const rowTotalEl = document.getElementById(`perf-row-total-${safeGangId}-${bId}`);
+                const rowMtEl = document.getElementById(`perf-row-mt-${safeGangId}-${bId}`);
 
                 if (rowTotalEl) rowTotalEl.textContent = formatHA(rowTotal);
                 if (rowMtEl) rowMtEl.textContent = bData.manday > 0 ? (rowTotal / bData.manday).toFixed(2) : "0.00";
             }
         });
+
+        const pTotalHa = document.getElementById(`pTotalHa-${safeGangId}`);
+        const pTotalBudget = document.getElementById(`pTotalBudget-${safeGangId}`);
+        const pTotalR1 = document.getElementById(`pTotalR1-${safeGangId}`);
+        const pTotalR2 = document.getElementById(`pTotalR2-${safeGangId}`);
+        const pTotalR3 = document.getElementById(`pTotalR3-${safeGangId}`);
+        const pTotalAll = document.getElementById(`pTotalAll-${safeGangId}`);
+        const pTotalManday = document.getElementById(`pTotalManday-${safeGangId}`);
+        const pTotalMtManday = document.getElementById(`pTotalMtManday-${safeGangId}`);
 
         if (pTotalHa) pTotalHa.textContent = formatHA(tHa);
         if (pTotalBudget) pTotalBudget.textContent = formatHA(tBudget);
@@ -761,6 +929,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const mtPerson = netManpower > 0 ? (tTotal / netManpower).toFixed(2) : "0.00";
         const haPerson = netManpower > 0 ? (tHa / netManpower).toFixed(2) : "0.00";
 
+        const statMtPerson = document.getElementById(`statMtPerson-${safeGangId}`);
+        const statHaPerson = document.getElementById(`statHaPerson-${safeGangId}`);
+        const statRatio = document.getElementById(`statRatio-${safeGangId}`);
+
         if (statMtPerson) statMtPerson.textContent = mtPerson;
         if (statHaPerson) statHaPerson.textContent = haPerson;
 
@@ -771,11 +943,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (statRatio) statRatio.textContent = "0:0";
         }
 
-        updatePerformanceChart(blocks, perfData);
+        updatePerformanceChart(blocks, perfData, safeGangId);
     };
 
-    const updatePerformanceChart = (blocks, perfData) => {
-        const ctx = document.getElementById('performanceChart');
+    const updatePerformanceChart = (blocks, perfData, safeGangId) => {
+        const ctx = document.getElementById(`performanceChart-${safeGangId}`);
         if (!ctx) return;
 
         const labels = [];
@@ -791,11 +963,11 @@ document.addEventListener('DOMContentLoaded', () => {
             dTotal.push(bData.r1 + bData.r2 + bData.r3);
         });
 
-        if (performanceChartInstance) {
-            performanceChartInstance.destroy();
+        if (performanceChartInstances[safeGangId]) {
+            performanceChartInstances[safeGangId].destroy();
         }
 
-        performanceChartInstance = new Chart(ctx, {
+        performanceChartInstances[safeGangId] = new Chart(ctx, {
             type: 'bar',
             data: {
                 labels: labels,
@@ -869,6 +1041,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const deleteYearBtn = document.getElementById('delete-year-btn');
             if (deleteYearBtn) deleteYearBtn.onclick = handleDeleteYear;
+
+            const importExcelBtn = document.getElementById('import-excel-btn');
+            const importExcelInput = document.getElementById('import-excel-input');
+
+            if (importExcelBtn && importExcelInput) {
+                importExcelBtn.onclick = () => importExcelInput.click();
+                importExcelInput.onchange = handleImportExcel;
+            }
 
             const res = await fetch('grouped_data.json');
             if (!res.ok) throw new Error("Failed to load block data.");
