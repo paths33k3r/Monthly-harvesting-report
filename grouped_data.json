@@ -1,0 +1,167 @@
+{
+  "groups": [
+    {
+      "op_year": "2010",
+      "initial_subtotal": 615.5100000000001,
+      "blocks": [
+        {
+          "block_id": "1",
+          "ha": 53.09
+        },
+        {
+          "block_id": "2",
+          "ha": 60.27
+        },
+        {
+          "block_id": "3",
+          "ha": 69.04
+        },
+        {
+          "block_id": "4",
+          "ha": 70.51
+        },
+        {
+          "block_id": "5",
+          "ha": 50.4
+        },
+        {
+          "block_id": "6",
+          "ha": 58.6
+        },
+        {
+          "block_id": "7",
+          "ha": 23.6
+        },
+        {
+          "block_id": "8",
+          "ha": 61.6
+        },
+        {
+          "block_id": "9",
+          "ha": 38.3
+        },
+        {
+          "block_id": "11",
+          "ha": 44.5
+        },
+        {
+          "block_id": "12",
+          "ha": 71.0
+        },
+        {
+          "block_id": "23",
+          "ha": 14.6
+        }
+      ]
+    },
+    {
+      "op_year": "2011",
+      "initial_subtotal": 309.66,
+      "blocks": [
+        {
+          "block_id": "10",
+          "ha": 19.1
+        },
+        {
+          "block_id": "13",
+          "ha": 60.8
+        },
+        {
+          "block_id": "14",
+          "ha": 41.6
+        },
+        {
+          "block_id": "15",
+          "ha": 49.17
+        },
+        {
+          "block_id": "16",
+          "ha": 52.61
+        },
+        {
+          "block_id": "17",
+          "ha": 45.58
+        },
+        {
+          "block_id": "18",
+          "ha": 40.8
+        }
+      ]
+    },
+    {
+      "op_year": "2012",
+      "initial_subtotal": 280.92,
+      "blocks": [
+        {
+          "block_id": "19",
+          "ha": 50.6
+        },
+        {
+          "block_id": "20",
+          "ha": 61.98
+        },
+        {
+          "block_id": "21",
+          "ha": 71.59
+        },
+        {
+          "block_id": "22",
+          "ha": 52.08
+        },
+        {
+          "block_id": "24",
+          "ha": 44.67
+        }
+      ]
+    },
+    {
+      "op_year": "2015",
+      "initial_subtotal": 174.6,
+      "blocks": [
+        {
+          "block_id": "25",
+          "ha": 38.2
+        },
+        {
+          "block_id": "26A",
+          "ha": 22.7
+        },
+        {
+          "block_id": "27",
+          "ha": 14.3
+        },
+        {
+          "block_id": "28",
+          "ha": 21.9
+        },
+        {
+          "block_id": "29",
+          "ha": 19.2
+        },
+        {
+          "block_id": "30",
+          "ha": 24.3
+        },
+        {
+          "block_id": "31",
+          "ha": 34.0
+        }
+      ]
+    },
+    {
+      "op_year": "2016",
+      "initial_subtotal": 32.9,
+      "blocks": [
+        {
+          "block_id": "33",
+          "ha": 28.4
+        },
+        {
+          "block_id": "39",
+          "ha": 4.5
+        }
+      ]
+    }
+  ],
+  "initial_grand_total": 0.0
+}
