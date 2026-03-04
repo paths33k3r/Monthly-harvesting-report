@@ -20,9 +20,14 @@ Interactive web dashboard for visualizing and managing plantation harvesting per
 - **Calculated Metrics**: Automatically compute totals, mandays, MT / Manday, HA per person, and Ratio of HA to MT.
 - **Interactive Charts**: Visual breakdown of block-by-block performance and budgets using Chart.js.
 
+### 🤔 Harvesting Interval
+- View harvesting frequency, minimum, maximum, and average days between harvests per block.
+- Monitor block performance over multiple rounds to ensure optimal harvesting schedules.
+- Summary table summarizing totals for each round.
+
 ### ⚙️ Data Management
 - **Excel Import (`.xlsx`, `.xls`)**: Instantly upload harvesting data directly into the dashboard using SheetJS.
-- **Template Download**: One-click generation of the expected `.xlsx` template format to ensure data consistency.
+- **Template Download**: One-click generation of the expected `Harvesting_Template.xlsx` template format to ensure data consistency.
 - **Admin Utilities**: Capabilities to wipe year data or clean out test inputs.
 
 ## 🚀 Running Locally
