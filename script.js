@@ -330,153 +330,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
-    // Helper for manual import if needed
-    const handleImportFfbBudget = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            const data = new Uint8Array(event.target.result);
-            const workbook = XLSX.read(data, { type: 'array' });
-            const firstSheetName = workbook.SheetNames[workbook.SheetNames.length - 1]; // Try to use the last one which is usually summary
-            const worksheet = workbook.Sheets[firstSheetName];
-
-            const excelData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: true });
-
-            if (excelData.length < 4) {
-                alert("Excel file does not contain enough data rows.");
-                return;
-            }
-
-            const importTargetStr = prompt("Which year are you importing this FFB Budget for? (e.g., 2026)", "2026");
-            if (!importTargetStr) {
-                alert("Import cancelled. Year is required to assign FFB Budget data.");
-                return;
-            }
-
-            const targetYear = importTargetStr.trim();
-            if (!targetYear || isNaN(parseInt(targetYear))) {
-                alert("Import cancelled. Please enter a valid Year.");
-                return;
-            }
-
-            state.ffbBudget = state.ffbBudget || {};
-            state.ffbBudget[targetYear] = [];
-
-            let currentPhase = "Unknown";
-            let headerRowIndex = -1;
-
-            for (let i = 0; i < Math.min(20, excelData.length); i++) {
-                if (excelData[i] && String(excelData[i][1]).toUpperCase().includes("PHASE")) {
-                    headerRowIndex = i;
-                    break;
-                }
-            }
-
-            if (headerRowIndex === -1) {
-                alert("Could not find 'PHASE' header row in the Excel document. Are you sure this is the right template?");
-                return;
-            }
-
-            const headerRow = excelData[headerRowIndex];
-            const colMap = {};
-            for (let c = 0; c < headerRow.length; c++) {
-                const val = String(headerRow[c] || "").trim().toUpperCase();
-                if (val.includes("PHASE")) colMap.phase = c;
-                else if (val.includes("BLK")) colMap.blk = c;
-                else if (val.includes("AGE (MTH)") || val.includes("AGE(MTH)")) colMap.ageMth = c;
-                else if (val.includes("HARVEST YR.") || val.includes("HARVEST YR")) colMap.harvestYr = c;
-                else if (val.includes("AGE") && val.includes("YR/MTH")) colMap.ageYrMth = c;
-                else if (val.includes("HARVEST") && val.includes("YR/MTH")) colMap.harvestYrMth = c;
-                else if (val.includes("MT/HA/YR") || val.includes("MT/HA / YR")) colMap.mtHaYr = c;
-                else if (val.includes("MT/HA/ MTH") || val.includes("MT/HA/MTH") || val.includes("MT / HA/ MTH")) colMap.mtHaMth = c;
-                else if (val === "HA") colMap.ha = c;
-                else if (val.includes("JAN")) colMap.jan = c;
-                else if (val.includes("FEB")) colMap.feb = c;
-                else if (val.includes("MAR")) colMap.mar = c;
-                else if (val.includes("APR")) colMap.apr = c;
-                else if (val.includes("MAY")) colMap.may = c;
-                else if (val.includes("JUN")) colMap.jun = c;
-                else if (val.includes("JUL")) colMap.jul = c;
-                else if (val.includes("AUG")) colMap.aug = c;
-                else if (val.includes("SEP")) colMap.sep = c;
-                else if (val.includes("OCT")) colMap.oct = c;
-                else if (val.includes("NOV") && !val.includes("NOV")) colMap.nov = c; // Fallback below
-                else if (val.includes("NOV")) colMap.nov = c;
-                else if (val.includes("DEC") && !val.includes("DECL")) colMap.dec = c;
-            }
-
-            for (let i = headerRowIndex + 1; i < excelData.length; i++) {
-                const row = excelData[i];
-                if (!row || row.length === 0) continue;
-
-                if (colMap.phase !== undefined) {
-                    const phaseColVal = row[colMap.phase];
-                    if (phaseColVal && String(phaseColVal).trim() !== '') {
-                        if (!String(phaseColVal).toUpperCase().includes("SUBTOTAL")) {
-                            currentPhase = String(phaseColVal).trim();
-                        }
-                    }
-                }
-
-                if (colMap.blk !== undefined) {
-                    const blkVal = row[colMap.blk];
-                    if (blkVal != null && String(blkVal).trim() !== '') {
-                        const blockId = String(blkVal).trim();
-                        if (blockId.toUpperCase().includes("TOTAL") || blockId.toUpperCase().includes("SUBTOTAL")) continue;
-
-                        const haVal = colMap.ha !== undefined ? parseFloat(row[colMap.ha]) || 0 : 0;
-                        const ageMthVal = colMap.ageMth !== undefined ? String(row[colMap.ageMth] || "") : "";
-                        const harvestYrVal = colMap.harvestYr !== undefined ? String(row[colMap.harvestYr] || "") : "";
-                        const ageYrMthVal = colMap.ageYrMth !== undefined ? String(row[colMap.ageYrMth] || "") : "";
-                        const harvestYrMthVal = colMap.harvestYrMth !== undefined ? String(row[colMap.harvestYrMth] || "") : "";
-                        const mtHaYrVal = colMap.mtHaYr !== undefined ? parseFloat(row[colMap.mtHaYr]) || 0 : 0;
-                        const mtHaMthVal = colMap.mtHaMth !== undefined ? parseFloat(row[colMap.mtHaMth]) || 0 : 0;
-
-                        const mVals = [
-                            colMap.jan !== undefined ? parseFloat(row[colMap.jan]) || 0 : 0,
-                            colMap.feb !== undefined ? parseFloat(row[colMap.feb]) || 0 : 0,
-                            colMap.mar !== undefined ? parseFloat(row[colMap.mar]) || 0 : 0,
-                            colMap.apr !== undefined ? parseFloat(row[colMap.apr]) || 0 : 0,
-                            colMap.may !== undefined ? parseFloat(row[colMap.may]) || 0 : 0,
-                            colMap.jun !== undefined ? parseFloat(row[colMap.jun]) || 0 : 0,
-                            colMap.jul !== undefined ? parseFloat(row[colMap.jul]) || 0 : 0,
-                            colMap.aug !== undefined ? parseFloat(row[colMap.aug]) || 0 : 0,
-                            colMap.sep !== undefined ? parseFloat(row[colMap.sep]) || 0 : 0,
-                            colMap.oct !== undefined ? parseFloat(row[colMap.oct]) || 0 : 0,
-                            colMap.nov !== undefined ? parseFloat(row[colMap.nov]) || 0 : 0,
-                            colMap.dec !== undefined ? parseFloat(row[colMap.dec]) || 0 : 0
-                        ];
-
-                        state.ffbBudget[targetYear].push({
-                            phase: currentPhase,
-                            block_id: blockId,
-                            ha: haVal,
-                            ageMth: ageMthVal,
-                            harvestYr: harvestYrVal,
-                            ageYrMth: ageYrMthVal,
-                            harvestYrMth: harvestYrMthVal,
-                            mtHaYr: mtHaYrVal,
-                            mtHaMth: mtHaMthVal,
-                            months: mVals
-                        });
-                    }
-                }
-            }
-
-            e.target.value = '';
-
-            state.activeViewType = 'ffb_budget';
-            state.activeViewValue = targetYear;
-
-            alert(`Successfully imported FFB Budget for year ${targetYear}!`);
-            renderSidebar();
-            renderTable();
-            recalculateTotals();
-        };
-        reader.readAsArrayBuffer(file);
-    };
+    // Helper for manual import if needed (removed per user request - layout hardcoded directly)
 
     const handleAddReportYearManual = (newYearStr) => {
         const newYear = newYearStr.trim();
@@ -2014,13 +1868,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             };
 
-            const tBtnBudget = document.getElementById('sidebar-download-template-budget');
-            if (tBtnBudget) {
-                tBtnBudget.onclick = (e) => {
-                    e.preventDefault();
-                    downloadAsExcel('FFB_Budget_Template.xlsx', 'ffbBudget');
-                };
-            }
+            // FFB Budget template download removed.
 
             const tBtnInterval = document.getElementById('sidebar-download-template');
             if (tBtnInterval) {
@@ -2044,13 +1892,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 importExcelInput.onchange = handleImportExcel;
             }
 
-            const importBudgetBtn = document.getElementById('sidebar-import-budget');
-            const importBudgetInput = document.getElementById('sidebar-import-budget-input');
-
-            if (importBudgetBtn && importBudgetInput) {
-                importBudgetBtn.onclick = () => importBudgetInput.click();
-                importBudgetInput.onchange = handleImportFfbBudget;
-            }
+            // FFB Budget import removed.
 
             const res = await fetch('grouped_data.json');
             if (!res.ok) throw new Error("Failed to load block data.");
@@ -2061,44 +1903,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.reports["2025"] = [];
 
             state.ffbBudget = state.ffbBudget || {};
-            state.ffbBudget["2026"] = [
-                {
-                    phase: "OP2010",
-                    block_id: "BLK-A",
-                    ha: 15.5,
-                    ageMth: "180",
-                    harvestYr: "2026",
-                    ageYrMth: "15/0",
-                    harvestYrMth: "15/0",
-                    mtHaYr: 25.5,
-                    mtHaMth: 2.1,
-                    months: [100, 110, 120, 100, 110, 120, 100, 110, 120, 100, 110, 120]
-                },
-                {
-                    phase: "OP2010",
-                    block_id: "BLK-B",
-                    ha: 20.0,
-                    ageMth: "180",
-                    harvestYr: "2026",
-                    ageYrMth: "15/0",
-                    harvestYrMth: "15/0",
-                    mtHaYr: 26.0,
-                    mtHaMth: 2.2,
-                    months: [150, 160, 170, 150, 160, 170, 150, 160, 170, 150, 160, 170]
-                },
-                {
-                    phase: "OP2015",
-                    block_id: "BLK-C",
-                    ha: 10.0,
-                    ageMth: "120",
-                    harvestYr: "2026",
-                    ageYrMth: "10/0",
-                    harvestYrMth: "10/0",
-                    mtHaYr: 28.0,
-                    mtHaMth: 2.3,
-                    months: [80, 85, 90, 80, 85, 90, 80, 85, 90, 80, 85, 90]
-                }
-            ];
+            state.ffbBudget["2026"] = typeof INITIAL_FFB_BUDGET !== 'undefined' ? JSON.parse(JSON.stringify(INITIAL_FFB_BUDGET)) : [];
 
 
             if (data.groups) {
