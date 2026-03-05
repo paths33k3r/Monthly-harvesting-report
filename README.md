@@ -25,7 +25,13 @@ Interactive web dashboard for visualizing and managing plantation harvesting per
 - Monitor block performance over multiple rounds to ensure optimal harvesting schedules.
 - Summary table summarizing totals for each round.
 
+### 🌴 FFB Budget Estimate
+- **Editable Grid**: A fully interactive spreadsheet-like view to budget your FFB targets by block and month.
+- **Auto-Aggregation**: Live calculation of Subtotals per planting phase and Grand Totals across the year.
+- **Budget Duplication**: Easily roll over budgets to the next year using the `➕ Add Year` feature, which duplicates the previous year's block configuration.
+
 ### ⚙️ Data Management
+- **Persistent Storage**: All edits to the FFB Budget and Planting Phase records are instantly saved to the browser's `localStorage` via explicit Save buttons.
 - **Excel Import (`.xlsx`, `.xls`)**: Instantly upload harvesting data directly into the dashboard using SheetJS.
 - **Template Download**: One-click generation of the expected `Harvesting_Template.xlsx` template format to ensure data consistency.
 - **Admin Utilities**: Capabilities to wipe year data or clean out test inputs.
@@ -51,5 +57,5 @@ python -m http.server 8080
 - [x] Integrate Chart.js for performance visualization
 - [x] Build data management tool (Import Excel / Download Template)
 - [x] Update month selection to a dropdown for a cleaner UI
-- [ ] Implement robust persistent storage (e.g., LocalStorage / Database Backend)
+- [x] Implement robust persistent storage (e.g., LocalStorage / Database Backend)
 - [ ] Print/Export to PDF reports
