@@ -1957,16 +1957,29 @@ document.addEventListener('DOMContentLoaded', () => {
             const downloadAsExcel = async (filename, templateKey) => {
                 try {
                     const bStr = window.AppTemplates[templateKey];
-                    if (!bStr) throw new Error("Template base64 data not found in templates.js");
-                    const uri = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,' + bStr;
+                    if (!bStr) throw new Error(`Template base64 data not found in templates.js for key ${templateKey}`);
+
+                    // Convert base64 to raw binary data held in a string
+                    const byteCharacters = atob(bStr);
+                    const byteNumbers = new Array(byteCharacters.length);
+                    for (let i = 0; i < byteCharacters.length; i++) {
+                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+                    }
+                    const byteArray = new Uint8Array(byteNumbers);
+
+                    // Create a Blob with the Excel MIME type and trigger download using Object URL
+                    const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                    const blobUrl = URL.createObjectURL(blob);
+
                     const a = document.createElement('a');
                     a.style.display = 'none';
-                    a.href = uri;
+                    a.href = blobUrl;
                     a.download = filename;
                     document.body.appendChild(a);
                     a.click();
                     setTimeout(() => {
                         document.body.removeChild(a);
+                        URL.revokeObjectURL(blobUrl);
                     }, 100);
                 } catch (error) {
                     console.error("Download error:", error);
