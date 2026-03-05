@@ -30,6 +30,17 @@ document.addEventListener('DOMContentLoaded', () => {
         return "Unassigned";
     };
 
+    const saveState = () => {
+        try {
+            localStorage.setItem('harvesting_app_state', JSON.stringify(state));
+            alert("Data saved successfully!");
+        } catch (e) {
+            console.error("Error saving state:", e);
+            alert("Failed to save data. Please check console for errors.");
+        }
+    };
+
+
     // DOM Elements
     const tableBody = document.getElementById('table-body');
     const tableGrandTotal = document.getElementById('table-grand-total');
@@ -683,6 +694,49 @@ document.addEventListener('DOMContentLoaded', () => {
                 li.appendChild(a);
                 container.appendChild(li);
             });
+
+            // Add FFB Year Button
+            const liAddFfbYear = document.createElement('li');
+            liAddFfbYear.className = 'nav-item';
+            const aAddFfbYear = document.createElement('a');
+            aAddFfbYear.href = '#';
+            aAddFfbYear.className = 'nav-link add-year-link';
+            aAddFfbYear.innerHTML = `<span style="margin-right:0.5rem;">➕</span> Add Year`;
+            aAddFfbYear.onclick = (e) => {
+                e.stopPropagation();
+
+                const newYearStr = prompt("Enter the new FFB Budget Year (e.g., 2027):");
+                if (!newYearStr || newYearStr.trim() === "") return;
+                const newYear = newYearStr.trim();
+
+                if (state.ffbBudget && state.ffbBudget[newYear]) {
+                    alert(`FFB Budget Year ${newYear} already exists!`);
+                    return;
+                }
+
+                if (!state.ffbBudget) state.ffbBudget = {};
+
+                // Duplicate last year's data or create empty if none exists
+                const existingYears = Object.keys(state.ffbBudget).sort((a, b) => parseInt(a) - parseInt(b));
+                if (existingYears.length > 0) {
+                    const lastYear = existingYears[existingYears.length - 1];
+                    state.ffbBudget[newYear] = JSON.parse(JSON.stringify(state.ffbBudget[lastYear]));
+                    // Reset amounts to zero for the new year clone? Or keep as requested: "duplicate previous year's data so i could edit it with ease"
+                    // We will keep it exactly identical as requested.
+                } else {
+                    state.ffbBudget[newYear] = [];
+                }
+
+                state.selectedReportYear = newYear;
+                state.activeViewType = 'ffb_budget';
+                state.activeViewValue = newYear;
+
+                renderSidebar();
+                renderTable();
+                recalculateTotals();
+            };
+            liAddFfbYear.appendChild(aAddFfbYear);
+            container.appendChild(liAddFfbYear);
         };
 
         renderFfbBudgetNav();
@@ -1534,6 +1588,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const ffbBudgetWrapper = document.getElementById('ffb-budget-wrapper');
         if (!ffbBudgetWrapper) return;
 
+        // Capture current scroll positions and active element
+        const tableContainer = ffbBudgetWrapper.querySelector('.table-container');
+        const scrollLeft = tableContainer ? tableContainer.scrollLeft : 0;
+        const scrollTop = tableContainer ? tableContainer.scrollTop : 0;
+
+        const activeEl = document.activeElement;
+        const activeData = (activeEl && activeEl.dataset && activeEl.dataset.blockId) ? {
+            blockId: activeEl.dataset.blockId,
+            phase: activeEl.dataset.phase,
+            field: activeEl.dataset.field,
+            monthIdx: activeEl.dataset.monthIdx
+        } : null;
+
         ffbBudgetWrapper.innerHTML = '';
 
         const year = state.activeViewValue;
@@ -1573,20 +1640,25 @@ document.addEventListener('DOMContentLoaded', () => {
             group.tMonths.forEach((m, i) => {
                 grandTotalMonths[i] += m;
                 groupRowTotal += m;
-                subTMonthsHtml += `<td class="text-right" style="padding: 0.4rem; font-weight: 600;">${(Math.round(m * 100) / 100).toFixed(2)}</td>`;
+                subTMonthsHtml += `<td class="text-right" style="padding: 0.4rem; font-weight: 600;">${Math.round(m)}</td>`;
             });
 
-            // Add the Group Header Row
+            // Add the Group Header Row (now combined with Subtotal)
             const toggleId = `ffb-budget-toggle-group-${index}`;
             tbodyHtml += `
-                <tr class="row-group-header" onclick="document.body.classList.toggle('${toggleId}')" style="cursor: pointer;">
-                    <td colspan="11" style="position: sticky; left: 0; background: var(--bg-secondary); z-index: 2; border-right: 2px solid var(--border-color);">
-                        <div class="group-header-content">
-                            <span class="group-toggle" id="${toggleId}-icon">▼</span>
-                            <strong>${phaseName}</strong>
-                            <span class="text-muted" style="margin-left: 1rem; font-weight: normal;">${group.rows.length} blocks</span>
+                <tr class="row-group-header" onclick="document.body.classList.toggle('${toggleId}')" style="cursor: pointer; background: var(--bg-overlay, var(--group-bg));">
+                    <td colspan="5" style="position: sticky; left: 0; width: 340px; min-width: 340px; max-width: 340px; background-color: var(--bg-secondary); z-index: 6; border-right: 1px solid var(--border-color); padding: 0 1rem;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                            <div style="display: flex; align-items: center; gap: 0.8rem;">
+                                <span class="group-toggle" id="${toggleId}-icon">▼</span>
+                                <span class="text-muted" style="font-weight: normal; font-size: 0.9em; white-space: nowrap;">(${group.rows.length} blocks)</span>
+                            </div>
+                            <div class="font-bold text-right" style="white-space: nowrap;">SUBTOTAL ${phaseName}</div>
                         </div>
                     </td>
+                    <td class="text-right font-bold" style="position: sticky; left: 340px; width: 80px; min-width: 80px; max-width: 80px; background-color: var(--bg-secondary); z-index: 6; border-right: 2px solid var(--border-color);">${Math.round(group.tHa)}</td>
+                    ${subTMonthsHtml}
+                    <td class="text-right font-bold col-total" style="border-left: 2px solid var(--border-color);">${Math.round(groupRowTotal)}</td>
                 </tr>
             `;
 
@@ -1598,9 +1670,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     rowTotal += (m || 0);
                     monthsHtml += `
                         <td style="padding: 0;">
-                            <input type="number" step="0.01" class="edit-input ffb-input text-right" style="width: 100%; border: none; background: transparent; padding: 0.4rem;" 
+                            <input type="number" step="1" class="edit-input ffb-input text-right" style="width: 100%; border: none; background: transparent; padding: 0.4rem;" 
                                 data-field="month" data-month-idx="${mIdx}" data-block-id="${row.block_id}" data-phase="${row.phase}"
-                                value="${(m || 0).toFixed(2)}"
+                                value="${Math.round(m || 0)}"
                             />
                         </td>
                     `;
@@ -1608,66 +1680,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 tbodyHtml += `
                     <tr class="row-block ffb-budget-row-block ffb-budget-group-${index} ${toggleId}-hideable">
-                        <td style="padding: 0; position: sticky; left: 0; background: var(--bg-primary); border-right: 2px solid var(--border-color); text-align: center; font-weight: 500;">
+                        <td style="padding: 0; position: sticky; left: 0; width: 60px; min-width: 60px; max-width: 60px; background-color: var(--bg-primary); z-index: 5; border-right: 1px solid var(--border-color); text-align: center; font-weight: 500;">
                             ${row.block_id}
                         </td>
-                        <td style="padding: 0;">
-                            <input type="text" class="edit-input ffb-input text-center" style="width: 100%; border: none; background: transparent; padding: 0.4rem; font-size: 0.85em;" 
+                        <td style="padding: 0; position: sticky; left: 60px; width: 70px; min-width: 70px; max-width: 70px; background-color: var(--bg-primary); z-index: 5; border-right: 1px solid var(--border-color);">
+                            <input type="text" class="edit-input ffb-input text-center" style="width: 100%; border: none; background: var(--bg-primary); padding: 0.4rem; font-size: 0.85em;" 
                                 data-field="ageMth" data-block-id="${row.block_id}" data-phase="${row.phase}"
                                 value="${row.ageMth || ''}"
                             />
                         </td>
-                        <td style="padding: 0;">
-                            <input type="text" class="edit-input ffb-input text-center" style="width: 100%; border: none; background: transparent; padding: 0.4rem; font-size: 0.85em;" 
+                        <td style="padding: 0; position: sticky; left: 130px; width: 70px; min-width: 70px; max-width: 70px; background-color: var(--bg-primary); z-index: 5; border-right: 1px solid var(--border-color);">
+                            <input type="number" step="1" class="edit-input ffb-input text-center" style="width: 100%; border: none; background: var(--bg-primary); padding: 0.4rem; font-size: 0.85em;" 
                                 data-field="harvestYr" data-block-id="${row.block_id}" data-phase="${row.phase}"
-                                value="${row.harvestYr || ''}"
+                                value="${Math.round(parseFloat(row.harvestYr) || 0)}"
                             />
                         </td>
-                        <td style="padding: 0;">
-                            <input type="text" class="edit-input ffb-input text-center" style="width: 100%; border: none; background: transparent; padding: 0.4rem; font-size: 0.85em;" 
-                                data-field="ageYrMth" data-block-id="${row.block_id}" data-phase="${row.phase}"
-                                value="${row.ageYrMth || ''}"
-                            />
-                        </td>
-                        <td style="padding: 0;">
-                            <input type="text" class="edit-input ffb-input text-center" style="width: 100%; border: none; background: transparent; padding: 0.4rem; font-size: 0.85em;" 
-                                data-field="harvestYrMth" data-block-id="${row.block_id}" data-phase="${row.phase}"
-                                value="${row.harvestYrMth || ''}"
-                            />
-                        </td>
-                        <td style="padding: 0;">
-                            <input type="number" step="0.01" class="edit-input ffb-input text-right" style="width: 100%; border: none; background: transparent; padding: 0.4rem; font-size: 0.85em;" 
+                        <td style="padding: 0; position: sticky; left: 200px; width: 70px; min-width: 70px; max-width: 70px; background-color: var(--bg-primary); z-index: 5; border-right: 1px solid var(--border-color);">
+                            <input type="number" step="1" class="edit-input ffb-input text-right" style="width: 100%; border: none; background: var(--bg-primary); padding: 0.4rem; font-size: 0.85em;" 
                                 data-field="mtHaYr" data-block-id="${row.block_id}" data-phase="${row.phase}"
-                                value="${(row.mtHaYr || 0).toFixed(2)}"
+                                value="${Math.round(row.mtHaYr || 0)}"
                             />
                         </td>
-                        <td style="padding: 0;">
-                            <input type="number" step="0.01" class="edit-input ffb-input text-right" style="width: 100%; border: none; background: transparent; padding: 0.4rem; font-size: 0.85em;" 
+                        <td style="padding: 0; position: sticky; left: 270px; width: 70px; min-width: 70px; max-width: 70px; background-color: var(--bg-primary); z-index: 5; border-right: 1px solid var(--border-color);">
+                            <input type="number" step="1" class="edit-input ffb-input text-right" style="width: 100%; border: none; background: var(--bg-primary); padding: 0.4rem; font-size: 0.85em;" 
                                 data-field="mtHaMth" data-block-id="${row.block_id}" data-phase="${row.phase}"
-                                value="${(row.mtHaMth || 0).toFixed(2)}"
+                                value="${Math.round(row.mtHaMth || 0)}"
                             />
                         </td>
-                        <td style="padding: 0; border-right: 2px solid var(--border-color);">
-                            <input type="number" step="0.01" class="edit-input ffb-input text-right font-bold" style="width: 100%; border: none; background: transparent; padding: 0.4rem;" 
+                        <td style="padding: 0; position: sticky; left: 340px; width: 80px; min-width: 80px; max-width: 80px; background-color: var(--bg-primary); z-index: 5; border-right: 2px solid var(--border-color);">
+                            <input type="number" step="1" class="edit-input ffb-input text-right font-bold" style="width: 100%; border: none; background: var(--bg-primary); padding: 0.4rem;" 
                                 data-field="ha" data-block-id="${row.block_id}" data-phase="${row.phase}"
-                                value="${(row.ha || 0).toFixed(2)}"
+                                value="${Math.round(row.ha || 0)}"
                             />
                         </td>
                         ${monthsHtml}
-                        <td class="text-right font-bold col-total" style="border-left: 2px solid var(--border-color);">${(Math.round(rowTotal * 100) / 100).toFixed(2)}</td>
+                        <td class="text-right font-bold col-total" style="border-left: 2px solid var(--border-color);">${Math.round(rowTotal)}</td>
                     </tr>
                 `;
             });
-
-            // Add the Group Subtotal Row
-            tbodyHtml += `
-                <tr class="row-subtotal ffb-budget-group-${index} ${toggleId}-hideable" style="background: var(--bg-secondary);">
-                    <td colspan="7" class="text-right font-bold" style="position: sticky; left: 0; background: var(--bg-secondary); z-index: 1; border-right: 2px solid var(--border-color); padding-right: 1rem;">SUBTOTAL ${phaseName}</td>
-                    <td class="text-right font-bold" style="border-right: 2px solid var(--border-color);">${group.tHa.toFixed(2)}</td>
-                    ${subTMonthsHtml}
-                    <td class="text-right font-bold col-total" style="border-left: 2px solid var(--border-color);">${groupRowTotal.toFixed(2)}</td>
-                </tr>
-            `;
 
             // Insert dynamic CSS for toggling
             if (!document.getElementById(`style-${toggleId}`)) {
@@ -1679,31 +1729,42 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
                 document.head.appendChild(style);
             }
+            // Set collapsed by default
+            document.body.classList.add(toggleId);
         });
 
         let grandTotalRowSum = grandTotalMonths.reduce((a, b) => a + b, 0);
-        let tFootMonthsHtml = grandTotalMonths.map(m => `<td class="text-right font-bold col-total" style="font-size: 0.9em;">${(Math.round(m * 100) / 100).toFixed(2)}</td>`).join('');
+        let tFootMonthsHtml = grandTotalMonths.map(m => `<td class="text-right font-bold col-total" style="font-size: 0.9em;">${Math.round(m)}</td>`).join('');
 
         wrapper.innerHTML = `
             <div class="performance-header">
                 <h2>PROPOSED FFB ESTIMATE PRODUCTION FOR YEAR ${year}</h2>
             </div>
-            <div class="summary-table-container" style="margin-bottom: 1rem; text-align: right; display: flex; justify-content: flex-end; gap: 0.5rem; align-items: center;">
-                 <button class="btn-primary" id="add-ffb-block-btn"><span>➕</span> Add Block</button>
-                 <button class="btn-danger" id="clear-budget-btn"><span>🗑️</span> Clear Budget for ${year}</button>
+            <div class="summary-table-container" style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+                 <div class="toolbar-left" style="display: flex; gap: 0.5rem; align-items: center;">
+                     <button class="btn-secondary" id="ffb-expand-all-btn" style="padding: 0.5rem 1rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer;">
+                        <span>+</span> Expand All
+                     </button>
+                     <button class="btn-secondary" id="ffb-collapse-all-btn" style="padding: 0.5rem 1rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer;">
+                        <span>-</span> Collapse All
+                     </button>
+                 </div>
+                 <div class="toolbar-right" style="display: flex; gap: 0.5rem; align-items: center;">
+                     <button class="btn-danger" id="clear-budget-btn"><span>🗑️</span> Clear Budget for ${year}</button>
+                     <button class="btn-primary" id="add-ffb-block-btn"><span>➕</span> Add Block</button>
+                     <button class="btn-primary" id="save-ffb-btn" style="background-color: #10b981; border-color: #10b981;" title="Save all changes"><span>💾</span> Save</button>
+                 </div>
             </div>
             <div class="table-container" style="overflow-x: auto; padding-bottom: 2rem;">
                 <table class="grouped-table" style="min-width: 1600px;">
                     <thead>
                         <tr>
-                            <th style="min-width: 60px; position: sticky; left: 0; background: var(--bg-primary); z-index: 1; border-right: 2px solid var(--border-color);">BLK</th>
-                            <th style="min-width: 70px;">Age<br/>(mth)</th>
-                            <th style="min-width: 60px;">Harvest<br/>Yr.</th>
-                            <th style="min-width: 90px;">Age<br/>(yr/mth)</th>
-                            <th style="min-width: 90px;">Harvest<br/>(yr/mth)</th>
-                            <th style="min-width: 60px;">Mt/ha/yr</th>
-                            <th style="min-width: 70px;">Mt/ha/mth</th>
-                            <th style="min-width: 80px; border-right: 2px solid var(--border-color);">HA</th>
+                            <th style="width: 60px; min-width: 60px; max-width: 60px; position: sticky; left: 0; background-color: var(--bg-secondary); z-index: 7; border-right: 1px solid var(--border-color);">BLK</th>
+                            <th style="width: 70px; min-width: 70px; max-width: 70px; position: sticky; left: 60px; background-color: var(--bg-secondary); z-index: 7; border-right: 1px solid var(--border-color);">Age<br/>(mth)</th>
+                            <th style="width: 70px; min-width: 70px; max-width: 70px; position: sticky; left: 130px; background-color: var(--bg-secondary); z-index: 7; border-right: 1px solid var(--border-color);">Harvest<br/>Yr.</th>
+                            <th style="width: 70px; min-width: 70px; max-width: 70px; position: sticky; left: 200px; background-color: var(--bg-secondary); z-index: 7; border-right: 1px solid var(--border-color);">Mt/ha/yr</th>
+                            <th style="width: 70px; min-width: 70px; max-width: 70px; position: sticky; left: 270px; background-color: var(--bg-secondary); z-index: 7; border-right: 1px solid var(--border-color);">Mt/ha/mth</th>
+                            <th style="width: 80px; min-width: 80px; max-width: 80px; position: sticky; left: 340px; background-color: var(--bg-secondary); z-index: 7; border-right: 2px solid var(--border-color);">HA</th>
                             ${['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'].map((m) => `<th style="min-width: 60px; text-align: right; padding: 0.4rem; font-size: 0.85em;">${m}</th>`).join('')}
                             <th style="min-width: 80px; text-align: right; border-left: 2px solid var(--border-color);" class="col-total">TOTAL</th>
                         </tr>
@@ -1713,10 +1774,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     </tbody>
                     <tfoot>
                         <tr class="row-grand-total">
-                            <td colspan="7" class="grand-total-label" style="position: sticky; left: 0; background: var(--bg-secondary); z-index: 1; border-right: 2px solid var(--border-color); text-align: right; padding-right: 1rem;">GRAND TOTAL</td>
-                            <td class="text-right font-bold" style="border-right: 2px solid var(--border-color);">${grandTotalHa.toFixed(2)}</td>
+                            <td colspan="5" class="grand-total-label" style="position: sticky; left: 0; width: 340px; min-width: 340px; max-width: 340px; background-color: var(--grand-total-bg); z-index: 6; border-right: 1px solid var(--border-color); text-align: right; padding-right: 1rem;">GRAND TOTAL</td>
+                            <td class="text-right font-bold" style="position: sticky; left: 340px; width: 80px; min-width: 80px; max-width: 80px; background-color: var(--grand-total-bg); z-index: 6; border-right: 2px solid var(--border-color);">${Math.round(grandTotalHa)}</td>
                             ${tFootMonthsHtml}
-                            <td class="text-right font-bold col-total" style="border-left: 2px solid var(--border-color);">${grandTotalRowSum.toFixed(2)}</td>
+                            <td class="text-right font-bold col-total" style="border-left: 2px solid var(--border-color);">${Math.round(grandTotalRowSum)}</td>
                         </tr>
                     </tfoot>
                 </table>
@@ -1724,6 +1785,46 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         ffbBudgetWrapper.appendChild(wrapper);
+
+        // Global Expand/Collapse Handlers
+        const expandAllBtn = document.getElementById('ffb-expand-all-btn');
+        if (expandAllBtn) {
+            expandAllBtn.addEventListener('click', () => {
+                Object.keys(groupedData).forEach((_, idx) => {
+                    document.body.classList.remove(`ffb-budget-toggle-group-${idx}`);
+                });
+            });
+        }
+
+        const collapseAllBtn = document.getElementById('ffb-collapse-all-btn');
+        if (collapseAllBtn) {
+            collapseAllBtn.addEventListener('click', () => {
+                Object.keys(groupedData).forEach((_, idx) => {
+                    document.body.classList.add(`ffb-budget-toggle-group-${idx}`);
+                });
+            });
+        }
+
+        // Restore scroll positions
+        const newTableContainer = ffbBudgetWrapper.querySelector('.table-container');
+        if (newTableContainer) {
+            newTableContainer.scrollLeft = scrollLeft;
+            newTableContainer.scrollTop = scrollTop;
+        }
+
+        // Restore focus
+        if (activeData) {
+            let selector = `.ffb-input[data-block-id="${activeData.blockId}"][data-phase="${activeData.phase}"][data-field="${activeData.field}"]`;
+            if (activeData.monthIdx !== undefined) {
+                selector += `[data-month-idx="${activeData.monthIdx}"]`;
+            }
+            const elToFocus = ffbBudgetWrapper.querySelector(selector);
+            if (elToFocus) {
+                elToFocus.focus();
+                // For number inputs, selecting the text usually works better on mobile/desktop
+                if (elToFocus.tagName === 'INPUT') elToFocus.select();
+            }
+        }
 
         // Helper to show modal
         const showModal = (title, bodyHtml, onConfirm) => {
@@ -1812,6 +1913,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             };
         }
+
+        const saveFfbBtn = document.getElementById('save-ffb-btn');
+        if (saveFfbBtn) {
+            saveFfbBtn.onclick = saveState;
+        }
         // Attach event listeners
         const inputs = wrapper.querySelectorAll('.ffb-input');
         inputs.forEach(input => {
@@ -1839,7 +1945,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (input.type === 'number') {
                 input.addEventListener('blur', (e) => {
-                    e.target.value = (parseFloat(e.target.value) || 0).toFixed(2);
+                    e.target.value = Math.round(parseFloat(e.target.value) || 0).toString();
                 });
             }
         });
@@ -1883,7 +1989,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const deleteYearBtn = document.getElementById('delete-year-btn');
             if (deleteYearBtn) deleteYearBtn.onclick = handleDeleteYear;
 
-
             const importExcelBtn = document.getElementById('sidebar-import-excel');
             const importExcelInput = document.getElementById('sidebar-import-input');
 
@@ -1892,7 +1997,31 @@ document.addEventListener('DOMContentLoaded', () => {
                 importExcelInput.onchange = handleImportExcel;
             }
 
-            // FFB Budget import removed.
+            // Bind Global Save button for Planting Phase Record
+            const saveMainBtn = document.getElementById('save-main-btn');
+            if (saveMainBtn) {
+                saveMainBtn.onclick = saveState;
+            }
+
+            // Check if LocalStorage has state
+            const savedStateStr = localStorage.getItem('harvesting_app_state');
+            if (savedStateStr) {
+                try {
+                    const savedState = JSON.parse(savedStateStr);
+                    // Merge saved state
+                    Object.assign(state, savedState);
+
+                    renderSidebar();
+                    renderTable();
+                    recalculateTotals();
+
+                    loadingEl.classList.add('hidden');
+                    tableContainer.classList.remove('hidden');
+                    return; // exit early, no need to load defaults
+                } catch (e) {
+                    console.error("Local storage Parse error, falling back to defaults.", e);
+                }
+            }
 
             const res = await fetch('grouped_data.json');
             if (!res.ok) throw new Error("Failed to load block data.");
@@ -1904,7 +2033,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             state.ffbBudget = state.ffbBudget || {};
             state.ffbBudget["2026"] = typeof INITIAL_FFB_BUDGET !== 'undefined' ? JSON.parse(JSON.stringify(INITIAL_FFB_BUDGET)) : [];
-
 
             if (data.groups) {
                 data.groups.forEach(group => {

@@ -11,6 +11,8 @@
     --grand-total-bg: #1e293b;
     --grand-total-text: #f8fafc;
     --danger: #ef4444;
+    --bg-primary: #ffffff;
+    --bg-secondary: #f1f5f9;
 }
 
 * {
@@ -371,11 +373,8 @@ main {
 .ha-input::-webkit-outer-spin-button,
 .ha-input::-webkit-inner-spin-button {
     -webkit-appearance: none;
+    appearance: none;
     margin: 0;
-}
-
-.ha-input[type=number] {
-    -moz-appearance: textfield;
 }
 
 /* Editable Input Area (Generic) */
@@ -415,11 +414,13 @@ main {
 .edit-input::-webkit-outer-spin-button,
 .edit-input::-webkit-inner-spin-button {
     -webkit-appearance: none;
+    appearance: none;
     margin: 0;
 }
 
 .edit-input[type=number] {
     -moz-appearance: textfield;
+    appearance: textfield;
 }
 
 /* Action Buttons */
@@ -500,6 +501,27 @@ main {
 
 .btn-primary:hover {
     background-color: var(--accent-hover);
+}
+
+.btn-secondary {
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-card);
+    color: var(--text-primary);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.2s;
+}
+
+.btn-secondary:hover {
+    background-color: var(--bg-main);
+    border-color: var(--accent);
+    color: var(--accent);
 }
 
 .btn-danger {
