@@ -385,6 +385,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const val = String(headerRow[c] || "").trim().toUpperCase();
                 if (val.includes("PHASE")) colMap.phase = c;
                 else if (val.includes("BLK")) colMap.blk = c;
+                else if (val.includes("AGE (MTH)") || val.includes("AGE(MTH)")) colMap.ageMth = c;
+                else if (val.includes("HARVEST YR.") || val.includes("HARVEST YR")) colMap.harvestYr = c;
+                else if (val.includes("AGE") && val.includes("YR/MTH")) colMap.ageYrMth = c;
+                else if (val.includes("HARVEST") && val.includes("YR/MTH")) colMap.harvestYrMth = c;
+                else if (val.includes("MT/HA/YR") || val.includes("MT/HA / YR")) colMap.mtHaYr = c;
+                else if (val.includes("MT/HA/ MTH") || val.includes("MT/HA/MTH") || val.includes("MT / HA/ MTH")) colMap.mtHaMth = c;
                 else if (val === "HA") colMap.ha = c;
                 else if (val.includes("JAN")) colMap.jan = c;
                 else if (val.includes("FEB")) colMap.feb = c;
@@ -408,7 +414,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (colMap.phase !== undefined) {
                     const phaseColVal = row[colMap.phase];
                     if (phaseColVal && String(phaseColVal).trim() !== '') {
-                        currentPhase = String(phaseColVal).trim();
+                        if (!String(phaseColVal).toUpperCase().includes("SUBTOTAL")) {
+                            currentPhase = String(phaseColVal).trim();
+                        }
                     }
                 }
 
@@ -416,9 +424,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     const blkVal = row[colMap.blk];
                     if (blkVal != null && String(blkVal).trim() !== '') {
                         const blockId = String(blkVal).trim();
-                        if (blockId.toUpperCase().includes("TOTAL")) continue;
+                        if (blockId.toUpperCase().includes("TOTAL") || blockId.toUpperCase().includes("SUBTOTAL")) continue;
 
                         const haVal = colMap.ha !== undefined ? parseFloat(row[colMap.ha]) || 0 : 0;
+                        const ageMthVal = colMap.ageMth !== undefined ? String(row[colMap.ageMth] || "") : "";
+                        const harvestYrVal = colMap.harvestYr !== undefined ? String(row[colMap.harvestYr] || "") : "";
+                        const ageYrMthVal = colMap.ageYrMth !== undefined ? String(row[colMap.ageYrMth] || "") : "";
+                        const harvestYrMthVal = colMap.harvestYrMth !== undefined ? String(row[colMap.harvestYrMth] || "") : "";
+                        const mtHaYrVal = colMap.mtHaYr !== undefined ? parseFloat(row[colMap.mtHaYr]) || 0 : 0;
+                        const mtHaMthVal = colMap.mtHaMth !== undefined ? parseFloat(row[colMap.mtHaMth]) || 0 : 0;
+
                         const mVals = [
                             colMap.jan !== undefined ? parseFloat(row[colMap.jan]) || 0 : 0,
                             colMap.feb !== undefined ? parseFloat(row[colMap.feb]) || 0 : 0,
@@ -438,6 +453,12 @@ document.addEventListener('DOMContentLoaded', () => {
                             phase: currentPhase,
                             block_id: blockId,
                             ha: haVal,
+                            ageMth: ageMthVal,
+                            harvestYr: harvestYrVal,
+                            ageYrMth: ageYrMthVal,
+                            harvestYrMth: harvestYrMthVal,
+                            mtHaYr: mtHaYrVal,
+                            mtHaMth: mtHaMthVal,
                             months: mVals
                         });
                     }
@@ -1669,52 +1690,165 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const data = state.ffbBudget[year];
 
+        // Group the data by phase
+        const groupedData = {};
+        data.forEach(row => {
+            const p = row.phase || "Unassigned";
+            if (!groupedData[p]) groupedData[p] = { rows: [], tHa: 0, tMonths: new Array(12).fill(0) };
+            groupedData[p].rows.push(row);
+            groupedData[p].tHa += row.ha || 0;
+            row.months.forEach((m, i) => {
+                groupedData[p].tMonths[i] += (m || 0);
+            });
+        });
+
         const wrapper = document.createElement('div');
         wrapper.style.marginBottom = '3rem';
         wrapper.style.padding = '0';
 
-        let tHa = 0;
-        let tMonths = new Array(12).fill(0);
-
+        let grandTotalHa = 0;
+        let grandTotalMonths = new Array(12).fill(0);
         let tbodyHtml = '';
 
-        data.forEach(row => {
-            tHa += row.ha;
-            let rowTotal = 0;
-            let monthsHtml = '';
-            row.months.forEach((m, i) => {
-                tMonths[i] += m;
-                rowTotal += m;
-                monthsHtml += `<td class="text-right" style="padding: 0.4rem; font-size: 0.9em;">${(Math.round(m * 100) / 100).toFixed(2)}</td>`;
+        Object.keys(groupedData).sort().forEach((phaseName, index) => {
+            const group = groupedData[phaseName];
+            grandTotalHa += group.tHa;
+
+            let groupRowTotal = 0;
+            let subTMonthsHtml = '';
+            group.tMonths.forEach((m, i) => {
+                grandTotalMonths[i] += m;
+                groupRowTotal += m;
+                subTMonthsHtml += `<td class="text-right" style="padding: 0.4rem; font-weight: 600;">${(Math.round(m * 100) / 100).toFixed(2)}</td>`;
             });
 
+            // Add the Group Header Row
+            const toggleId = `ffb-budget-toggle-group-${index}`;
             tbodyHtml += `
-                <tr class="row-block">
-                    <td style="position: sticky; left: 0; background: var(--bg-primary); border-right: 2px solid var(--border-color); text-align: center;">${row.phase}</td>
-                    <td style="position: sticky; left: 80px; background: var(--bg-primary); border-right: 2px solid var(--border-color); text-align: center;" class="font-bold">${row.block_id}</td>
-                    <td class="text-right" style="border-right: 2px solid var(--border-color);">${row.ha.toFixed(2)}</td>
-                    ${monthsHtml}
-                    <td class="text-right font-bold col-total" style="border-left: 2px solid var(--border-color);">${(Math.round(rowTotal * 100) / 100).toFixed(2)}</td>
+                <tr class="row-group-header" onclick="document.body.classList.toggle('${toggleId}')" style="cursor: pointer;">
+                    <td colspan="11" style="position: sticky; left: 0; background: var(--bg-secondary); z-index: 2; border-right: 2px solid var(--border-color);">
+                        <div class="group-header-content">
+                            <span class="group-toggle" id="${toggleId}-icon">▼</span>
+                            <strong>${phaseName}</strong>
+                            <span class="text-muted" style="margin-left: 1rem; font-weight: normal;">${group.rows.length} blocks</span>
+                        </div>
+                    </td>
                 </tr>
             `;
+
+            // Add individual block rows
+            group.rows.forEach(row => {
+                let rowTotal = 0;
+                let monthsHtml = '';
+                row.months.forEach((m, mIdx) => {
+                    rowTotal += (m || 0);
+                    monthsHtml += `
+                        <td style="padding: 0;">
+                            <input type="number" step="0.01" class="edit-input ffb-input text-right" style="width: 100%; border: none; background: transparent; padding: 0.4rem;" 
+                                data-field="month" data-month-idx="${mIdx}" data-block-id="${row.block_id}" data-phase="${row.phase}"
+                                value="${(m || 0).toFixed(2)}"
+                            />
+                        </td>
+                    `;
+                });
+
+                tbodyHtml += `
+                    <tr class="row-block ffb-budget-row-block ffb-budget-group-${index} ${toggleId}-hideable">
+                        <td style="padding: 0; position: sticky; left: 0; background: var(--bg-primary); border-right: 2px solid var(--border-color); text-align: center; font-weight: 500;">
+                            ${row.block_id}
+                        </td>
+                        <td style="padding: 0;">
+                            <input type="text" class="edit-input ffb-input text-center" style="width: 100%; border: none; background: transparent; padding: 0.4rem; font-size: 0.85em;" 
+                                data-field="ageMth" data-block-id="${row.block_id}" data-phase="${row.phase}"
+                                value="${row.ageMth || ''}"
+                            />
+                        </td>
+                        <td style="padding: 0;">
+                            <input type="text" class="edit-input ffb-input text-center" style="width: 100%; border: none; background: transparent; padding: 0.4rem; font-size: 0.85em;" 
+                                data-field="harvestYr" data-block-id="${row.block_id}" data-phase="${row.phase}"
+                                value="${row.harvestYr || ''}"
+                            />
+                        </td>
+                        <td style="padding: 0;">
+                            <input type="text" class="edit-input ffb-input text-center" style="width: 100%; border: none; background: transparent; padding: 0.4rem; font-size: 0.85em;" 
+                                data-field="ageYrMth" data-block-id="${row.block_id}" data-phase="${row.phase}"
+                                value="${row.ageYrMth || ''}"
+                            />
+                        </td>
+                        <td style="padding: 0;">
+                            <input type="text" class="edit-input ffb-input text-center" style="width: 100%; border: none; background: transparent; padding: 0.4rem; font-size: 0.85em;" 
+                                data-field="harvestYrMth" data-block-id="${row.block_id}" data-phase="${row.phase}"
+                                value="${row.harvestYrMth || ''}"
+                            />
+                        </td>
+                        <td style="padding: 0;">
+                            <input type="number" step="0.01" class="edit-input ffb-input text-right" style="width: 100%; border: none; background: transparent; padding: 0.4rem; font-size: 0.85em;" 
+                                data-field="mtHaYr" data-block-id="${row.block_id}" data-phase="${row.phase}"
+                                value="${(row.mtHaYr || 0).toFixed(2)}"
+                            />
+                        </td>
+                        <td style="padding: 0;">
+                            <input type="number" step="0.01" class="edit-input ffb-input text-right" style="width: 100%; border: none; background: transparent; padding: 0.4rem; font-size: 0.85em;" 
+                                data-field="mtHaMth" data-block-id="${row.block_id}" data-phase="${row.phase}"
+                                value="${(row.mtHaMth || 0).toFixed(2)}"
+                            />
+                        </td>
+                        <td style="padding: 0; border-right: 2px solid var(--border-color);">
+                            <input type="number" step="0.01" class="edit-input ffb-input text-right font-bold" style="width: 100%; border: none; background: transparent; padding: 0.4rem;" 
+                                data-field="ha" data-block-id="${row.block_id}" data-phase="${row.phase}"
+                                value="${(row.ha || 0).toFixed(2)}"
+                            />
+                        </td>
+                        ${monthsHtml}
+                        <td class="text-right font-bold col-total" style="border-left: 2px solid var(--border-color);">${(Math.round(rowTotal * 100) / 100).toFixed(2)}</td>
+                    </tr>
+                `;
+            });
+
+            // Add the Group Subtotal Row
+            tbodyHtml += `
+                <tr class="row-subtotal ffb-budget-group-${index} ${toggleId}-hideable" style="background: var(--bg-secondary);">
+                    <td colspan="7" class="text-right font-bold" style="position: sticky; left: 0; background: var(--bg-secondary); z-index: 1; border-right: 2px solid var(--border-color); padding-right: 1rem;">SUBTOTAL ${phaseName}</td>
+                    <td class="text-right font-bold" style="border-right: 2px solid var(--border-color);">${group.tHa.toFixed(2)}</td>
+                    ${subTMonthsHtml}
+                    <td class="text-right font-bold col-total" style="border-left: 2px solid var(--border-color);">${groupRowTotal.toFixed(2)}</td>
+                </tr>
+            `;
+
+            // Insert dynamic CSS for toggling
+            if (!document.getElementById(`style-${toggleId}`)) {
+                const style = document.createElement('style');
+                style.id = `style-${toggleId}`;
+                style.innerHTML = `
+                    body.${toggleId} .${toggleId}-hideable { display: none !important; }
+                    body.${toggleId} #${toggleId}-icon { transform: rotate(-90deg); }
+                `;
+                document.head.appendChild(style);
+            }
         });
 
-        let tRowTotal = tMonths.reduce((a, b) => a + b, 0);
-        let tFootMonthsHtml = tMonths.map(m => `<td class="text-right font-bold col-total" style="font-size: 0.9em;">${(Math.round(m * 100) / 100).toFixed(2)}</td>`).join('');
+        let grandTotalRowSum = grandTotalMonths.reduce((a, b) => a + b, 0);
+        let tFootMonthsHtml = grandTotalMonths.map(m => `<td class="text-right font-bold col-total" style="font-size: 0.9em;">${(Math.round(m * 100) / 100).toFixed(2)}</td>`).join('');
 
         wrapper.innerHTML = `
             <div class="performance-header">
                 <h2>PROPOSED FFB ESTIMATE PRODUCTION FOR YEAR ${year}</h2>
             </div>
-            <div class="summary-table-container" style="margin-bottom: 1rem; text-align: right;">
+            <div class="summary-table-container" style="margin-bottom: 1rem; text-align: right; display: flex; justify-content: flex-end; gap: 0.5rem; align-items: center;">
+                 <button class="btn-primary" id="add-ffb-block-btn"><span>➕</span> Add Block</button>
                  <button class="btn-danger" id="clear-budget-btn"><span>🗑️</span> Clear Budget for ${year}</button>
             </div>
             <div class="table-container" style="overflow-x: auto; padding-bottom: 2rem;">
-                <table class="grouped-table" style="min-width: 1200px;">
+                <table class="grouped-table" style="min-width: 1600px;">
                     <thead>
                         <tr>
-                            <th style="min-width: 80px; position: sticky; left: 0; background: var(--bg-primary); z-index: 1; border-right: 2px solid var(--border-color);">PHASE</th>
-                            <th style="min-width: 60px; position: sticky; left: 80px; background: var(--bg-primary); z-index: 1; border-right: 2px solid var(--border-color);">BLK</th>
+                            <th style="min-width: 60px; position: sticky; left: 0; background: var(--bg-primary); z-index: 1; border-right: 2px solid var(--border-color);">BLK</th>
+                            <th style="min-width: 70px;">Age<br/>(mth)</th>
+                            <th style="min-width: 60px;">Harvest<br/>Yr.</th>
+                            <th style="min-width: 90px;">Age<br/>(yr/mth)</th>
+                            <th style="min-width: 90px;">Harvest<br/>(yr/mth)</th>
+                            <th style="min-width: 60px;">Mt/ha/yr</th>
+                            <th style="min-width: 70px;">Mt/ha/mth</th>
                             <th style="min-width: 80px; border-right: 2px solid var(--border-color);">HA</th>
                             ${['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'].map((m) => `<th style="min-width: 60px; text-align: right; padding: 0.4rem; font-size: 0.85em;">${m}</th>`).join('')}
                             <th style="min-width: 80px; text-align: right; border-left: 2px solid var(--border-color);" class="col-total">TOTAL</th>
@@ -1725,10 +1859,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     </tbody>
                     <tfoot>
                         <tr class="row-grand-total">
-                            <td colspan="2" class="grand-total-label" style="position: sticky; left: 0; background: var(--bg-secondary); z-index: 1; border-right: 2px solid var(--border-color);">Total</td>
-                            <td class="text-right font-bold" style="border-right: 2px solid var(--border-color);">${tHa.toFixed(2)}</td>
+                            <td colspan="7" class="grand-total-label" style="position: sticky; left: 0; background: var(--bg-secondary); z-index: 1; border-right: 2px solid var(--border-color); text-align: right; padding-right: 1rem;">GRAND TOTAL</td>
+                            <td class="text-right font-bold" style="border-right: 2px solid var(--border-color);">${grandTotalHa.toFixed(2)}</td>
                             ${tFootMonthsHtml}
-                            <td class="text-right font-bold col-total" style="border-left: 2px solid var(--border-color);">${tRowTotal.toFixed(2)}</td>
+                            <td class="text-right font-bold col-total" style="border-left: 2px solid var(--border-color);">${grandTotalRowSum.toFixed(2)}</td>
                         </tr>
                     </tfoot>
                 </table>
@@ -1737,15 +1871,124 @@ document.addEventListener('DOMContentLoaded', () => {
 
         ffbBudgetWrapper.appendChild(wrapper);
 
+        // Helper to show modal
+        const showModal = (title, bodyHtml, onConfirm) => {
+            const overlay = document.getElementById('ffb-modal-overlay');
+            const titleEl = document.getElementById('ffb-modal-title');
+            const bodyEl = document.getElementById('ffb-modal-body');
+            const confirmBtn = document.getElementById('ffb-modal-confirm');
+            const cancelBtn = document.getElementById('ffb-modal-cancel');
+
+            if (!overlay || !titleEl || !bodyEl || !confirmBtn || !cancelBtn) return;
+
+            titleEl.textContent = title;
+            bodyEl.innerHTML = bodyHtml;
+            overlay.style.display = 'flex';
+
+            // Clean up old listeners
+            const newConfirmBtn = confirmBtn.cloneNode(true);
+            confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+            const newCancelBtn = cancelBtn.cloneNode(true);
+            cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+
+            newCancelBtn.onclick = () => { overlay.style.display = 'none'; };
+            newConfirmBtn.onclick = () => {
+                if (onConfirm()) {
+                    overlay.style.display = 'none';
+                }
+            };
+        };
+
         const clearBtn = document.getElementById('clear-budget-btn');
         if (clearBtn) {
             clearBtn.onclick = () => {
-                if (confirm(`Are you sure you want to delete all FFB budget data for Year ${year}? This action cannot be undone.`)) {
-                    state.ffbBudget[year] = [];
-                    renderFfbBudgetTable();
-                }
+                showModal(
+                    `Clear Budget for ${year}`,
+                    `<p>Are you sure you want to delete all FFB budget data for Year ${year}? This action cannot be undone.</p>`,
+                    () => {
+                        state.ffbBudget[year] = [];
+                        renderFfbBudgetTable();
+                        return true;
+                    }
+                );
             };
         }
+
+        const addFfbBlockBtn = document.getElementById('add-ffb-block-btn');
+        if (addFfbBlockBtn) {
+            addFfbBlockBtn.onclick = () => {
+                const bodyHtml = `
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        <div>
+                            <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Phase (e.g., OP2010)</label>
+                            <input type="text" id="modal-phase-input" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px;" value="OP" />
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Block ID</label>
+                            <input type="text" id="modal-block-input" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px;" placeholder="e.g. BLK-1" />
+                        </div>
+                    </div>
+                `;
+
+                showModal('Add New Block', bodyHtml, () => {
+                    const phaseInput = document.getElementById('modal-phase-input');
+                    const blockInput = document.getElementById('modal-block-input');
+                    const phase = phaseInput ? phaseInput.value.trim() : "";
+                    const blockId = blockInput ? blockInput.value.trim() : "";
+
+                    if (!phase || !blockId) {
+                        alert("Phase and Block ID are required.");
+                        return false; // don't close modal
+                    }
+
+                    state.ffbBudget[year].push({
+                        phase: phase,
+                        block_id: blockId,
+                        ha: 0,
+                        ageMth: "",
+                        harvestYr: "",
+                        ageYrMth: "",
+                        harvestYrMth: "",
+                        mtHaYr: 0,
+                        mtHaMth: 0,
+                        months: new Array(12).fill(0)
+                    });
+                    renderFfbBudgetTable();
+                    return true;
+                });
+            };
+        }
+        // Attach event listeners
+        const inputs = wrapper.querySelectorAll('.ffb-input');
+        inputs.forEach(input => {
+            input.addEventListener('change', (e) => {
+                const target = e.target;
+                const field = target.dataset.field;
+                const blockId = target.dataset.blockId;
+                const phase = target.dataset.phase;
+
+                const rowData = state.ffbBudget[year].find(r => r.block_id === blockId && r.phase === phase);
+                if (!rowData) return;
+
+                if (field === 'month') {
+                    const idx = parseInt(target.dataset.monthIdx);
+                    rowData.months[idx] = parseFloat(target.value) || 0;
+                } else if (['mtHaYr', 'mtHaMth', 'ha'].includes(field)) {
+                    rowData[field] = parseFloat(target.value) || 0;
+                } else {
+                    rowData[field] = target.value; // string fields
+                }
+
+                // Re-render immediately to update subtotals
+                renderFfbBudgetTable();
+            });
+
+            if (input.type === 'number') {
+                input.addEventListener('blur', (e) => {
+                    e.target.value = (parseFloat(e.target.value) || 0).toFixed(2);
+                });
+            }
+        });
     };
 
 
@@ -1816,6 +2059,47 @@ document.addEventListener('DOMContentLoaded', () => {
             // Load all initial blocks into report year "2025" by default
             state.reports = {};
             state.reports["2025"] = [];
+
+            state.ffbBudget = state.ffbBudget || {};
+            state.ffbBudget["2026"] = [
+                {
+                    phase: "OP2010",
+                    block_id: "BLK-A",
+                    ha: 15.5,
+                    ageMth: "180",
+                    harvestYr: "2026",
+                    ageYrMth: "15/0",
+                    harvestYrMth: "15/0",
+                    mtHaYr: 25.5,
+                    mtHaMth: 2.1,
+                    months: [100, 110, 120, 100, 110, 120, 100, 110, 120, 100, 110, 120]
+                },
+                {
+                    phase: "OP2010",
+                    block_id: "BLK-B",
+                    ha: 20.0,
+                    ageMth: "180",
+                    harvestYr: "2026",
+                    ageYrMth: "15/0",
+                    harvestYrMth: "15/0",
+                    mtHaYr: 26.0,
+                    mtHaMth: 2.2,
+                    months: [150, 160, 170, 150, 160, 170, 150, 160, 170, 150, 160, 170]
+                },
+                {
+                    phase: "OP2015",
+                    block_id: "BLK-C",
+                    ha: 10.0,
+                    ageMth: "120",
+                    harvestYr: "2026",
+                    ageYrMth: "10/0",
+                    harvestYrMth: "10/0",
+                    mtHaYr: 28.0,
+                    mtHaMth: 2.3,
+                    months: [80, 85, 90, 80, 85, 90, 80, 85, 90, 80, 85, 90]
+                }
+            ];
+
 
             if (data.groups) {
                 data.groups.forEach(group => {
