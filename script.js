@@ -26,10 +26,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     const getGangForBlock = (blockId) => {
-        for (const [gangName, blocks] of Object.entries(predefinedGangs)) {
-            if (blocks.includes(blockId)) return gangName;
+        for (const [gang, blocks] of Object.entries(predefinedGangs)) {
+            if (blocks.includes(blockId)) return gang;
         }
         return "Unassigned";
+    };
+
+    const getPeakManpowerForGang = (year, month, gangName) => {
+        if (!state.performance[year] || !state.performance[year][month] || !state.performance[year][month][gangName]) return 0;
+        const gangData = state.performance[year][month][gangName];
+        if (!gangData.blocks) return 0;
+
+        // Days 1..31
+        const dailyTotals = new Array(31).fill(0);
+
+        Object.values(gangData.blocks).forEach(blockPerf => {
+            if (blockPerf.days && Array.isArray(blockPerf.days)) {
+                blockPerf.days.forEach((day, index) => {
+                    if (index < 31) {
+                        const val = parseFloat(day.hpVal) || 0;
+                        dailyTotals[index] += val;
+                    }
+                });
+            }
+        });
+
+        const peak = Math.max(...dailyTotals);
+        return peak > 0 ? peak : 0;
     };
 
     const saveState = () => {
@@ -323,6 +346,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     r4: importedBlock.r4,
                     days: importedBlock.days
                 };
+            });
+
+            // After importing blocks, calculate and set peak manpower for all gangs in this month
+            Object.keys(state.performance[targetYear][targetMonth]).forEach(key => {
+                if (key !== 'gangAssignments') {
+                    const peak = getPeakManpowerForGang(targetYear, targetMonth, key);
+                    state.performance[targetYear][targetMonth][key].manpower = peak;
+                }
             });
 
             // Reset input so the same file can be triggered again if needed
@@ -1102,9 +1133,12 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <label>HARVESTER TEAM:</label>
                                 <span class="font-bold">${gangName.toUpperCase()}</span>
                             </div>
-                            <div class="stat-row">
+                            <div class="stat-row" style="display: flex; align-items: center; gap: 0.5rem;">
                                 <label>TOTAL MANPOWER:</label>
                                 <input type="number" id="perf-manpower-${safeGangId}" class="edit-input" style="width: 80px; padding: 0.25rem; border: 1px solid var(--border-color);" value="${perfData.manpower || 0}" min="0">
+                                <button class="btn-icon" id="btn-sync-manpower-${safeGangId}" title="Refresh from Interval" style="padding: 2px 6px; font-size: 0.8rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer;">
+                                    🔄 Sync
+                                </button>
                             </div>
                             <div class="stat-row">
                                 <label>TOTAL ON LONG LEAVE:</label>
@@ -1184,6 +1218,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
             inputManpower.oninput = (e) => { perfData.manpower = parseFloat(e.target.value) || 0; calculatePerformanceTotals(perfData, gBlocks, safeGangId); };
             inputLeave.oninput = (e) => { perfData.leave = parseFloat(e.target.value) || 0; calculatePerformanceTotals(perfData, gBlocks, safeGangId); };
+
+            const btnSync = document.getElementById(`btn-sync-manpower-${safeGangId}`);
+            if (btnSync) {
+                btnSync.onclick = () => {
+                    const peak = getPeakManpowerForGang(year, month, gangName);
+                    perfData.manpower = peak;
+                    inputManpower.value = peak;
+                    calculatePerformanceTotals(perfData, gBlocks, safeGangId);
+                };
+            }
 
             const btnTransfer = document.getElementById(`btn-transfer-${safeGangId}`);
             if (btnTransfer) {
