@@ -23,6 +23,8 @@ document.addEventListener('DOMContentLoaded', () => {
         "WENDERLINUS GANG": ["25", "26A", "27", "28", "30", "31", "33", "39"]
     };
 
+
+
     const getGangForBlock = (blockId) => {
         for (const [gangName, blocks] of Object.entries(predefinedGangs)) {
             if (blocks.includes(blockId)) return gangName;
@@ -353,7 +355,11 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const handleAddReportYear = (e) => {
-        if (e) e.stopPropagation();
+        console.log("handleAddReportYear triggered");
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
 
         const newYearStr = prompt("Enter the new Report Year (e.g., 2026):");
         if (!newYearStr || newYearStr.trim() === "") return;
@@ -377,13 +383,51 @@ document.addEventListener('DOMContentLoaded', () => {
         recalculateTotals();
     };
 
+    const handleDuplicateGangYear = (e) => {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        const years = Object.keys(state.reports).sort((a, b) => parseInt(b) - parseInt(a));
+        const sourceYear = state.selectedReportYear && state.reports[state.selectedReportYear] ?
+            state.selectedReportYear : (years.length > 0 ? years[0] : null);
+
+        if (!sourceYear) {
+            alert("No existing year found to duplicate from.");
+            return;
+        }
+
+        const newYearStr = prompt(`Duplicate gangs from Year ${sourceYear} to new Year (e.g., 2026):`);
+        if (!newYearStr || newYearStr.trim() === "") return;
+        const newYear = newYearStr.trim();
+
+        if (state.reports[newYear]) {
+            alert(`Year ${newYear} already exists!`);
+            return;
+        }
+
+        // Deep copy
+        state.reports[newYear] = JSON.parse(JSON.stringify(state.reports[sourceYear]));
+
+        state.selectedReportYear = newYear;
+        state.activeViewType = 'report_year';
+        state.activeViewValue = newYear;
+
+        renderSidebar();
+        renderTable();
+        recalculateTotals();
+    };
+
     const renderSidebar = () => {
         // Handle Sidebar Header styling
+        const navHeaderBudget = document.getElementById('nav-header-budget');
         const navHeaderYear = document.getElementById('nav-header-year');
         const navHeaderGangYear = document.getElementById('nav-header-gang-year');
         const navHeaderInterval = document.getElementById('nav-header-interval');
         const navHeaderPerf = document.getElementById('nav-header-perf');
 
+        if (navHeaderBudget) navHeaderBudget.style.color = state.activeViewType === 'ffb_budget' ? 'var(--text-primary)' : '';
         if (navHeaderYear) navHeaderYear.style.color = state.activeViewType === 'report_year' ? 'var(--text-primary)' : '';
         if (navHeaderGangYear) navHeaderGangYear.style.color = state.activeViewType === 'gang' ? 'var(--text-primary)' : '';
         if (navHeaderInterval) navHeaderInterval.style.color = state.activeViewType === 'interval_month' ? 'var(--text-primary)' : '';
@@ -455,12 +499,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 const gangs = [...new Set(blocks.map(b => b.gang))].filter(Boolean).sort();
 
                 // Helper for rendering edit/delete icons in Gang list
-                const createActionIcon = (text, onClick) => {
+                const createActionIcon = (text, className, onClick) => {
                     const span = document.createElement('span');
+                    span.className = `sidebar-mini-icon ${className}`;
                     span.innerHTML = text;
                     span.style.cursor = 'pointer';
-                    span.style.fontSize = '0.8em';
+                    span.style.fontSize = '0.9em';
+                    span.style.padding = '2px 4px';
                     span.onclick = (e) => {
+                        e.preventDefault();
                         e.stopPropagation();
                         onClick();
                     };
@@ -490,24 +537,53 @@ document.addEventListener('DOMContentLoaded', () => {
                     actionDiv.style.display = 'flex';
                     actionDiv.style.gap = '0.5rem';
 
-                    actionDiv.appendChild(createActionIcon('✏️', () => {
+                    actionDiv.appendChild(createActionIcon('✏️', 'edit-gang', () => {
                         const newName = prompt(`Rename gang '${gang}' in Year ${year}:`);
-                        if (newName && newName.trim() !== "") {
+                        if (newName && newName.trim() !== "" && newName.trim() !== gang) {
+                            const trimmedName = newName.trim();
+                            // Update reports
                             blocks.forEach(b => {
-                                if (b.gang === gang) b.gang = newName.trim();
+                                if (b.gang === gang) b.gang = trimmedName;
                             });
+                            // Update performance data if exists
+                            if (state.performance[year]) {
+                                Object.keys(state.performance[year]).forEach(m => {
+                                    const mData = state.performance[year][m];
+                                    if (mData.gangAssignments) {
+                                        Object.keys(mData.gangAssignments).forEach(bId => {
+                                            if (mData.gangAssignments[bId] === gang) mData.gangAssignments[bId] = trimmedName;
+                                        });
+                                    }
+                                    if (mData[gang]) {
+                                        mData[trimmedName] = mData[gang];
+                                        delete mData[gang];
+                                    }
+                                });
+                            }
                             if (state.activeViewType === 'gang' && state.activeViewValue === gang && state.selectedReportYear === year) {
-                                state.activeViewValue = newName.trim();
+                                state.activeViewValue = trimmedName;
                             }
                             renderSidebar();
                             renderTable();
                         }
                     }));
 
-                    actionDiv.appendChild(createActionIcon('🗑️', () => {
+                    actionDiv.appendChild(createActionIcon('🗑️', 'delete-gang', () => {
                         if (confirm(`WARNING: Remove Gang '${gang}' from Year ${year}? ALL blocks assigned to this gang will also be completely deleted from this Year.`)) {
-                            // Filter out blocks that belong to the deleted gang
                             state.reports[year] = state.reports[year].filter(b => b.gang !== gang);
+
+                            // Update performance data
+                            if (state.performance[year]) {
+                                Object.keys(state.performance[year]).forEach(m => {
+                                    const mData = state.performance[year][m];
+                                    if (mData.gangAssignments) {
+                                        Object.keys(mData.gangAssignments).forEach(bId => {
+                                            if (mData.gangAssignments[bId] === gang) mData.gangAssignments[bId] = "Unassigned";
+                                        });
+                                    }
+                                    if (mData[gang]) delete mData[gang];
+                                });
+                            }
 
                             if (state.activeViewType === 'gang' && state.activeViewValue === gang && state.selectedReportYear === year) {
                                 state.activeViewType = 'report_year';
@@ -577,6 +653,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 sidebarGangYearList.appendChild(liYear);
             });
         }
+
 
         // Render Performance Navigation
         const renderMonthNav = (containerId, targetViewType) => {
@@ -669,7 +746,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!container) return;
             container.innerHTML = '';
 
-            const ffbYears = state.ffbBudget ? Object.keys(state.ffbBudget).sort((a, b) => parseInt(a) - parseInt(b)) : [];
+            const ffbYears = state.ffbBudget ?
+                Object.keys(state.ffbBudget)
+                    .filter(key => /^\d{4}$/.test(key)) // Only 4-digit years
+                    .sort((a, b) => parseInt(a) - parseInt(b)) : [];
 
             ffbYears.forEach(year => {
                 const li = document.createElement('li');
@@ -703,7 +783,10 @@ document.addEventListener('DOMContentLoaded', () => {
             aAddFfbYear.className = 'nav-link add-year-link';
             aAddFfbYear.innerHTML = `<span style="margin-right:0.5rem;">➕</span> Add Year`;
             aAddFfbYear.onclick = (e) => {
-                e.stopPropagation();
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
 
                 const newYearStr = prompt("Enter the new FFB Budget Year (e.g., 2027):");
                 if (!newYearStr || newYearStr.trim() === "") return;
@@ -1991,38 +2074,77 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const tBtnInterval = document.getElementById('sidebar-download-template');
             if (tBtnInterval) {
-                tBtnInterval.onclick = (e) => {
+                console.log("Binding Download Template listener (addEventListener)");
+                tBtnInterval.addEventListener('click', (e) => {
                     e.preventDefault();
+                    console.log("Download Template clicked");
                     downloadAsExcel('Harvesting_Template.xlsx', 'harvestingInterval');
-                };
+                });
+            } else {
+                console.warn("Download Template button NOT found in DOM");
             }
             const addBlockBtn = document.getElementById('add-block-btn');
-            if (addBlockBtn) addBlockBtn.onclick = handleGlobalAddBlock;
+            if (addBlockBtn) {
+                addBlockBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    handleGlobalAddBlock();
+                });
+            }
+
+            const globalAddYearGangBtn = document.getElementById('global-add-year-gang-btn');
+            if (globalAddYearGangBtn) {
+                console.log("Binding Add Year (Duplicate) listener (addEventListener)");
+                globalAddYearGangBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    console.log("Add Year (Duplicate) clicked");
+                    handleDuplicateGangYear(e);
+                });
+            } else {
+                console.warn("Add Year (Duplicate) button NOT found in DOM");
+            }
 
             const deleteYearBtn = document.getElementById('delete-year-btn');
-            if (deleteYearBtn) deleteYearBtn.onclick = handleDeleteYear;
+            if (deleteYearBtn) {
+                deleteYearBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    handleDeleteYear();
+                });
+            }
 
             const importExcelBtn = document.getElementById('sidebar-import-excel');
             const importExcelInput = document.getElementById('sidebar-import-input');
 
             if (importExcelBtn && importExcelInput) {
-                importExcelBtn.onclick = () => importExcelInput.click();
+                importExcelBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    importExcelInput.click();
+                });
                 importExcelInput.onchange = handleImportExcel;
             }
 
             // Bind Global Save button for Planting Phase Record
             const saveMainBtn = document.getElementById('save-main-btn');
             if (saveMainBtn) {
-                saveMainBtn.onclick = saveState;
+                saveMainBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    saveState();
+                });
             }
+
+            console.log("Listeners bound. Checking localStorage...");
 
             // Check if LocalStorage has state
             const savedStateStr = localStorage.getItem('harvesting_app_state');
             if (savedStateStr) {
                 try {
                     const savedState = JSON.parse(savedStateStr);
+                    console.log("Loading saved state:", savedState);
                     // Merge saved state
                     Object.assign(state, savedState);
+
+                    // Ensure defaults for missing keys (if any)
+                    if (!state.ffbBudget) state.ffbBudget = {};
+                    if (!state.reports) state.reports = {};
 
                     renderSidebar();
                     renderTable();
@@ -2030,49 +2152,51 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     loadingEl.classList.add('hidden');
                     tableContainer.classList.remove('hidden');
-                    return; // exit early, no need to load defaults
+
+                    // DO NOT return early here - we need to bind event listeners below
                 } catch (e) {
                     console.error("Local storage Parse error, falling back to defaults.", e);
                 }
-            }
+            } else {
+                // Initial load from file if no localStorage
+                const res = await fetch('grouped_data.json');
+                if (!res.ok) throw new Error("Failed to load block data.");
+                const data = await res.json();
 
-            const res = await fetch('grouped_data.json');
-            if (!res.ok) throw new Error("Failed to load block data.");
-            const data = await res.json();
+                // Load all initial blocks into report year "2025" by default
+                state.reports = {};
+                state.reports["2025"] = [];
 
-            // Load all initial blocks into report year "2025" by default
-            state.reports = {};
-            state.reports["2025"] = [];
+                state.ffbBudget = state.ffbBudget || {};
+                state.ffbBudget["2026"] = typeof INITIAL_FFB_BUDGET !== 'undefined' ? JSON.parse(JSON.stringify(INITIAL_FFB_BUDGET)) : [];
 
-            state.ffbBudget = state.ffbBudget || {};
-            state.ffbBudget["2026"] = typeof INITIAL_FFB_BUDGET !== 'undefined' ? JSON.parse(JSON.stringify(INITIAL_FFB_BUDGET)) : [];
-
-            if (data.groups) {
-                data.groups.forEach(group => {
-                    const opYear = group.op_year;
-                    if (group.blocks) {
-                        group.blocks.forEach(b => {
-                            state.reports["2025"].push({
-                                block_id: b.block_id,
-                                ha: b.ha,
-                                op_year: opYear,
-                                gang: getGangForBlock(b.block_id)
+                if (data.groups) {
+                    data.groups.forEach(group => {
+                        const opYear = group.op_year;
+                        if (group.blocks) {
+                            group.blocks.forEach(b => {
+                                state.reports["2025"].push({
+                                    block_id: b.block_id,
+                                    ha: b.ha,
+                                    op_year: opYear,
+                                    gang: getGangForBlock(b.block_id)
+                                });
                             });
-                        });
-                    }
-                });
+                        }
+                    });
+                }
+
+                state.selectedReportYear = "2025";
+                state.activeViewType = 'report_year';
+                state.activeViewValue = "2025";
+
+                renderSidebar();
+                renderTable();
+                recalculateTotals();
+
+                loadingEl.classList.add('hidden');
+                tableContainer.classList.remove('hidden');
             }
-
-            state.selectedReportYear = "2025";
-            state.activeViewType = 'report_year';
-            state.activeViewValue = "2025";
-
-            renderSidebar();
-            renderTable();
-            recalculateTotals();
-
-            loadingEl.classList.add('hidden');
-            tableContainer.classList.remove('hidden');
 
         } catch (error) {
             console.error(error);

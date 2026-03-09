@@ -163,6 +163,16 @@ body {
     background-color: #eff6ff;
 }
 
+.sidebar-mini-icon {
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.sidebar-mini-icon:hover {
+    background-color: rgba(15, 23, 42, 0.1);
+    transform: scale(1.1);
+}
+
 .app-container {
     flex: 1;
     display: flex;
