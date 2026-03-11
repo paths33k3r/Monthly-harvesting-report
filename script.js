@@ -55,13 +55,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return peak > 0 ? peak : 0;
     };
 
-    const saveState = () => {
+    const saveState = (silent = false) => {
         try {
             localStorage.setItem('harvesting_app_state', JSON.stringify(state));
-            alert("Data saved successfully!");
+            if (!silent) alert("Data saved successfully!");
         } catch (e) {
             console.error("Error saving state:", e);
-            alert("Failed to save data. Please check console for errors.");
+            if (!silent) alert("Failed to save data. Please check console for errors.");
         }
     };
 
@@ -351,8 +351,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // After importing blocks, calculate and set peak manpower for all gangs in this month
             Object.keys(state.performance[targetYear][targetMonth]).forEach(key => {
                 if (key !== 'gangAssignments') {
-                    const peak = getPeakManpowerForGang(targetYear, targetMonth, key);
-                    state.performance[targetYear][targetMonth][key].manpower = peak;
+                    const gangPerf = state.performance[targetYear][targetMonth][key];
+                    if (!gangPerf.isManpowerManual) {
+                        const peak = getPeakManpowerForGang(targetYear, targetMonth, key);
+                        gangPerf.manpower = peak;
+                    }
                 }
             });
 
@@ -1216,16 +1219,28 @@ document.addEventListener('DOMContentLoaded', () => {
             const inputManpower = document.getElementById(`perf-manpower-${safeGangId}`);
             const inputLeave = document.getElementById(`perf-leave-${safeGangId}`);
 
-            inputManpower.oninput = (e) => { perfData.manpower = parseFloat(e.target.value) || 0; calculatePerformanceTotals(perfData, gBlocks, safeGangId); };
-            inputLeave.oninput = (e) => { perfData.leave = parseFloat(e.target.value) || 0; calculatePerformanceTotals(perfData, gBlocks, safeGangId); };
+            inputManpower.oninput = (e) => { 
+                perfData.manpower = parseFloat(e.target.value) || 0; 
+                perfData.isManpowerManual = true;
+                calculatePerformanceTotals(perfData, gBlocks, safeGangId); 
+            };
+            inputManpower.onchange = () => saveState(true);
+
+            inputLeave.oninput = (e) => { 
+                perfData.leave = parseFloat(e.target.value) || 0; 
+                calculatePerformanceTotals(perfData, gBlocks, safeGangId); 
+            };
+            inputLeave.onchange = () => saveState(true);
 
             const btnSync = document.getElementById(`btn-sync-manpower-${safeGangId}`);
             if (btnSync) {
                 btnSync.onclick = () => {
                     const peak = getPeakManpowerForGang(year, month, gangName);
                     perfData.manpower = peak;
+                    perfData.isManpowerManual = false;
                     inputManpower.value = peak;
                     calculatePerformanceTotals(perfData, gBlocks, safeGangId);
+                    saveState(true);
                 };
             }
 
