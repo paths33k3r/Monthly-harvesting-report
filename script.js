@@ -3,6 +3,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const state = {
         reports: {}, // { "2025": [ { block_id, ha, op_year, gang }, ... ] }
         performance: {}, // { "2025": { "Jan": { "DARSO GANG": { manpower: 17, leave: 0, blocks: { "15": { budget: 56.34, r1: 33.38, r2: 10.51, r3: 20.07, manday: 56 } } } } } } }
+        ffbBudget: null, // initialized later
+        rainfall: null, // initialized later
         selectedReportYear: null,
 
         // Could be 'report_year' (shows all for the year, grouped by op_year)
@@ -82,6 +84,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Performance and Interval DOM Elements
     const perfWrapper = document.getElementById('performance-wrapper');
     const intervalWrapper = document.getElementById('interval-wrapper');
+    const ffbWrapper = document.getElementById('ffb-budget-wrapper');
+    const rainfallWrapper = document.getElementById('rainfall-wrapper');
 
     // Chart instances keyed by gang name
     const performanceChartInstances = {};
@@ -827,8 +831,85 @@ document.addEventListener('DOMContentLoaded', () => {
             liAddFfbYear.appendChild(aAddFfbYear);
             container.appendChild(liAddFfbYear);
         };
+        // Render Rainfall Navigation
+        const renderRainfallNav = () => {
+            const container = document.getElementById('sidebar-rainfall-list');
+            if (!container) return;
+            container.innerHTML = '';
+
+            const rfYears = state.rainfall ? 
+                Object.keys(state.rainfall)
+                .filter(key => /^\d{4}$/.test(key))
+                .sort((a,b) => parseInt(a) - parseInt(b)) : [];
+
+            rfYears.forEach(year => {
+                const li = document.createElement('li');
+                li.className = 'nav-item';
+                if (state.activeViewType === 'rainfall_record' && state.activeViewValue === year) {
+                    li.classList.add('active');
+                }
+
+                const a = document.createElement('a');
+                a.href = '#';
+                a.className = 'nav-link';
+                a.textContent = year;
+                a.onclick = (e) => {
+                    e.preventDefault();
+                    state.selectedReportYear = year;
+                    state.activeViewType = 'rainfall_record';
+                    state.activeViewValue = year;
+                    renderSidebar();
+                    renderTable();
+                    recalculateTotals();
+                };
+                li.appendChild(a);
+                container.appendChild(li);
+            });
+
+            // Add Rainfall Year Button
+            const liAddYear = document.createElement('li');
+            liAddYear.className = 'nav-item';
+            const aAddYear = document.createElement('a');
+            aAddYear.href = '#';
+            aAddYear.className = 'nav-link add-year-link';
+            aAddYear.innerHTML = `<span style="margin-right:0.5rem;">➕</span> Add Year`;
+            aAddYear.onclick = (e) => {
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+
+                const newYearStr = prompt("Enter the new Rainfall Year (e.g., 2026):");
+                if (!newYearStr || newYearStr.trim() === "") return;
+                const newYear = newYearStr.trim();
+
+                if (state.rainfall && state.rainfall[newYear]) {
+                    alert(`Rainfall Record for ${newYear} already exists!`);
+                    return;
+                }
+
+                if (!state.rainfall) state.rainfall = {};
+
+                // Use the helper from rainfallData.js to construct an empty object
+                if (typeof createEmptyRainfallYear === 'function') {
+                    state.rainfall[newYear] = createEmptyRainfallYear();
+                }
+
+                state.selectedReportYear = newYear;
+                state.activeViewType = 'rainfall_record';
+                state.activeViewValue = newYear;
+
+                renderSidebar();
+                renderTable();
+                recalculateTotals();
+                saveState(true);
+            };
+            liAddYear.appendChild(aAddYear);
+            container.appendChild(liAddYear);
+        };
 
         renderFfbBudgetNav();
+        renderRainfallNav();
         renderMonthNav('sidebar-interval-list', 'interval_month');
         renderMonthNav('sidebar-perf-list', 'perf_month');
     };
@@ -838,10 +919,14 @@ document.addEventListener('DOMContentLoaded', () => {
         perfWrapper.innerHTML = ''; // Clear dynamically appended performance widgets
         intervalWrapper.innerHTML = ''; // Clear dynamically appended interval widgets
         const ffbWrapper = document.getElementById('ffb-budget-wrapper');
-        if (ffbWrapper) ffbWrapper.innerHTML = ''; // Clear FFB budget widgets
+        const rainfallWrapper = document.getElementById('rainfall-wrapper');
 
-        // Hide ffbWrapper by default
+        if (ffbWrapper) ffbWrapper.innerHTML = ''; // Clear FFB budget widgets
+        if (rainfallWrapper) rainfallWrapper.innerHTML = ''; // Clear Rainfall widgets
+
+        // Hide special wrappers by default
         if (ffbWrapper) ffbWrapper.classList.add('hidden');
+        if (rainfallWrapper) rainfallWrapper.classList.add('hidden');
 
         if (!state.selectedReportYear) {
             if (tableTitle) tableTitle.textContent = "No Report Year Selected";
@@ -854,6 +939,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const isPerfView = state.activeViewType === 'perf_month';
         const isIntervalView = state.activeViewType === 'interval_month';
         const isFfbBudgetView = state.activeViewType === 'ffb_budget';
+        const isRainfallView = state.activeViewType === 'rainfall_record';
 
         if (isPerfView) {
             mainReportWrapper.classList.add('hidden');
@@ -874,6 +960,18 @@ document.addEventListener('DOMContentLoaded', () => {
             if (ffbWrapper) {
                 ffbWrapper.classList.remove('hidden');
                 renderFfbBudgetTable();
+            }
+            tableContainer.classList.add('hidden');
+        } else if (isRainfallView) {
+            mainReportWrapper.classList.add('hidden');
+            perfWrapper.classList.add('hidden');
+            intervalWrapper.classList.add('hidden');
+            tableContainer.classList.add('hidden');
+            if (rainfallWrapper) {
+                rainfallWrapper.classList.remove('hidden');
+                if (typeof renderRainfallTable === 'function') {
+                    renderRainfallTable();
+                }
             }
         } else {
             perfWrapper.classList.add('hidden');
@@ -2201,7 +2299,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     Object.assign(state, savedState);
 
                     // Ensure defaults for missing keys (if any)
-                    if (!state.ffbBudget) state.ffbBudget = {};
+                    if (!state.ffbBudget || Object.keys(state.ffbBudget).length === 0) {
+                        state.ffbBudget = {};
+                        if (typeof INITIAL_FFB_BUDGET !== 'undefined') {
+                            state.ffbBudget["2026"] = JSON.parse(JSON.stringify(INITIAL_FFB_BUDGET));
+                        }
+                    }
+                    if (!state.rainfall || Object.keys(state.rainfall).length === 0) {
+                        state.rainfall = {};
+                        if (typeof INITIAL_RAINFALL_2025 !== 'undefined') {
+                            state.rainfall["2025"] = JSON.parse(JSON.stringify(INITIAL_RAINFALL_2025));
+                        }
+                    }
                     if (!state.reports) state.reports = {};
 
                     renderSidebar();
@@ -2227,6 +2336,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 state.ffbBudget = state.ffbBudget || {};
                 state.ffbBudget["2026"] = typeof INITIAL_FFB_BUDGET !== 'undefined' ? JSON.parse(JSON.stringify(INITIAL_FFB_BUDGET)) : [];
+
+                state.rainfall = state.rainfall || {};
+                state.rainfall["2025"] = typeof INITIAL_RAINFALL_2025 !== 'undefined' ? JSON.parse(JSON.stringify(INITIAL_RAINFALL_2025)) : {};
 
                 if (data.groups) {
                     data.groups.forEach(group => {
