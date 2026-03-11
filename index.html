@@ -229,13 +229,58 @@
     <script src="ffbData.js"></script>
     <script src="script.js"></script>
     <script>
-        // Simple script for sidebar toggle interactions
-        document.querySelectorAll('.nav-item-header.has-children').forEach(header => {
-            header.addEventListener('click', () => {
-                header.classList.toggle('open');
-                // Could toggle a max-height or display on the adjacent submenu here if we want animation, 
-                // but for now CSS handles it based on the 'open' class
-            });
+        // Use event delegation for topnav toggle interactions to support dynamically added items
+        document.addEventListener('click', (e) => {
+            const header = e.target.closest('.nav-item-header.has-children');
+            
+            if (header) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const wasOpen = header.classList.contains('open');
+                
+                // If this is a top-level nav-item, close other top-level items
+                const isTopLevel = header.parentElement && header.parentElement.parentElement && header.parentElement.parentElement.classList.contains('nav-menu');
+                if (isTopLevel) {
+                    document.querySelectorAll('.nav-menu > .nav-item > .nav-item-header').forEach(h => {
+                        if (h !== header) h.classList.remove('open');
+                    });
+                } else {
+                    // For nested items, you might want to close sibling nested items
+                    if (header.parentElement && header.parentElement.parentElement) {
+                        const siblings = header.parentElement.parentElement.querySelectorAll(':scope > .nav-item > .nav-item-header');
+                        siblings.forEach(h => {
+                            if (h !== header) h.classList.remove('open');
+                        });
+                    }
+                }
+
+                if (!wasOpen) {
+                    header.classList.add('open');
+                } else {
+                    header.classList.remove('open');
+                }
+            } else if (!e.target.closest('.nav-submenu')) {
+                // Clicking outside of any header or submenu closes all dropdowns
+                document.querySelectorAll('.nav-item-header.open').forEach(h => {
+                    h.classList.remove('open');
+                });
+            }
+        });
+
+        // Keep dropdowns open if clicking inside them, but allow links to close them
+        document.addEventListener('click', (e) => {
+            const submenu = e.target.closest('.nav-submenu');
+            if (submenu) {
+                if (!e.target.closest('a')) {
+                    e.stopPropagation();
+                } else {
+                    // It's a link, close everything
+                    document.querySelectorAll('.nav-item-header.open').forEach(h => {
+                        h.classList.remove('open');
+                    });
+                }
+            }
         });
     </script>
 

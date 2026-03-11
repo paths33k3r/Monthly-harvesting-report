@@ -527,7 +527,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const ulGangs = document.createElement('ul');
                 ulGangs.className = 'nav-submenu';
-                ulGangs.style.display = isOpen ? 'block' : 'none';
 
                 const blocks = state.reports[year] || [];
                 const gangs = [...new Set(blocks.map(b => b.gang))].filter(Boolean).sort();
@@ -667,20 +666,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 liAddGang.appendChild(aAddGang);
                 ulGangs.appendChild(liAddGang);
 
-                // Add nested toggle logic specifically for this dynamic header
-                divYearHeader.onclick = (e) => {
-                    e.stopPropagation();
-                    const isClosing = divYearHeader.classList.contains('open');
-
-                    if (isClosing) {
-                        divYearHeader.classList.remove('open');
-                        ulGangs.style.display = 'none';
-                    } else {
-                        divYearHeader.classList.add('open');
-                        ulGangs.style.display = 'block';
-                    }
-                };
-
                 liYear.appendChild(divYearHeader);
                 liYear.appendChild(ulGangs);
 
@@ -708,7 +693,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const ulMonthsContainer = document.createElement('div');
                 ulMonthsContainer.className = 'nav-submenu';
-                ulMonthsContainer.style.display = isYearOpen ? 'block' : 'none';
                 ulMonthsContainer.style.padding = '0.5rem 1rem';
 
                 const selectMonth = document.createElement('select');
@@ -728,18 +712,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     defaultOpt.selected = true;
                 }
                 selectMonth.appendChild(defaultOpt);
-
-                divYearHeader.onclick = (e) => {
-                    e.stopPropagation();
-                    const isClosing = divYearHeader.classList.contains('open');
-                    if (isClosing) {
-                        divYearHeader.classList.remove('open');
-                        ulMonthsContainer.style.display = 'none';
-                    } else {
-                        divYearHeader.classList.add('open');
-                        ulMonthsContainer.style.display = 'block';
-                    }
-                };
 
                 months.forEach(month => {
                     const opt = document.createElement('option');
@@ -1219,16 +1191,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const inputManpower = document.getElementById(`perf-manpower-${safeGangId}`);
             const inputLeave = document.getElementById(`perf-leave-${safeGangId}`);
 
-            inputManpower.oninput = (e) => { 
-                perfData.manpower = parseFloat(e.target.value) || 0; 
+            inputManpower.oninput = (e) => {
+                perfData.manpower = parseFloat(e.target.value) || 0;
                 perfData.isManpowerManual = true;
-                calculatePerformanceTotals(perfData, gBlocks, safeGangId); 
+                calculatePerformanceTotals(perfData, gBlocks, safeGangId);
             };
             inputManpower.onchange = () => saveState(true);
 
-            inputLeave.oninput = (e) => { 
-                perfData.leave = parseFloat(e.target.value) || 0; 
-                calculatePerformanceTotals(perfData, gBlocks, safeGangId); 
+            inputLeave.oninput = (e) => {
+                perfData.leave = parseFloat(e.target.value) || 0;
+                calculatePerformanceTotals(perfData, gBlocks, safeGangId);
             };
             inputLeave.onchange = () => saveState(true);
 
@@ -1302,7 +1274,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const tr = document.createElement('tr');
                 tr.innerHTML = `<td class="text-center cell-block">${bId}</td><td class="text-right">${formatHA(block.ha)}</td>`;
-                
+
                 // createPerfInput handles input logic. If linked, any manual edits here are volatile until next render, serving purely as a temporary view if they don't want to use FFB structure.
                 tr.appendChild(createPerfInput(bData, 'budget', (v) => bData.budget = v));
                 tr.appendChild(createPerfInput(bData, 'r1', (v) => bData.r1 = v));
@@ -1639,7 +1611,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const bData = perfData.blocks[bId];
             if (!bData.days) bData.days = new Array(31).fill("");
             if (typeof bData.r4 === "undefined") bData.r4 = 0;
-            
+
             // Dynamically sync FFB Budget for current month
             const monthIndex = months.indexOf(month);
             if (state.ffbBudget && state.ffbBudget[year]) {
