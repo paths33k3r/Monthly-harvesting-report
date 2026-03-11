@@ -1290,9 +1290,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 const bData = perfData.blocks[bId];
 
+                // Dynamically sync FFB Budget for current month
+                const monthIndex = months.indexOf(month);
+                if (state.ffbBudget && state.ffbBudget[year]) {
+                    // Try to find matching block budget. FFB rows might have 'block_id' or 'block'
+                    const ffbRow = state.ffbBudget[year].find(r => String(r.block_id).trim() === String(bId).trim());
+                    if (ffbRow && ffbRow.months && ffbRow.months.length > monthIndex) {
+                        bData.budget = ffbRow.months[monthIndex] || 0;
+                    }
+                }
+
                 const tr = document.createElement('tr');
                 tr.innerHTML = `<td class="text-center cell-block">${bId}</td><td class="text-right">${formatHA(block.ha)}</td>`;
-
+                
+                // createPerfInput handles input logic. If linked, any manual edits here are volatile until next render, serving purely as a temporary view if they don't want to use FFB structure.
                 tr.appendChild(createPerfInput(bData, 'budget', (v) => bData.budget = v));
                 tr.appendChild(createPerfInput(bData, 'r1', (v) => bData.r1 = v));
                 tr.appendChild(createPerfInput(bData, 'r2', (v) => bData.r2 = v));
