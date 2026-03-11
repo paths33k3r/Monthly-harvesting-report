@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
         performance: {}, // { "2025": { "Jan": { "DARSO GANG": { manpower: 17, leave: 0, blocks: { "15": { budget: 56.34, r1: 33.38, r2: 10.51, r3: 20.07, manday: 56 } } } } } } }
         ffbBudget: null, // initialized later
         rainfall: null, // initialized later
+        gangsByYear: {}, // { "2025": ["DARSO GANG", ...], "2026": [...] }
         selectedReportYear: null,
 
         // Could be 'report_year' (shows all for the year, grouped by op_year)
@@ -387,6 +388,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const newYear = newYearStr.trim();
         if (state.reports[newYear]) return;
         state.reports[newYear] = [];
+        state.gangsByYear[newYear] = state.gangsByYear[state.selectedReportYear] ? JSON.parse(JSON.stringify(state.gangsByYear[state.selectedReportYear])) : [];
         state.selectedReportYear = newYear;
         state.activeViewType = 'report_year';
         state.activeViewValue = newYear;
@@ -411,6 +413,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Clone current year data if exists, otherwise empty
         const sourceData = state.reports[state.selectedReportYear] || [];
         state.reports[newYear] = JSON.parse(JSON.stringify(sourceData));
+        
+        const sourceGangs = state.gangsByYear[state.selectedReportYear] || [];
+        state.gangsByYear[newYear] = JSON.parse(JSON.stringify(sourceGangs));
 
         state.selectedReportYear = newYear;
         state.activeViewType = 'report_year';
@@ -447,6 +452,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Deep copy
         state.reports[newYear] = JSON.parse(JSON.stringify(state.reports[sourceYear]));
+        state.gangsByYear[newYear] = JSON.parse(JSON.stringify(state.gangsByYear[sourceYear] || []));
 
         state.selectedReportYear = newYear;
         state.activeViewType = 'report_year';
@@ -533,7 +539,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 ulGangs.className = 'nav-submenu';
 
                 const blocks = state.reports[year] || [];
-                const gangs = [...new Set(blocks.map(b => b.gang))].filter(Boolean).sort();
+                // Use persistent gang list for the year
+                const gangs = (state.gangsByYear[year] || []).sort();
 
                 // Helper for rendering edit/delete icons in Gang list
                 const createActionIcon = (text, className, onClick) => {
@@ -582,6 +589,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             blocks.forEach(b => {
                                 if (b.gang === gang) b.gang = trimmedName;
                             });
+                            // Update persistent gang list
+                            const gIdx = state.gangsByYear[year].indexOf(gang);
+                            if (gIdx > -1) state.gangsByYear[year][gIdx] = trimmedName;
+
                             // Update performance data if exists
                             if (state.performance[year]) {
                                 Object.keys(state.performance[year]).forEach(m => {
@@ -606,8 +617,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     }));
 
                     actionDiv.appendChild(createActionIcon('🗑️', 'delete-gang', () => {
-                        if (confirm(`WARNING: Remove Gang '${gang}' from Year ${year}? ALL blocks assigned to this gang will also be completely deleted from this Year.`)) {
-                            state.reports[year] = state.reports[year].filter(b => b.gang !== gang);
+                        if (confirm(`WARNING: Remove Gang '${gang}' from Year ${year}? This will return all blocks in this gang to 'Unassigned' (it will NOT delete the planting phase data).`)) {
+                            // Non-destructive: Just unassign blocks
+                            blocks.forEach(b => {
+                                if (b.gang === gang) b.gang = "Unassigned";
+                            });
+
+                            // Remove from persistent gang list
+                            state.gangsByYear[year] = state.gangsByYear[year].filter(g => g !== gang);
 
                             // Update performance data
                             if (state.performance[year]) {
@@ -659,9 +676,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     e.stopPropagation();
                     const newGang = prompt(`Enter new Gang name for Year ${year}:`);
                     if (newGang && newGang.trim()) {
+                        const trimmed = newGang.trim();
+                        if (!state.gangsByYear[year]) state.gangsByYear[year] = [];
+                        if (!state.gangsByYear[year].includes(trimmed)) {
+                            state.gangsByYear[year].push(trimmed);
+                        }
                         state.selectedReportYear = year;
                         state.activeViewType = 'gang';
-                        state.activeViewValue = newGang.trim();
+                        state.activeViewValue = trimmed;
                         renderSidebar();
                         renderTable();
                         recalculateTotals();
@@ -1082,14 +1104,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     btnDelete.className = 'btn-icon delete';
                     btnDelete.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
                     btnDelete.onclick = () => {
-                        const confirmRemove = confirm(`Are you sure you want to remove block ${block.block_id}?`);
-                        if (!confirmRemove) return;
-
                         if (state.activeViewType === 'gang') {
-                            // Just unassign from gang
+                            const confirmUnassign = confirm(`Are you sure you want to unassign block ${block.block_id} from gang ${state.activeViewValue}? It will remain in the Planting Phase Record.`);
+                            if (!confirmUnassign) return;
                             block.gang = "Unassigned";
                         } else {
-                            // Completely delete from Report Year
+                            const confirmDelete = confirm(`WARNING: Are you sure you want to PERMANENTLY delete block ${block.block_id} from the Planting Phase Record for ${state.selectedReportYear}?`);
+                            if (!confirmDelete) return;
                             const idx = state.reports[state.selectedReportYear].indexOf(block);
                             if (idx > -1) {
                                 state.reports[state.selectedReportYear].splice(idx, 1);
@@ -2312,6 +2333,22 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     }
                     if (!state.reports) state.reports = {};
+                    if (!state.gangsByYear) state.gangsByYear = {};
+
+                    // Hydrate gangsByYear for each report year if empty
+                    Object.keys(state.reports).forEach(year => {
+                        if (!state.gangsByYear[year] || state.gangsByYear[year].length === 0) {
+                            const yearBlocks = state.reports[year] || [];
+                            const uniqueGangs = [...new Set(yearBlocks.map(b => b.gang))].filter(g => g && g !== "Unassigned");
+                            // Also include predefined gangs for 2025 as a base
+                            if (year === "2025") {
+                                const baseGangs = Object.keys(predefinedGangs);
+                                state.gangsByYear[year] = [...new Set([...baseGangs, ...uniqueGangs])].sort();
+                            } else {
+                                state.gangsByYear[year] = uniqueGangs.sort();
+                            }
+                        }
+                    });
 
                     renderSidebar();
                     renderTable();
@@ -2339,6 +2376,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 state.rainfall = state.rainfall || {};
                 state.rainfall["2025"] = typeof INITIAL_RAINFALL_2025 !== 'undefined' ? JSON.parse(JSON.stringify(INITIAL_RAINFALL_2025)) : {};
+
+                state.gangsByYear = {};
+                state.gangsByYear["2025"] = Object.keys(predefinedGangs).sort();
 
                 if (data.groups) {
                     data.groups.forEach(group => {
