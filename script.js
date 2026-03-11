@@ -1574,6 +1574,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 0.85rem;">
                         <thead>
                             <tr style="border-bottom: 1px solid var(--border-color);">
+                                <th style="padding: 0.25rem 0.5rem; color: var(--text-muted); font-weight: 600;">FFB BUDGET</th>
                                 <th style="padding: 0.25rem 0.5rem; color: var(--text-muted); font-weight: 600;">1ST RD</th>
                                 <th style="padding: 0.25rem 0.5rem; color: var(--text-muted); font-weight: 600;">2ND RD</th>
                                 <th style="padding: 0.25rem 0.5rem; color: var(--text-muted); font-weight: 600;">3RD RD</th>
@@ -1583,6 +1584,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </thead>
                         <tbody>
                             <tr>
+                                <td id="interval-sum-budget" style="padding: 0.25rem 0.5rem; font-weight: 700; color: var(--text-primary);">0.00</td>
                                 <td id="interval-sum-r1" style="padding: 0.25rem 0.5rem; font-weight: 500;">0.00</td>
                                 <td id="interval-sum-r2" style="padding: 0.25rem 0.5rem; font-weight: 500;">0.00</td>
                                 <td id="interval-sum-r3" style="padding: 0.25rem 0.5rem; font-weight: 500;">0.00</td>
@@ -1602,6 +1604,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <th style="min-width: 80px; border-right: 2px solid var(--border-color);">HA</th>
                             ${Array.from({ length: 31 }, (_, i) => `<th style="min-width: 40px; text-align: center; font-size: 0.8em; padding: 0.2rem;">${i + 1}</th>`).join('')}
                             <th style="min-width: 90px; text-align: center; border-left: 2px solid var(--border-color);">TOTAL MANDAY</th>
+                            <th style="min-width: 90px; text-align: center; border-left: 2px solid var(--border-color);">FFB BUDGET</th>
                             <th style="min-width: 80px; text-align: center;">1ST RD</th>
                             <th style="min-width: 80px; text-align: center;">2ND RD</th>
                             <th style="min-width: 80px; text-align: center;">3RD RD</th>
@@ -1618,7 +1621,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const tbody = document.getElementById(`interval-table-body-all`);
 
-        let sR1 = 0, sR2 = 0, sR3 = 0, sR4 = 0;
+        let sBudget = 0, sR1 = 0, sR2 = 0, sR3 = 0, sR4 = 0;
 
         blocks.forEach(block => {
             const bId = block.block_id;
@@ -1636,7 +1639,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const bData = perfData.blocks[bId];
             if (!bData.days) bData.days = new Array(31).fill("");
             if (typeof bData.r4 === "undefined") bData.r4 = 0;
+            
+            // Dynamically sync FFB Budget for current month
+            const monthIndex = months.indexOf(month);
+            if (state.ffbBudget && state.ffbBudget[year]) {
+                const ffbRow = state.ffbBudget[year].find(r => String(r.block_id).trim() === String(bId).trim());
+                if (ffbRow && ffbRow.months && ffbRow.months.length > monthIndex) {
+                    bData.budget = ffbRow.months[monthIndex] || 0;
+                }
+            }
 
+            sBudget += bData.budget || 0;
             sR1 += bData.r1 || 0;
             sR2 += bData.r2 || 0;
             sR3 += bData.r3 || 0;
@@ -1715,6 +1728,7 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             tr.appendChild(createPerfInput('manday', (v) => bData.manday = v, "border-left: 2px solid var(--border-color);"));
+            tr.appendChild(createPerfInput('budget', (v) => bData.budget = v, "border-left: 2px solid var(--border-color);"));
             tr.appendChild(createPerfInput('r1', (v) => { bData.r1 = v; renderIntervalTable(); }));
             tr.appendChild(createPerfInput('r2', (v) => { bData.r2 = v; renderIntervalTable(); }));
             tr.appendChild(createPerfInput('r3', (v) => { bData.r3 = v; renderIntervalTable(); }));
@@ -1724,12 +1738,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Set the summary totals
+        const sumBudgetEl = document.getElementById('interval-sum-budget');
         const sumR1El = document.getElementById('interval-sum-r1');
         const sumR2El = document.getElementById('interval-sum-r2');
         const sumR3El = document.getElementById('interval-sum-r3');
         const sumR4El = document.getElementById('interval-sum-r4');
         const sumTotalEl = document.getElementById('interval-sum-total');
 
+        if (sumBudgetEl) sumBudgetEl.textContent = formatHA(sBudget);
         if (sumR1El) sumR1El.textContent = formatHA(sR1);
         if (sumR2El) sumR2El.textContent = formatHA(sR2);
         if (sumR3El) sumR3El.textContent = formatHA(sR3);
