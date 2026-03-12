@@ -417,6 +417,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const sourceGangs = state.gangsByYear[state.selectedReportYear] || [];
         state.gangsByYear[newYear] = JSON.parse(JSON.stringify(sourceGangs));
 
+        // Initialize empty rainfall data for the new year
+        if (!state.rainfall) state.rainfall = {};
+        if (!state.rainfall[newYear]) {
+            if (typeof createEmptyRainfallYear === 'function') {
+                state.rainfall[newYear] = createEmptyRainfallYear();
+            } else {
+                state.rainfall[newYear] = {};
+                const monthsArr = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+                monthsArr.forEach(m => state.rainfall[newYear][m] = { days: 0, mm: 0 });
+            }
+        }
+
         state.selectedReportYear = newYear;
         state.activeViewType = 'report_year';
         state.activeViewValue = newYear;
@@ -2326,11 +2338,12 @@ document.addEventListener('DOMContentLoaded', () => {
                             state.ffbBudget["2026"] = JSON.parse(JSON.stringify(INITIAL_FFB_BUDGET));
                         }
                     }
-                    if (!state.rainfall || Object.keys(state.rainfall).length === 0) {
-                        state.rainfall = {};
-                        if (typeof INITIAL_RAINFALL_2025 !== 'undefined') {
-                            state.rainfall["2025"] = JSON.parse(JSON.stringify(INITIAL_RAINFALL_2025));
-                        }
+                    if (!state.rainfall) state.rainfall = {};
+                    if (!state.rainfall["2025"] && typeof INITIAL_RAINFALL_2025 !== 'undefined') {
+                        state.rainfall["2025"] = JSON.parse(JSON.stringify(INITIAL_RAINFALL_2025));
+                    }
+                    if (!state.rainfall["2026"] && typeof INITIAL_RAINFALL_2026 !== 'undefined') {
+                        state.rainfall["2026"] = JSON.parse(JSON.stringify(INITIAL_RAINFALL_2026));
                     }
                     if (!state.reports) state.reports = {};
                     if (!state.gangsByYear) state.gangsByYear = {};
@@ -2376,6 +2389,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 state.rainfall = state.rainfall || {};
                 state.rainfall["2025"] = typeof INITIAL_RAINFALL_2025 !== 'undefined' ? JSON.parse(JSON.stringify(INITIAL_RAINFALL_2025)) : {};
+                state.rainfall["2026"] = typeof INITIAL_RAINFALL_2026 !== 'undefined' ? JSON.parse(JSON.stringify(INITIAL_RAINFALL_2026)) : {};
 
                 state.gangsByYear = {};
                 state.gangsByYear["2025"] = Object.keys(predefinedGangs).sort();

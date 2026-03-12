@@ -16,6 +16,21 @@ const INITIAL_RAINFALL_2025 = {
     "DEC": { days: 25.00, mm: 639.00 }
 };
 
+const INITIAL_RAINFALL_2026 = {
+    "JAN": { days: 12.00, mm: 704.00 },
+    "FEB": { days: 0, mm: 0 },
+    "MAR": { days: 0, mm: 0 },
+    "APR": { days: 0, mm: 0 },
+    "MAY": { days: 0, mm: 0 },
+    "JUN": { days: 0, mm: 0 },
+    "JUL": { days: 0, mm: 0 },
+    "AUG": { days: 0, mm: 0 },
+    "SEP": { days: 0, mm: 0 },
+    "OCT": { days: 0, mm: 0 },
+    "NOV": { days: 0, mm: 0 },
+    "DEC": { days: 0, mm: 0 }
+};
+
 // Helper function to create an empty year template (all zeros)
 function createEmptyRainfallYear() {
     return {

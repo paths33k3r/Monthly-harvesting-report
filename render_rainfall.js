@@ -7,23 +7,37 @@ const renderRainfallTable = () => {
     const yearStr = state.selectedReportYear;
     if (!yearStr) return;
 
+    // Guard: Ensure rainfall data exists for the selected year
+    if (!state.rainfall) state.rainfall = {};
+    if (!state.rainfall[yearStr]) {
+        if (typeof createEmptyData === 'function') {
+            state.rainfall[yearStr] = createEmptyData();
+        } else {
+            state.rainfall[yearStr] = {};
+            const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+            months.forEach(m => state.rainfall[yearStr][m] = { days: 0, mm: 0 });
+        }
+    }
+
     const currentYear = parseInt(yearStr);
     const prevYear = (currentYear - 1).toString();
     const isPrevYearAvailable = state.rainfall && state.rainfall[prevYear];
     
     // Header
-    const headerTitle = document.createElement('h2');
+    const headerTitle = document.createElement('h1');
     headerTitle.textContent = `SUMMARY REPORT FOR RAINFALL RECORD FOR THE YEAR ${isPrevYearAvailable ? prevYear + ' VS ' : ''}${currentYear}`;
-    headerTitle.style.marginBottom = '1.5rem';
+    headerTitle.style.marginBottom = '2rem';
     headerTitle.style.fontSize = '1.25rem';
     headerTitle.style.fontWeight = '700';
     headerTitle.style.textTransform = 'uppercase';
+    headerTitle.style.textDecoration = 'underline';
     rainfallWrapper.appendChild(headerTitle);
 
-    // Provide a Save button at the top too 
+    // Provide a Save button
     const toolbar = document.createElement('div');
     toolbar.className = 'toolbar';
     toolbar.style.justifyContent = 'flex-end';
+    toolbar.style.marginBottom = '1rem';
     const saveBtn = document.createElement('button');
     saveBtn.className = 'btn-primary';
     saveBtn.style.backgroundColor = '#10b981';
@@ -39,47 +53,53 @@ const renderRainfallTable = () => {
     const tableContainer = document.createElement('div');
     tableContainer.className = 'table-container';
     tableContainer.style.background = 'white';
-    tableContainer.style.padding = '1.5rem';
-    tableContainer.style.borderRadius = '8px';
-    tableContainer.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+    tableContainer.style.padding = '0';
+    tableContainer.style.borderRadius = '0';
+    tableContainer.style.boxShadow = 'none';
 
     const table = document.createElement('table');
     table.className = 'grouped-table';
     table.style.width = '100%';
     table.style.textAlign = 'center';
+    table.style.borderCollapse = 'collapse';
     
     const thead = document.createElement('thead');
-    // Top header row has the Years
+    // Top header row
     let topHeaderHtml = `
         <tr>
-            <th rowspan="2" style="background:#f8fafc; border-bottom:2px solid #e2e8f0; vertical-align:bottom;">MONTH</th>
+            <th rowspan="2" style="background:white; border:1px solid #000; padding:10px;">MONTH</th>
     `;
     if (isPrevYearAvailable) {
-        topHeaderHtml += `<th colspan="3" style="background:#f8fafc; border-bottom:2px solid #e2e8f0;">${prevYear}</th>`;
+        topHeaderHtml += `<th colspan="3" style="background:white; border:1px solid #000; padding:10px;">${prevYear}</th>`;
     }
     topHeaderHtml += `
-            <th colspan="3" style="background:#f8fafc; border-bottom:2px solid #e2e8f0;">${currentYear}</th>
+            <th colspan="3" style="background:white; border:1px solid #000; padding:10px;">${currentYear}</th>
     `;
     if (isPrevYearAvailable) {
-        topHeaderHtml += `<th colspan="3" style="background:#f8fafc; border-bottom:2px solid #e2e8f0;">${prevYear} vs ${currentYear}</th>`;
+        topHeaderHtml += `<th colspan="3" style="background:white; border:1px solid #000; padding:10px;">${currentYear} vs ${prevYear}</th>`;
     }
     topHeaderHtml += `</tr>`;
 
-    // Sub header row has the column names
+    // Sub header row
     let subHeaderHtml = `<tr>`;
     const colSet = `
-        <th style="background:#f8fafc; font-size:0.8rem;">DAYS</th>
-        <th style="background:#f8fafc; font-size:0.8rem;">MM</th>
-        <th style="background:#f8fafc; font-size:0.8rem;">MM TO MONTH</th>
+        <th style="background:white; border:1px solid #000; font-size:0.85rem; padding:8px;">DAYS</th>
+        <th style="background:white; border:1px solid #000; font-size:0.85rem; padding:8px;">MM</th>
+        <th style="background:white; border:1px solid #000; font-size:0.85rem; padding:8px;">MM TO MONTH</th>
     `;
     const diffColSet = `
-        <th style="background:#f8fafc; font-size:0.8rem;">DAYS DIFF.</th>
-        <th style="background:#f8fafc; font-size:0.8rem;">MM DIFF.</th>
-        <th style="background:#f8fafc; font-size:0.8rem;">M.T.M DIFF.</th>
+        <th colspan="3" style="background:white; border:1px solid #000; padding:4px;">
+            <div style="border-bottom:1px solid #000; margin-bottom:4px; padding-bottom:4px;">DIFF.</div>
+            <div style="display:flex;">
+                <div style="flex:1; border-right:1px solid #000; font-size:0.75rem;">DAYS</div>
+                <div style="flex:1; border-right:1px solid #000; font-size:0.75rem;">MM</div>
+                <div style="flex:1; font-size:0.75rem;">MM TO MONTH</div>
+            </div>
+        </th>
     `;
     
-    if (isPrevYearAvailable) subHeaderHtml += colSet;
-    subHeaderHtml += colSet;
+    if (isPrevYearAvailable) subHeaderHtml += `<th colspan="3" style="padding:0; border:1px solid #000;"><div style="border-bottom:1px solid #000; padding:4px;">RAINFALL RECORD</div><div style="display:flex;"><div style="flex:1; border-right:1px solid #000; padding:4px; font-size:0.8rem;">DAYS</div><div style="flex:1; border-right:1px solid #000; padding:4px; font-size:0.8rem;">MM</div><div style="flex:1; padding:4px; font-size:0.8rem;">MM TO MONTH</div></div></th>`;
+    subHeaderHtml += `<th colspan="3" style="padding:0; border:1px solid #000;"><div style="border-bottom:1px solid #000; padding:4px;">RAINFALL RECORD</div><div style="display:flex;"><div style="flex:1; border-right:1px solid #000; padding:4px; font-size:0.8rem;">DAYS</div><div style="flex:1; border-right:1px solid #000; padding:4px; font-size:0.8rem;">MM</div><div style="flex:1; padding:4px; font-size:0.8rem;">MM TO MONTH</div></div></th>`;
     if (isPrevYearAvailable) subHeaderHtml += diffColSet;
     subHeaderHtml += `</tr>`;
 
@@ -87,7 +107,8 @@ const renderRainfallTable = () => {
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
-    const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+    const monthsArr = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+    const monthFullNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
     
     let prevCumulative = 0;
     let currCumulative = 0;
@@ -97,12 +118,22 @@ const renderRainfallTable = () => {
     let currTotalDays = 0;
     let currTotalMM = 0;
 
-    months.forEach(month => {
+    let lastActiveMonthIdx = -1;
+    // Find latest month with data in CURRENT year
+    monthsArr.forEach((m, i) => {
+        const d = state.rainfall[yearStr][m] || {days:0, mm:0};
+        if (parseFloat(d.days) > 0 || parseFloat(d.mm) > 0) {
+            lastActiveMonthIdx = i;
+        }
+    });
+
+    monthsArr.forEach((month, idx) => {
         const tr = document.createElement('tr');
         
-        let rowHtml = `<td style="font-weight:600; text-align:left; padding-left:1rem;">${month}</td>`;
+        // Month name
+        let rowHtml = `<td style="border:1px solid #000; font-weight:400; text-align:left; padding-left:0.5rem;">${month}</td>`;
         
-        // Previous Year Data (Readonly)
+        // Previous Year Data
         let prevDays = 0, prevMM = 0;
         if (isPrevYearAvailable) {
             const pData = state.rainfall[prevYear][month] || { days:0, mm:0 };
@@ -114,40 +145,44 @@ const renderRainfallTable = () => {
             prevTotalMM += prevMM;
 
             rowHtml += `
-                <td style="text-align:right;">${prevDays > 0 ? prevDays.toFixed(2) : ''}</td>
-                <td style="text-align:right;">${prevMM > 0 ? prevMM.toLocaleString('en-US', {minimumFractionDigits:2}) : ''}</td>
-                <td style="text-align:right; font-weight:600;">${prevMM > 0 ? prevCumulative.toLocaleString('en-US', {minimumFractionDigits:2}) : ''}</td>
+                <td style="border:1px solid #000; text-align:right; padding-right:5px;">${prevDays > 0 ? prevDays.toLocaleString('en-US', {minimumFractionDigits:2}) : '0.00'}</td>
+                <td style="border:1px solid #000; text-align:right; padding-right:5px;">${prevMM > 0 ? prevMM.toLocaleString('en-US', {minimumFractionDigits:2}) : '0.00'}</td>
+                <td style="border:1px solid #000; text-align:right; padding-right:5px;">${prevCumulative.toLocaleString('en-US', {minimumFractionDigits:2})}</td>
             `;
         }
 
-        // Current Year Data (Editable)
+        // Current Year Data
         const cData = state.rainfall[yearStr][month] || { days:0, mm:0 };
         const currDays = parseFloat(cData.days) || 0;
         const currMM = parseFloat(cData.mm) || 0;
-        currCumulative += currMM;
+        const isPopulated = currDays > 0 || currMM > 0;
+        
+        if (isPopulated) {
+            currCumulative += currMM;
+            currTotalDays += currDays;
+            currTotalMM += currMM;
+        }
 
-        currTotalDays += currDays;
-        currTotalMM += currMM;
-
-        // Current Year Editable Cells
         const tdDays = document.createElement('td');
+        tdDays.style.border = '1px solid #000';
         const inputDays = document.createElement('input');
         inputDays.type = 'number';
         inputDays.className = 'edit-input text-right';
-        inputDays.value = currDays > 0 ? currDays : '';
-        inputDays.placeholder = '-';
+        inputDays.style.padding = '2px 5px';
+        inputDays.value = isPopulated ? currDays : '';
         inputDays.onchange = (e) => {
             state.rainfall[yearStr][month].days = parseFloat(e.target.value) || 0;
-            renderRainfallTable(); // Re-render to update cumulatives and diffs
+            renderRainfallTable();
         };
         tdDays.appendChild(inputDays);
 
         const tdMM = document.createElement('td');
+        tdMM.style.border = '1px solid #000';
         const inputMM = document.createElement('input');
         inputMM.type = 'number';
         inputMM.className = 'edit-input text-right';
-        inputMM.value = currMM > 0 ? currMM : '';
-        inputMM.placeholder = '-';
+        inputMM.style.padding = '2px 5px';
+        inputMM.value = isPopulated ? currMM : '';
         inputMM.onchange = (e) => {
             state.rainfall[yearStr][month].mm = parseFloat(e.target.value) || 0;
             renderRainfallTable();
@@ -155,32 +190,31 @@ const renderRainfallTable = () => {
         tdMM.appendChild(inputMM);
 
         const tdCumMM = document.createElement('td');
+        tdCumMM.style.border = '1px solid #000';
         tdCumMM.style.textAlign = 'right';
-        tdCumMM.style.fontWeight = '600';
-        tdCumMM.textContent = currMM > 0 ? currCumulative.toLocaleString('en-US', {minimumFractionDigits:2}) : '';
+        tdCumMM.style.paddingRight = '5px';
+        tdCumMM.textContent = isPopulated ? currCumulative.toLocaleString('en-US', {minimumFractionDigits:2}) : '0.00';
 
         // Difference Data
         let diffHtml = '';
         if (isPrevYearAvailable) {
-            // Only calculate diff if current month has data, otherwise shows blank or 0 difference vs large prev number? 
-            // In user's image, if month is empty in 2026, diff is completely blank (blacked out).
-            // Let's hide difference if current month has no inputted days/mm
-            if (currDays > 0 || currMM > 0) {
+            if (isPopulated) {
                 const diffDays = currDays - prevDays;
                 const diffMM = currMM - prevMM;
                 const diffCum = currCumulative - prevCumulative;
 
                 diffHtml = `
-                    <td style="text-align:right; ${diffDays < 0 ? 'color:#ef4444;' : ''}">${diffDays.toFixed(2)}</td>
-                    <td style="text-align:right; ${diffMM < 0 ? 'color:#ef4444;' : ''}">${diffMM.toLocaleString('en-US', {minimumFractionDigits:2})}</td>
-                    <td style="text-align:right; font-weight:600; ${diffCum < 0 ? 'color:#ef4444;' : ''}">${diffCum.toLocaleString('en-US', {minimumFractionDigits:2})}</td>
+                    <td style="border:1px solid #000; text-align:right; padding-right:5px;">${diffDays.toLocaleString('en-US', {minimumFractionDigits:2})}</td>
+                    <td style="border:1px solid #000; text-align:right; padding-right:5px;">${diffMM.toLocaleString('en-US', {minimumFractionDigits:2})}</td>
+                    <td style="border:1px solid #000; text-align:right; padding-right:5px;">${diffCum.toLocaleString('en-US', {minimumFractionDigits:2})}</td>
                 `;
             } else {
-                // Empty blackout cells for no data
+                // In mockup, if current month is empty, diff MM to month still shows the "negative" of previous cumulative
+                const diffCum = 0 - prevCumulative;
                 diffHtml = `
-                    <td style="background:#1e293b;"></td>
-                    <td style="background:#1e293b;"></td>
-                    <td style="background:#1e293b;"></td>
+                    <td style="border:1px solid #000; background:#000;"></td>
+                    <td style="border:1px solid #000; background:#000;"></td>
+                    <td style="border:1px solid #000; text-align:right; padding-right:5px;">${diffCum.toLocaleString('en-US', {minimumFractionDigits:2})}</td>
                 `;
             }
         }
@@ -194,15 +228,17 @@ const renderRainfallTable = () => {
             tr.insertAdjacentHTML('beforeend', diffHtml);
         }
 
-        // If current year cells are empty, blackout current year cells too like image
-        if (currDays === 0 && currMM === 0) {
-            tdDays.style.background = '#1e293b';
-            tdMM.style.background = '#1e293b';
-            tdCumMM.style.background = '#1e293b';
+        // Styling for non-populated months
+        if (!isPopulated) {
+            tdDays.style.background = '#000';
+            tdMM.style.background = '#000';
+            // In mockup, Jan 2026 MM TO MONTH is 704.00, others are 0.00 and NOT blacked out?
+            // Wait, looking at mockup, middle column rows 2..12 have "0.00" and are NOT blacked out for MM to Month.
+            // But DAYS and MM ARE blacked out.
+            inputDays.style.background = 'transparent';
+            inputMM.style.background = 'transparent';
             inputDays.style.color = '#fff';
             inputMM.style.color = '#fff';
-            inputDays.style.textAlign = 'center';
-            inputMM.style.textAlign = 'center';
         }
 
         tbody.appendChild(tr);
@@ -212,41 +248,45 @@ const renderRainfallTable = () => {
     // Totals Row
     const tfoot = document.createElement('tfoot');
     const trTotals = document.createElement('tr');
-    trTotals.style.background = '#f8fafc';
     trTotals.style.fontWeight = '700';
 
-    let tfootHtml = `<td style="text-align:left; padding-left:1rem; border-top:2px solid #cbd5e1;">TOTAL</td>`;
+    let tfootHtml = `<td style="text-align:left; border:1px solid #000; padding-left:0.5rem; font-style:italic;">TOTAL</td>`;
     
     if (isPrevYearAvailable) {
         tfootHtml += `
-            <td style="text-align:right; border-top:2px solid #cbd5e1;">${prevTotalDays.toFixed(2)}</td>
-            <td style="text-align:right; border-top:2px solid #cbd5e1;">${prevTotalMM.toLocaleString('en-US', {minimumFractionDigits:2})}</td>
-            <td style="border-top:2px solid #cbd5e1;"></td>
+            <td style="border:1px solid #000; text-align:right; padding-right:5px;">${prevTotalDays.toLocaleString('en-US', {minimumFractionDigits:2})}</td>
+            <td style="border:1px solid #000; text-align:right; padding-right:5px;">${prevTotalMM.toLocaleString('en-US', {minimumFractionDigits:2})}</td>
+            <td style="border:1px solid #000;"></td>
         `;
     }
     
+    // Totals for current year (mockup shows empty)
     tfootHtml += `
-        <td style="text-align:right; border-top:2px solid #cbd5e1;">${currTotalDays > 0 ? currTotalDays.toFixed(2) : ''}</td>
-        <td style="text-align:right; border-top:2px solid #cbd5e1;">${currTotalMM > 0 ? currTotalMM.toLocaleString('en-US', {minimumFractionDigits:2}) : ''}</td>
-        <td style="border-top:2px solid #cbd5e1;"></td>
+        <td style="border:1px solid #000;"></td>
+        <td style="border:1px solid #000;"></td>
+        <td style="border:1px solid #000;"></td>
     `;
 
     if (isPrevYearAvailable) {
-        const totalDiffDays = currTotalDays - prevTotalDays;
-        const totalDiffMM = currTotalMM - prevTotalMM;
-        // Total Diff is only relevant if there's *any* data in current year
-        if (currTotalDays > 0 || currTotalMM > 0) {
+        // Red bracket logic: Diff at the bottom is based on the LAST POPULATED MONTH
+        let ytdPrevDays = 0;
+        let ytdPrevMM = 0;
+        for(let i=0; i<=lastActiveMonthIdx; i++) {
+            const pData = state.rainfall[prevYear][monthsArr[i]] || {days:0, mm:0};
+            ytdPrevDays += parseFloat(pData.days) || 0;
+            ytdPrevMM += parseFloat(pData.mm) || 0;
+        }
+
+        if (lastActiveMonthIdx > -1) {
+            const totalDiffDays = currTotalDays - ytdPrevDays;
+            const totalDiffMM = currTotalMM - ytdPrevMM;
             tfootHtml += `
-                <td style="text-align:right; border-top:2px solid #cbd5e1; ${totalDiffDays < 0 ? 'color:#ef4444;' : ''}">${totalDiffDays.toFixed(2)}</td>
-                <td style="text-align:right; border-top:2px solid #cbd5e1; ${totalDiffMM < 0 ? 'color:#ef4444;' : ''}">${totalDiffMM.toLocaleString('en-US', {minimumFractionDigits:2})}</td>
-                <td style="border-top:2px solid #cbd5e1;"></td>
+                <td style="border:1px solid #000; text-align:right; padding-right:5px;">${totalDiffDays.toLocaleString('en-US', {minimumFractionDigits:2})}</td>
+                <td style="border:1px solid #000; text-align:right; padding-right:5px;">${totalDiffMM.toLocaleString('en-US', {minimumFractionDigits:2})}</td>
+                <td style="border:1px solid #000;"></td>
             `;
         } else {
-             tfootHtml += `
-                <td style="border-top:2px solid #cbd5e1;"></td>
-                <td style="border-top:2px solid #cbd5e1;"></td>
-                <td style="border-top:2px solid #cbd5e1;"></td>
-            `;
+             tfootHtml += `<td style="border:1px solid #000;"></td><td style="border:1px solid #000;"></td><td style="border:1px solid #000;"></td>`;
         }
     }
 
@@ -258,53 +298,46 @@ const renderRainfallTable = () => {
     rainfallWrapper.appendChild(tableContainer);
 
 
-    // Optional Bottom Summary Widget (like in image: MM TO MONTH 2026 vs 2025)
-    if (isPrevYearAvailable && (currTotalDays > 0 || currTotalMM > 0)) {
-        // Find latest month with data to summarize
-        let lastPopulatedMonthIdx = -1;
-        for (let i = months.length - 1; i >= 0; i--) {
-            const cm = state.rainfall[yearStr][months[i]] || {days:0, mm:0};
-            if (parseFloat(cm.mm) > 0) {
-                lastPopulatedMonthIdx = i;
-                break;
-            }
+    // Summary Widget (Red Bracket Area)
+    if (isPrevYearAvailable && lastActiveMonthIdx > -1) {
+        let pCum = 0;
+        let cCum = 0;
+        for(let i=0; i<=lastActiveMonthIdx; i++) {
+            pCum += parseFloat(state.rainfall[prevYear][monthsArr[i]]?.mm || 0);
+            cCum += parseFloat(state.rainfall[yearStr][monthsArr[i]]?.mm || 0);
         }
+        const diff = cCum - pCum;
+        const operator = cCum > pCum ? '<' : cCum < pCum ? '>' : '='; // Mockup shows 2025 > 2026 when 2026 is less
+        const actionWord = cCum < pCum ? 'less' : 'more';
+        const latestMonthName = monthFullNames[lastActiveMonthIdx];
 
-        if (lastPopulatedMonthIdx > -1) {
-            let pCum = 0;
-            let cCum = 0;
-            for(let i=0; i<=lastPopulatedMonthIdx; i++) {
-                pCum += parseFloat(state.rainfall[prevYear][months[i]]?.mm || 0);
-                cCum += parseFloat(state.rainfall[yearStr][months[i]]?.mm || 0);
-            }
-            const diff = cCum - pCum;
-            const operator = cCum > pCum ? '>' : cCum < pCum ? '<' : '=';
-            const actionWord = cCum < pCum ? 'less' : 'more';
+        const summaryWrapper = document.createElement('div');
+        summaryWrapper.style.marginTop = '4rem';
+        summaryWrapper.style.textAlign = 'left';
 
-            const summaryWidget = document.createElement('div');
-            summaryWidget.style.marginTop = '3rem';
-            summaryWidget.style.display = 'inline-block';
-            
-            summaryWidget.innerHTML = `
-                <table class="grouped-table" style="width:auto; text-align:center; box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-                    <thead>
-                        <tr><th colspan="3" style="background:#f8fafc; border:2px solid #1e293b;">MM TO MONTH ${currentYear} vs ${prevYear}</th></tr>
-                    </thead>
-                    <tbody>
-                        <tr><td colspan="3" style="font-weight:700; font-size:1.1rem; border:2px solid #1e293b; color:${diff < 0 ? '#ef4444' : '#16a34a'};">${diff.toLocaleString('en-US', {minimumFractionDigits:2})}</td></tr>
-                        <tr>
-                            <td style="font-weight:700;">${prevYear}</td>
-                            <td style="font-weight:700; padding: 0 1rem;">${operator}</td>
-                            <td style="font-weight:700;">${currentYear}</td>
-                        </tr>
-                    </tbody>
-                </table>
-                <div style="margin-top:1rem; font-size:0.9rem; font-weight:600; color:#475569;">
-                    <p style="margin:0.25rem 0;">*MM TO MONTH as of ${months[lastPopulatedMonthIdx]} for both years</p>
-                    <p style="margin:0.25rem 0;">**${currentYear} MM TO MONTH is ${actionWord} than ${prevYear} by ${Math.abs(diff).toLocaleString('en-US', {minimumFractionDigits:2})}</p>
-                </div>
-            `;
-            rainfallWrapper.appendChild(summaryWidget);
-        }
+        summaryWrapper.innerHTML = `
+            <table style="border-collapse:collapse; text-align:center; width:280px; font-family:'Outfit';">
+                <thead>
+                    <tr><th style="background:white; border:2px solid #000; padding:8px; font-size:0.95rem;">MM TO MONTH ${currentYear} vs ${prevYear}</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td style="background:white; border:2px solid #000; padding:10px; font-weight:700; font-size:1.3rem;">${diff.toLocaleString('en-US', {minimumFractionDigits:2})}</td></tr>
+                    <tr style="border:none;">
+                        <td style="padding:10px 0;">
+                            <div style="display:flex; justify-content:center; align-items:center; font-weight:700; font-size:1.15rem; gap:2rem;">
+                                <span>${prevYear}</span>
+                                <span>${operator}</span>
+                                <span>${currentYear}</span>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            <div style="margin-top:1.5rem; font-size:1rem; font-weight:700; color:#000; font-family:'Outfit'; line-height:1.6;">
+                <p style="margin:5px 0;">*MM TO MONTH as of ${latestMonthName} for both years</p>
+                <p style="margin:5px 0;">**${currentYear} MM TO MONTH is ${actionWord} than ${prevYear} by ${Math.abs(diff).toLocaleString('en-US', {minimumFractionDigits:0})}</p>
+            </div>
+        `;
+        rainfallWrapper.appendChild(summaryWrapper);
     }
 };
