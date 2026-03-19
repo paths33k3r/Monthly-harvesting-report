@@ -1,17 +1,19 @@
+window.state = window.state || {};
+const state = window.state;
+
 document.addEventListener('DOMContentLoaded', () => {
-    // App State
-    const state = {
+    Object.assign(state, {
         reports: {}, // { "2025": [ { block_id, ha, op_year, gang }, ... ] }
         performance: {}, // { "2025": { "Jan": { "DARSO GANG": { manpower: 17, leave: 0, blocks: { "15": { budget: 56.34, r1: 33.38, r2: 10.51, r3: 20.07, manday: 56 } } } } } } }
+        ffbBudget: null,
+        rainfall: null,
+        harvestingReports: null,
+        harvestingReportsMeta: null,
         selectedReportYear: null,
-
-        // Could be 'report_year' (shows all for the year, grouped by op_year)
-        // or 'gang' (shows specific gang for the year, grouped by op_year)
-        // or 'perf_month' (shows performance charts for all gangs in a specific year/month)
         activeViewType: 'report_year',
         activeViewValue: null,
-        activePerfMonth: null // Used when activeViewType === 'perf_month'
-    };
+        activePerfMonth: null
+    });
 
     // Predefined Gang Assignments
     const predefinedGangs = {
@@ -46,6 +48,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Performance and Interval DOM Elements
     const perfWrapper = document.getElementById('performance-wrapper');
     const intervalWrapper = document.getElementById('interval-wrapper');
+    const harvestingYtdWrapper = document.getElementById('harvesting-ytd-wrapper');
+    const harvesterComparisonWrapper = document.getElementById('harvester-comparison-wrapper');
 
     // Chart instances keyed by gang name
     const performanceChartInstances = {};
@@ -324,6 +328,10 @@ document.addEventListener('DOMContentLoaded', () => {
             renderSidebar();
             renderTable();
             recalculateTotals();
+
+            await loadHarvestingReports();
+            renderSidebar();
+            renderTable();
         };
         reader.readAsArrayBuffer(file);
     };
@@ -375,7 +383,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (navHeaderYear) navHeaderYear.style.color = state.activeViewType === 'report_year' ? 'var(--text-primary)' : '';
         if (navHeaderGangYear) navHeaderGangYear.style.color = state.activeViewType === 'gang' ? 'var(--text-primary)' : '';
         if (navHeaderInterval) navHeaderInterval.style.color = state.activeViewType === 'interval_month' ? 'var(--text-primary)' : '';
-        if (navHeaderPerf) navHeaderPerf.style.color = state.activeViewType === 'perf_month' ? 'var(--text-primary)' : '';
+        const perfActiveTypes = ['perf_month', 'interval_month', 'harvesting_ytd', 'harvesters_comparison'];
+        if (navHeaderPerf) navHeaderPerf.style.color = perfActiveTypes.includes(state.activeViewType) ? 'var(--text-primary)' : '';
 
         // Render Report Years
         if (sidebarYearList) {
@@ -651,25 +660,63 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         };
 
+        const updateHarvestingNavLink = (itemId, linkId, viewType) => {
+            const item = document.getElementById(itemId);
+            const link = document.getElementById(linkId);
+            if (item) item.classList.toggle('active', state.activeViewType === viewType);
+            if (link) {
+                link.onclick = (e) => {
+                    e.preventDefault();
+                    state.activeViewType = viewType;
+                    renderSidebar();
+                    renderTable();
+                };
+            }
+        };
+
+        updateHarvestingNavLink('nav-item-harvesting-ytd', 'nav-link-harvesting-ytd', 'harvesting_ytd');
+        updateHarvestingNavLink('nav-item-harvesters-comparison', 'nav-link-harvesters-comparison', 'harvesters_comparison');
+
         renderMonthNav('sidebar-interval-list', 'interval_month');
         renderMonthNav('sidebar-perf-list', 'perf_month');
     };
 
     const renderTable = () => {
         tableBody.innerHTML = '';
-        perfWrapper.innerHTML = ''; // Clear dynamically appended performance widgets
-        intervalWrapper.innerHTML = ''; // Clear dynamically appended interval widgets
+        perfWrapper.innerHTML = '';
+        intervalWrapper.innerHTML = '';
+        if (harvestingYtdWrapper) harvestingYtdWrapper.innerHTML = '';
+        if (harvesterComparisonWrapper) harvesterComparisonWrapper.innerHTML = '';
 
-        if (!state.selectedReportYear) {
+        const isPerfView = state.activeViewType === 'perf_month';
+        const isIntervalView = state.activeViewType === 'interval_month';
+        const isHarvestingYtdView = state.activeViewType === 'harvesting_ytd';
+        const isHarvestersComparisonView = state.activeViewType === 'harvesters_comparison';
+
+        if (!state.selectedReportYear && !isHarvestingYtdView && !isHarvestersComparisonView) {
             if (tableTitle) tableTitle.textContent = "No Report Year Selected";
             perfWrapper.classList.add('hidden');
             intervalWrapper.classList.add('hidden');
             tableContainer.classList.add('hidden');
             return;
         }
+        if (harvestingYtdWrapper) harvestingYtdWrapper.classList.add('hidden');
+        if (harvesterComparisonWrapper) harvesterComparisonWrapper.classList.add('hidden');
 
-        const isPerfView = state.activeViewType === 'perf_month';
-        const isIntervalView = state.activeViewType === 'interval_month';
+        if (isHarvestingYtdView || isHarvestersComparisonView) {
+            mainReportWrapper.classList.add('hidden');
+            perfWrapper.classList.add('hidden');
+            intervalWrapper.classList.add('hidden');
+            if (harvestingYtdWrapper) harvestingYtdWrapper.classList.toggle('hidden', !isHarvestingYtdView);
+            if (harvesterComparisonWrapper) harvesterComparisonWrapper.classList.toggle('hidden', !isHarvestersComparisonView);
+            if (isHarvestingYtdView) {
+                renderHarvestingYtdReport();
+            }
+            if (isHarvestersComparisonView) {
+                renderHarvesterComparisonReport();
+            }
+            return;
+        }
 
         if (isPerfView) {
             mainReportWrapper.classList.add('hidden');
@@ -1481,6 +1528,127 @@ document.addEventListener('DOMContentLoaded', () => {
         if (sumTotalEl) sumTotalEl.textContent = formatHA(sR1 + sR2 + sR3 + sR4);
     };
 
+
+    const renderHarvestingReportTable = (wrapper, report, fallbackTitle) => {
+        if (!wrapper) return;
+        wrapper.innerHTML = '';
+
+        if (!report || !Array.isArray(report.rows) || report.rows.length === 0) {
+            const message = document.createElement('p');
+            message.style.padding = '1rem';
+            message.textContent = 'Report data is not available yet. Please run the extraction script and refresh.';
+            wrapper.appendChild(message);
+            return;
+        }
+
+        const sanitized = report.rows.filter(row => row && row.some(cell => String(cell).trim()));
+        if (sanitized.length === 0) {
+            const message = document.createElement('p');
+            message.style.padding = '1rem';
+            message.textContent = 'No non-empty rows were found in this worksheet.';
+            wrapper.appendChild(message);
+            return;
+        }
+
+        const headerCount = Math.min(3, sanitized.length);
+        const headerRows = sanitized.slice(0, headerCount);
+        const bodyRows = sanitized.slice(headerCount);
+
+        const titleEl = document.createElement('h2');
+        titleEl.textContent = report.title || fallbackTitle || 'Harvesting Report';
+        titleEl.style.marginBottom = '0.75rem';
+        titleEl.style.fontSize = '1.1rem';
+        titleEl.style.fontWeight = '700';
+        wrapper.appendChild(titleEl);
+
+        const tableContainer = document.createElement('div');
+        tableContainer.className = 'table-container';
+        tableContainer.style.background = 'white';
+        tableContainer.style.padding = '0';
+        tableContainer.style.overflowX = 'auto';
+
+        const table = document.createElement('table');
+        table.className = 'grouped-table';
+        table.style.width = 'max-content';
+        table.style.borderCollapse = 'collapse';
+        table.style.marginBottom = '1rem';
+
+        const buildRow = (row, isHeader = false) => {
+            const tr = document.createElement('tr');
+            row.forEach(cell => {
+                const cellEl = document.createElement(isHeader ? 'th' : 'td');
+                cellEl.textContent = cell;
+                cellEl.style.border = '1px solid #000';
+                cellEl.style.padding = '0.35rem 0.6rem';
+                cellEl.style.minWidth = '80px';
+                cellEl.style.textAlign = 'right';
+                if (isHeader) {
+                    cellEl.style.fontWeight = '700';
+                    cellEl.style.background = '#f7f7f7';
+                    cellEl.style.textAlign = 'center';
+                }
+                tr.appendChild(cellEl);
+            });
+            return tr;
+        };
+
+        const thead = document.createElement('thead');
+        headerRows.forEach(row => thead.appendChild(buildRow(row, true)));
+
+        const tbody = document.createElement('tbody');
+        if (bodyRows.length === 0) {
+            const emptyRow = document.createElement('tr');
+            const emptyCell = document.createElement('td');
+            emptyCell.colSpan = headerRows[headerRows.length - 1]?.length || 1;
+            emptyCell.style.border = '1px solid #000';
+            emptyCell.style.padding = '0.5rem';
+            emptyCell.style.textAlign = 'center';
+            emptyCell.textContent = 'No additional rows in this report.';
+            emptyRow.appendChild(emptyCell);
+            tbody.appendChild(emptyRow);
+        } else {
+            bodyRows.forEach(row => tbody.appendChild(buildRow(row)));
+        }
+
+        table.appendChild(thead);
+        table.appendChild(tbody);
+        tableContainer.appendChild(table);
+        wrapper.appendChild(tableContainer);
+
+        if (state.harvestingReportsMeta) {
+            const meta = document.createElement('p');
+            meta.style.fontSize = '0.85rem';
+            meta.style.color = '#475569';
+            meta.style.margin = '0';
+            meta.textContent = `Generated ${state.harvestingReportsMeta.generatedAt || ''} · Source: ${state.harvestingReportsMeta.sourceWorkbook || ''}`;
+            wrapper.appendChild(meta);
+        }
+    };
+
+    const renderHarvestingYtdReport = () => {
+        renderHarvestingReportTable(harvestingYtdWrapper, state.harvestingReports?.harvestingYtdByGang, 'Harvesting YTD by Gang');
+    };
+
+    const renderHarvesterComparisonReport = () => {
+        renderHarvestingReportTable(harvesterComparisonWrapper, state.harvestingReports?.harvestersMonthComparison, "Harvesters' Current vs Previous Month");
+    };
+
+    const loadHarvestingReports = async () => {
+        try {
+            const res = await fetch('harvesting_performance_reports.json');
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            state.harvestingReports = data.reports || {};
+            state.harvestingReportsMeta = {
+                generatedAt: data.generatedAt,
+                sourceWorkbook: data.sourceWorkbook
+            };
+        } catch (error) {
+            console.error('Failed to load harvesting reports asset:', error);
+            state.harvestingReports = null;
+            state.harvestingReportsMeta = null;
+        }
+    };
 
     const init = async () => {
         try {
