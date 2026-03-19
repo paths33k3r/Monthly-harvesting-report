@@ -57,8 +57,13 @@ window.renderCurrentPrevReport = () => {
     // Helper to get annual budget for a block/month
     const getBlockBudgetMt = (bId, budgetDataArray, targetMonthStr) => {
         const bd = budgetDataArray.find(b => String(b.block_id) === String(bId));
-        if (!bd) return 0;
-        return parseFloat(bd[targetMonthStr.toLowerCase()] || 0);
+        if (!bd || !bd.months || !Array.isArray(bd.months)) return 0;
+        
+        const monthNumArray = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const mIdx = monthNumArray.indexOf(targetMonthStr);
+        if (mIdx === -1) return 0;
+        
+        return parseFloat(bd.months[mIdx] || 0);
     };
 
     let html = `
