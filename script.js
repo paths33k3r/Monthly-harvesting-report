@@ -1,6 +1,9 @@
+window.state = window.state || {};
+const state = window.state;
+
 document.addEventListener('DOMContentLoaded', () => {
     // App State
-    const state = {
+    Object.assign(state, {
         reports: {}, // { "2025": [ { block_id, ha, op_year, gang }, ... ] }
         performance: {}, // { "2025": { "Jan": { "DARSO GANG": { manpower: 17, leave: 0, blocks: { "15": { budget: 56.34, r1: 33.38, r2: 10.51, r3: 20.07, manday: 56 } } } } } } }
         ffbBudget: null, // initialized later
@@ -14,7 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
         activeViewType: 'report_year',
         activeViewValue: null,
         activePerfMonth: null // Used when activeViewType === 'perf_month'
-    };
+    });
 
     // Predefined Gang Assignments
     const predefinedGangs = {

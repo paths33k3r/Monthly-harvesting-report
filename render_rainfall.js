@@ -64,46 +64,36 @@ const renderRainfallTable = () => {
     table.style.borderCollapse = 'collapse';
     
     const thead = document.createElement('thead');
+    const headerGroups = [];
+    if (isPrevYearAvailable) headerGroups.push({ label: prevYear, subLabel: 'RAINFALL RECORD' });
+    headerGroups.push({ label: currentYear, subLabel: 'RAINFALL RECORD' });
+    if (isPrevYearAvailable) headerGroups.push({ label: `${currentYear} vs ${prevYear}`, subLabel: 'DIFF.' });
+
     // Top header row
-    let topHeaderHtml = `
-        <tr>
-            <th rowspan="2" style="background:white; border:1px solid #000; padding:10px;">MONTH</th>
-    `;
-    if (isPrevYearAvailable) {
-        topHeaderHtml += `<th colspan="3" style="background:white; border:1px solid #000; padding:10px;">${prevYear}</th>`;
-    }
-    topHeaderHtml += `
-            <th colspan="3" style="background:white; border:1px solid #000; padding:10px;">${currentYear}</th>
-    `;
-    if (isPrevYearAvailable) {
-        topHeaderHtml += `<th colspan="3" style="background:white; border:1px solid #000; padding:10px;">${currentYear} vs ${prevYear}</th>`;
-    }
+    let topHeaderHtml = `<tr><th rowspan="3" style="background:white; border:2px solid #000; padding:10px; font-size:0.95rem;">MONTH</th>`;
+    headerGroups.forEach(group => {
+        topHeaderHtml += `<th colspan="3" style="background:white; border:2px solid #000; padding:10px; font-size:0.95rem;">${group.label}</th>`;
+    });
     topHeaderHtml += `</tr>`;
 
-    // Sub header row
-    let subHeaderHtml = `<tr>`;
-    const colSet = `
-        <th style="background:white; border:1px solid #000; font-size:0.85rem; padding:8px;">DAYS</th>
-        <th style="background:white; border:1px solid #000; font-size:0.85rem; padding:8px;">MM</th>
-        <th style="background:white; border:1px solid #000; font-size:0.85rem; padding:8px;">MM TO MONTH</th>
-    `;
-    const diffColSet = `
-        <th colspan="3" style="background:white; border:1px solid #000; padding:4px;">
-            <div style="border-bottom:1px solid #000; margin-bottom:4px; padding-bottom:4px;">DIFF.</div>
-            <div style="display:flex;">
-                <div style="flex:1; border-right:1px solid #000; font-size:0.75rem;">DAYS</div>
-                <div style="flex:1; border-right:1px solid #000; font-size:0.75rem;">MM</div>
-                <div style="flex:1; font-size:0.75rem;">MM TO MONTH</div>
-            </div>
-        </th>
-    `;
-    
-    if (isPrevYearAvailable) subHeaderHtml += `<th colspan="3" style="padding:0; border:1px solid #000;"><div style="border-bottom:1px solid #000; padding:4px;">RAINFALL RECORD</div><div style="display:flex;"><div style="flex:1; border-right:1px solid #000; padding:4px; font-size:0.8rem;">DAYS</div><div style="flex:1; border-right:1px solid #000; padding:4px; font-size:0.8rem;">MM</div><div style="flex:1; padding:4px; font-size:0.8rem;">MM TO MONTH</div></div></th>`;
-    subHeaderHtml += `<th colspan="3" style="padding:0; border:1px solid #000;"><div style="border-bottom:1px solid #000; padding:4px;">RAINFALL RECORD</div><div style="display:flex;"><div style="flex:1; border-right:1px solid #000; padding:4px; font-size:0.8rem;">DAYS</div><div style="flex:1; border-right:1px solid #000; padding:4px; font-size:0.8rem;">MM</div><div style="flex:1; padding:4px; font-size:0.8rem;">MM TO MONTH</div></div></th>`;
-    if (isPrevYearAvailable) subHeaderHtml += diffColSet;
-    subHeaderHtml += `</tr>`;
+    // Middle header row (sub-labels)
+    let midHeaderHtml = `<tr>`;
+    headerGroups.forEach(group => {
+        midHeaderHtml += `<th colspan="3" style="background:white; border:2px solid #000; padding:4px; font-size:0.8rem;">${group.subLabel}</th>`;
+    });
+    midHeaderHtml += `</tr>`;
 
-    thead.innerHTML = topHeaderHtml + subHeaderHtml;
+    // Bottom header row (column names)
+    const colNames = `
+        <th style="background:white; border:2px solid #000; font-size:0.75rem; padding:6px;">DAYS</th>
+        <th style="background:white; border:2px solid #000; font-size:0.75rem; padding:6px;">MM</th>
+        <th style="background:white; border:2px solid #000; font-size:0.75rem; padding:6px;">MM TO MONTH</th>
+    `;
+    let bottomHeaderHtml = `<tr>`;
+    headerGroups.forEach(() => bottomHeaderHtml += colNames);
+    bottomHeaderHtml += `</tr>`;
+
+    thead.innerHTML = topHeaderHtml + midHeaderHtml + bottomHeaderHtml;
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
