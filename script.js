@@ -332,21 +332,16 @@ document.addEventListener('DOMContentLoaded', () => {
             // Merge imported gangs with existing blocks. 
             // DOES NOT inject new blocks into Planting Phase Records.
             newBlocks.forEach(importedBlock => {
-                const existing = state.reports[targetYear].find(b => b.block_id === importedBlock.block_id);
-                if (existing) {
-                    existing.gang = importedBlock.gang;
-                }
-
                 // Also update the performance data for the specific block in the target month
                 const gangName = importedBlock.gang;
                 if (!state.performance[targetYear][targetMonth][gangName]) {
                     state.performance[targetYear][targetMonth][gangName] = { manpower: 0, leave: 0, blocks: {} };
                 }
-                const pBlocks = state.performance[targetYear][targetMonth][gangName].blocks;
 
+                const pBlocks = state.performance[targetYear][targetMonth][gangName].blocks;
                 pBlocks[importedBlock.block_id] = {
                     ha: importedBlock.ha,
-                    budget: pBlocks[importedBlock.block_id]?.budget || 0, // preserve budget if it exists
+                    budget: pBlocks[importedBlock.block_id]?.budget || 0,
                     manday: importedBlock.manday,
                     r1: importedBlock.r1,
                     r2: importedBlock.r2,
@@ -379,6 +374,7 @@ document.addEventListener('DOMContentLoaded', () => {
             renderSidebar();
             renderTable();
             recalculateTotals();
+            saveState(true);
         };
         reader.readAsArrayBuffer(file);
     };
@@ -395,6 +391,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.selectedReportYear = newYear;
         state.activeViewType = 'report_year';
         state.activeViewValue = newYear;
+        saveState(true);
     };
 
     const handleAddReportYear = (e) => {
@@ -491,6 +488,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (navHeaderGangYear) navHeaderGangYear.style.color = state.activeViewType === 'gang' ? 'var(--text-primary)' : '';
         if (navHeaderInterval) navHeaderInterval.style.color = state.activeViewType === 'interval_month' ? 'var(--text-primary)' : '';
         if (navHeaderPerf) navHeaderPerf.style.color = state.activeViewType === 'perf_month' ? 'var(--text-primary)' : '';
+        
+        const navHeaderYtd = document.getElementById('nav-header-ytd');
+        const navHeaderCurrentPrev = document.getElementById('nav-header-current-prev');
+        if (navHeaderYtd) navHeaderYtd.style.color = state.activeViewType === 'ytd' ? 'var(--text-primary)' : '';
+        if (navHeaderCurrentPrev) navHeaderCurrentPrev.style.color = state.activeViewType === 'current_prev' ? 'var(--text-primary)' : '';
 
         // Render Report Years
         if (sidebarYearList) {
@@ -949,6 +951,8 @@ document.addEventListener('DOMContentLoaded', () => {
         renderRainfallNav();
         renderMonthNav('sidebar-interval-list', 'interval_month');
         renderMonthNav('sidebar-perf-list', 'perf_month');
+        renderMonthNav('sidebar-ytd-list', 'ytd');
+        renderMonthNav('sidebar-current-prev-list', 'current_prev');
     };
 
     const renderTable = () => {
@@ -957,13 +961,19 @@ document.addEventListener('DOMContentLoaded', () => {
         intervalWrapper.innerHTML = ''; // Clear dynamically appended interval widgets
         const ffbWrapper = document.getElementById('ffb-budget-wrapper');
         const rainfallWrapper = document.getElementById('rainfall-wrapper');
+        const ytdWrapper = document.getElementById('ytd-wrapper');
+        const currentPrevWrapper = document.getElementById('current-prev-wrapper');
 
         if (ffbWrapper) ffbWrapper.innerHTML = ''; // Clear FFB budget widgets
         if (rainfallWrapper) rainfallWrapper.innerHTML = ''; // Clear Rainfall widgets
+        if (ytdWrapper) ytdWrapper.innerHTML = '';
+        if (currentPrevWrapper) currentPrevWrapper.innerHTML = '';
 
         // Hide special wrappers by default
         if (ffbWrapper) ffbWrapper.classList.add('hidden');
         if (rainfallWrapper) rainfallWrapper.classList.add('hidden');
+        if (ytdWrapper) ytdWrapper.classList.add('hidden');
+        if (currentPrevWrapper) currentPrevWrapper.classList.add('hidden');
 
         if (!state.selectedReportYear) {
             if (tableTitle) tableTitle.textContent = "No Report Year Selected";
@@ -977,6 +987,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const isIntervalView = state.activeViewType === 'interval_month';
         const isFfbBudgetView = state.activeViewType === 'ffb_budget';
         const isRainfallView = state.activeViewType === 'rainfall_record';
+        const isYtdView = state.activeViewType === 'ytd';
+        const isCurrentPrevView = state.activeViewType === 'current_prev';
 
         if (isPerfView) {
             mainReportWrapper.classList.add('hidden');
@@ -1008,6 +1020,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 rainfallWrapper.classList.remove('hidden');
                 if (typeof renderRainfallTable === 'function') {
                     renderRainfallTable();
+                }
+            }
+        } else if (isYtdView) {
+            mainReportWrapper.classList.add('hidden');
+            perfWrapper.classList.add('hidden');
+            intervalWrapper.classList.add('hidden');
+            tableContainer.classList.add('hidden');
+            if (ytdWrapper) {
+                ytdWrapper.classList.remove('hidden');
+                if (typeof renderYtdReport === 'function') {
+                    renderYtdReport();
+                }
+            }
+        } else if (isCurrentPrevView) {
+            mainReportWrapper.classList.add('hidden');
+            perfWrapper.classList.add('hidden');
+            intervalWrapper.classList.add('hidden');
+            tableContainer.classList.add('hidden');
+            if (currentPrevWrapper) {
+                currentPrevWrapper.classList.remove('hidden');
+                if (typeof renderCurrentPrevReport === 'function') {
+                    renderCurrentPrevReport();
                 }
             }
         } else {
