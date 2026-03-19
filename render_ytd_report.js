@@ -34,10 +34,10 @@ window.renderYtdReport = () => {
     // Helper to sum YTD budget for a block (Jan -> Target Month)
     const getYtdBudgetMt = (bId, budgetDataArray) => {
         const bd = budgetDataArray.find(b => String(b.block_id) === String(bId));
-        if (!bd) return 0;
+        if (!bd || !bd.months || !Array.isArray(bd.months)) return 0;
         let sum = 0;
         for (let i = 0; i <= mIdx; i++) {
-            sum += parseFloat(bd[months[i].toLowerCase()] || 0);
+            sum += parseFloat(bd.months[i] || 0);
         }
         return sum;
     };
