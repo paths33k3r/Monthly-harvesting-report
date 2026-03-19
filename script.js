@@ -50,13 +50,54 @@ document.addEventListener('DOMContentLoaded', () => {
     const intervalWrapper = document.getElementById('interval-wrapper');
     const harvestingYtdWrapper = document.getElementById('harvesting-ytd-wrapper');
     const harvesterComparisonWrapper = document.getElementById('harvester-comparison-wrapper');
+    const rainfallWrapper = document.getElementById('rainfall-wrapper');
 
     // Chart instances keyed by gang name
     const performanceChartInstances = {};
 
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const rainfallMonths = window.RAINFALL_MONTHS || ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 
     const formatHA = (num) => Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    const persistRainfall = () => {
+        try {
+            localStorage.setItem('monthly-harvesting-rainfall', JSON.stringify(state.rainfall || {}));
+        } catch (error) {
+            console.warn('Failed to persist rainfall data:', error);
+        }
+    };
+
+    const initializeRainfallState = () => {
+        const fallback = window.INITIAL_RAINFALL_DATA ? JSON.parse(JSON.stringify(window.INITIAL_RAINFALL_DATA)) : {};
+        try {
+            const stored = localStorage.getItem('monthly-harvesting-rainfall');
+            if (stored) {
+                const parsed = JSON.parse(stored);
+                // Only use stored data if it actually has keys, otherwise use fallback
+                if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+                    state.rainfall = parsed;
+                } else {
+                    state.rainfall = fallback;
+                    // Fix the bad storage
+                    persistRainfall();
+                }
+            } else {
+                state.rainfall = fallback;
+            }
+        } catch (error) {
+            console.warn('Falling back to bundled rainfall data:', error);
+            state.rainfall = fallback;
+        }
+
+        Object.keys(state.rainfall || {}).forEach((year) => {
+            rainfallMonths.forEach((month) => {
+                if (!state.rainfall[year][month]) {
+                    state.rainfall[year][month] = { days: 0, mm: 0 };
+                }
+            });
+        });
+    };
 
     const getActiveBlocks = () => {
         const blocks = state.reports[state.selectedReportYear] || [];
@@ -328,10 +369,6 @@ document.addEventListener('DOMContentLoaded', () => {
             renderSidebar();
             renderTable();
             recalculateTotals();
-
-            await loadHarvestingReports();
-            renderSidebar();
-            renderTable();
         };
         reader.readAsArrayBuffer(file);
     };
@@ -379,12 +416,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const navHeaderGangYear = document.getElementById('nav-header-gang-year');
         const navHeaderInterval = document.getElementById('nav-header-interval');
         const navHeaderPerf = document.getElementById('nav-header-perf');
+        const navHeaderRainfall = document.getElementById('nav-header-rainfall');
 
         if (navHeaderYear) navHeaderYear.style.color = state.activeViewType === 'report_year' ? 'var(--text-primary)' : '';
         if (navHeaderGangYear) navHeaderGangYear.style.color = state.activeViewType === 'gang' ? 'var(--text-primary)' : '';
         if (navHeaderInterval) navHeaderInterval.style.color = state.activeViewType === 'interval_month' ? 'var(--text-primary)' : '';
         const perfActiveTypes = ['perf_month', 'interval_month', 'harvesting_ytd', 'harvesters_comparison'];
         if (navHeaderPerf) navHeaderPerf.style.color = perfActiveTypes.includes(state.activeViewType) ? 'var(--text-primary)' : '';
+        if (navHeaderRainfall) navHeaderRainfall.style.color = state.activeViewType === 'rainfall_record' ? 'var(--text-primary)' : '';
 
         // Render Report Years
         if (sidebarYearList) {
@@ -679,6 +718,59 @@ document.addEventListener('DOMContentLoaded', () => {
 
         renderMonthNav('sidebar-interval-list', 'interval_month');
         renderMonthNav('sidebar-perf-list', 'perf_month');
+
+        const rainfallYearList = document.getElementById('sidebar-rainfall-year-list');
+        if (rainfallYearList) {
+            rainfallYearList.innerHTML = '';
+            const rainfallYears = Object.keys(state.rainfall || {}).sort((a, b) => Number(a) - Number(b));
+
+            rainfallYears.forEach((year) => {
+                const li = document.createElement('li');
+                li.className = 'nav-item';
+                if (state.activeViewType === 'rainfall_record' && state.activeViewValue === year) {
+                    li.classList.add('active');
+                }
+
+                const link = document.createElement('a');
+                link.href = '#';
+                link.className = 'nav-link';
+                link.textContent = year;
+                link.onclick = (e) => {
+                    e.preventDefault();
+                    state.activeViewType = 'rainfall_record';
+                    state.activeViewValue = year;
+                    renderSidebar();
+                    renderTable();
+                };
+
+                li.appendChild(link);
+                rainfallYearList.appendChild(li);
+            });
+
+            const liAdd = document.createElement('li');
+            liAdd.className = 'nav-item';
+            const addLink = document.createElement('a');
+            addLink.href = '#';
+            addLink.className = 'nav-link add-year-link';
+            addLink.textContent = 'Add Rainfall Year';
+            addLink.onclick = (e) => {
+                e.preventDefault();
+                const newYear = prompt('Enter rainfall year to add:', String(new Date().getFullYear()));
+                if (!newYear || !newYear.trim()) return;
+                if (!state.rainfall[newYear]) {
+                    state.rainfall[newYear] = typeof createEmptyRainfallYear === 'function'
+                        ? createEmptyRainfallYear()
+                        : {};
+                    persistRainfall();
+                }
+                state.activeViewType = 'rainfall_record';
+                state.activeViewValue = newYear.trim();
+                renderSidebar();
+                renderTable();
+            };
+            liAdd.appendChild(addLink);
+            rainfallYearList.appendChild(liAdd);
+        }
     };
 
     const renderTable = () => {
@@ -687,13 +779,15 @@ document.addEventListener('DOMContentLoaded', () => {
         intervalWrapper.innerHTML = '';
         if (harvestingYtdWrapper) harvestingYtdWrapper.innerHTML = '';
         if (harvesterComparisonWrapper) harvesterComparisonWrapper.innerHTML = '';
+        if (rainfallWrapper) rainfallWrapper.innerHTML = '';
 
         const isPerfView = state.activeViewType === 'perf_month';
         const isIntervalView = state.activeViewType === 'interval_month';
         const isHarvestingYtdView = state.activeViewType === 'harvesting_ytd';
         const isHarvestersComparisonView = state.activeViewType === 'harvesters_comparison';
+        const isRainfallView = state.activeViewType === 'rainfall_record';
 
-        if (!state.selectedReportYear && !isHarvestingYtdView && !isHarvestersComparisonView) {
+        if (!state.selectedReportYear && !isHarvestingYtdView && !isHarvestersComparisonView && !isRainfallView) {
             if (tableTitle) tableTitle.textContent = "No Report Year Selected";
             perfWrapper.classList.add('hidden');
             intervalWrapper.classList.add('hidden');
@@ -702,18 +796,35 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (harvestingYtdWrapper) harvestingYtdWrapper.classList.add('hidden');
         if (harvesterComparisonWrapper) harvesterComparisonWrapper.classList.add('hidden');
+        if (rainfallWrapper) rainfallWrapper.classList.add('hidden');
 
-        if (isHarvestingYtdView || isHarvestersComparisonView) {
+        if (isHarvestingYtdView || isHarvestersComparisonView || isRainfallView) {
             mainReportWrapper.classList.add('hidden');
             perfWrapper.classList.add('hidden');
             intervalWrapper.classList.add('hidden');
             if (harvestingYtdWrapper) harvestingYtdWrapper.classList.toggle('hidden', !isHarvestingYtdView);
             if (harvesterComparisonWrapper) harvesterComparisonWrapper.classList.toggle('hidden', !isHarvestersComparisonView);
+            if (rainfallWrapper) rainfallWrapper.classList.toggle('hidden', !isRainfallView);
             if (isHarvestingYtdView) {
                 renderHarvestingYtdReport();
             }
             if (isHarvestersComparisonView) {
                 renderHarvesterComparisonReport();
+            }
+            if (isRainfallView && rainfallWrapper && typeof renderRainfallTable === 'function') {
+                renderRainfallTable({
+                    wrapper: rainfallWrapper,
+                    rainfall: state.rainfall || {},
+                    activeYear: state.activeViewValue,
+                    onDataChange: () => {
+                        persistRainfall();
+                        renderTable();
+                    },
+                    onSave: () => {
+                        persistRainfall();
+                        alert('Rainfall data saved in your browser for this dashboard.');
+                    }
+                });
             }
             return;
         }
@@ -1563,7 +1674,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const tableContainer = document.createElement('div');
         tableContainer.className = 'table-container';
-        tableContainer.style.background = 'white';
+        tableContainer.style.background = 'var(--bg-card)';
         tableContainer.style.padding = '0';
         tableContainer.style.overflowX = 'auto';
 
@@ -1618,9 +1729,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (state.harvestingReportsMeta) {
             const meta = document.createElement('p');
             meta.style.fontSize = '0.85rem';
-            meta.style.color = '#475569';
+            meta.style.color = 'var(--text-secondary)';
             meta.style.margin = '0';
-            meta.textContent = `Generated ${state.harvestingReportsMeta.generatedAt || ''} · Source: ${state.harvestingReportsMeta.sourceWorkbook || ''}`;
+            meta.textContent = `Generated ${state.harvestingReportsMeta.generatedAt || ''} - Source: ${state.harvestingReportsMeta.sourceWorkbook || ''}`;
             wrapper.appendChild(meta);
         }
     };
@@ -1652,6 +1763,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const init = async () => {
         try {
+            initializeRainfallState();
+            await loadHarvestingReports();
+
             const tBtn = document.getElementById('sidebar-download-template');
             if (tBtn) {
                 tBtn.onclick = (e) => {
@@ -1722,7 +1836,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (error) {
             console.error(error);
-            loadingEl.innerHTML = `< p style = "color:var(--danger)" > Error initializing dashboard: ${error.message}</p > `;
+            loadingEl.innerHTML = `<p style="color:var(--danger)">Error initializing dashboard: ${error.message}</p>`;
         }
     };
 
