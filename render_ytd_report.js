@@ -81,48 +81,20 @@ window.renderYtdReport = () => {
         return sum;
     };
 
-    let html = `
-        <div class="toolbar">
-            <div class="toolbar-left">
-                <h2>YIELD TO DATE (YTD) COMPARISON: JAN - ${month.toUpperCase()} (${year} vs ${prevYear})</h2>
-            </div>
-        </div>
-        <div class="table-container">
-            <table class="grouped-table" style="font-size: 0.85rem;">
-                <thead>
-                    <tr>
-                        <th rowspan="2" class="text-left" style="width:120px;">Block</th>
-                        <th rowspan="2" class="text-right">Total HA</th>
-                        <th colspan="2" class="text-center" style="background: rgba(59, 130, 246, 0.1);">${year}</th>
-                        <th colspan="2" class="text-center" style="background: rgba(245, 158, 11, 0.1);">${prevYear}</th>
-                        <th rowspan="2" class="text-right">Actual Variance<br/>(${year} vs ${prevYear})</th>
-                        <th colspan="2" class="text-center" style="background: rgba(16, 185, 129, 0.1);">YTD MT / HA</th>
-                    </tr>
-                    <tr>
-                        <th class="text-right" style="font-size:0.75rem;">YTD Budget (MT)</th>
-                        <th class="text-right" style="font-size:0.75rem;">YTD Actual (MT)</th>
-                        
-                        <th class="text-right" style="font-size:0.75rem;">YTD Budget (MT)</th>
-                        <th class="text-right" style="font-size:0.75rem;">YTD Actual (MT)</th>
-
-                        <th class="text-right" style="font-size:0.75rem;">${year}</th>
-                        <th class="text-right" style="font-size:0.75rem;">${prevYear}</th>
-                    </tr>
-                </thead>
-                <tbody>
-    `;
-
     const formatNum = (n) => (parseFloat(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    
+
+    // Sort O/P ascending
+    const opKeys = Object.keys(opMap).sort((a, b) => parseInt(a) - parseInt(b));
+
     let gT_HA = 0;
     let gT_CurrBud = 0, gT_CurrAct = 0;
     let gT_PrevBud = 0, gT_PrevAct = 0;
     let gT_Var = 0;
 
-    // Sort O/P ascending
-    const opKeys = Object.keys(opMap).sort((a, b) => parseInt(a) - parseInt(b));
-    
-    opKeys.forEach(op => {
+    let tbodyHtml = '';
+    const toggleIds = [];
+
+    opKeys.forEach((op, index) => {
         const opBlocks = opMap[op].sort((a,b) => String(a.block_id).localeCompare(String(b.block_id), undefined, {numeric:true}));
         
         let s_HA = 0;
@@ -155,7 +127,7 @@ window.renderYtdReport = () => {
             const prevMtHa = ha > 0 ? prevAct / ha : 0;
 
             blockHtml += `
-                <tr class="row-block" style="background:var(--bg-primary);">
+                <tr class="row-block ytd-toggle-${index}-hideable" style="background:var(--bg-primary);">
                     <td class="text-left" style="padding-left:2rem;">${bId}</td>
                     <td class="text-right">${formatNum(ha)}</td>
                     
@@ -176,10 +148,15 @@ window.renderYtdReport = () => {
         const s_currMtHa = s_HA > 0 ? s_CurrAct / s_HA : 0;
         const s_prevMtHa = s_HA > 0 ? s_PrevAct / s_HA : 0;
 
-        // Add O/P Group Header (Acts as Subtotal)
-        html += `
-            <tr class="row-group-header" style="background:var(--bg-secondary); border-top: 2px solid var(--border-color);">
-                <td class="text-left font-bold" style="color:var(--text-primary);">O/P ${op}</td>
+        const toggleId = `ytd-toggle-${index}`;
+        toggleIds.push(toggleId);
+
+        // Group header row with collapse toggle
+        tbodyHtml += `
+            <tr class="row-group-header" onclick="document.body.classList.toggle('${toggleId}')" style="cursor:pointer; background:var(--bg-secondary); border-top: 2px solid var(--border-color);">
+                <td class="text-left font-bold" style="color:var(--text-primary);">
+                    <span id="${toggleId}-icon" style="display:inline-block; transition:transform 0.2s; margin-right:0.5rem;">▼</span>O/P ${op}
+                </td>
                 <td class="text-right font-bold">${formatNum(s_HA)}</td>
                 
                 <td class="text-right font-bold">${formatNum(s_CurrBud)}</td>
@@ -195,18 +172,68 @@ window.renderYtdReport = () => {
             </tr>
         `;
         
-        html += blockHtml;
+        tbodyHtml += blockHtml;
 
         gT_HA += s_HA;
         gT_CurrBud += s_CurrBud; gT_CurrAct += s_CurrAct;
         gT_PrevBud += s_PrevBud; gT_PrevAct += s_PrevAct;
         gT_Var += s_Var;
+
+        // Inject CSS for this group toggle
+        if (!document.getElementById(`style-${toggleId}`)) {
+            const style = document.createElement('style');
+            style.id = `style-${toggleId}`;
+            style.innerHTML = `
+                body.${toggleId} .${toggleId}-hideable { display: none !important; }
+                body.${toggleId} #${toggleId}-icon { transform: rotate(-90deg); }
+            `;
+            document.head.appendChild(style);
+        }
+        // Start collapsed by default
+        document.body.classList.add(toggleId);
     });
 
     const gT_currMtHa = gT_HA > 0 ? gT_CurrAct / gT_HA : 0;
     const gT_prevMtHa = gT_HA > 0 ? gT_PrevAct / gT_HA : 0;
 
-    html += `
+    let html = `
+        <div class="toolbar">
+            <div class="toolbar-left">
+                <h2>YIELD TO DATE (YTD) COMPARISON: JAN - ${month.toUpperCase()} (${year} vs ${prevYear})</h2>
+            </div>
+            <div class="toolbar-right" style="display:flex; gap:0.5rem; align-items:center;">
+                <button id="ytd-expand-all-btn" style="padding:0.4rem 0.9rem; background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:4px; cursor:pointer; font-size:0.85rem;">
+                    <span>+</span> Expand All
+                </button>
+                <button id="ytd-collapse-all-btn" style="padding:0.4rem 0.9rem; background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:4px; cursor:pointer; font-size:0.85rem;">
+                    <span>−</span> Collapse All
+                </button>
+            </div>
+        </div>
+        <div class="table-container">
+            <table class="grouped-table" style="font-size: 0.85rem;">
+                <thead>
+                    <tr>
+                        <th rowspan="2" class="text-left" style="width:120px;">Block</th>
+                        <th rowspan="2" class="text-right">Total HA</th>
+                        <th colspan="2" class="text-center" style="background: rgba(59, 130, 246, 0.1);">${year}</th>
+                        <th colspan="2" class="text-center" style="background: rgba(245, 158, 11, 0.1);">${prevYear}</th>
+                        <th rowspan="2" class="text-right">Actual Variance<br/>(${year} vs ${prevYear})</th>
+                        <th colspan="2" class="text-center" style="background: rgba(16, 185, 129, 0.1);">YTD MT / HA</th>
+                    </tr>
+                    <tr>
+                        <th class="text-right" style="font-size:0.75rem;">YTD Budget (MT)</th>
+                        <th class="text-right" style="font-size:0.75rem;">YTD Actual (MT)</th>
+                        
+                        <th class="text-right" style="font-size:0.75rem;">YTD Budget (MT)</th>
+                        <th class="text-right" style="font-size:0.75rem;">YTD Actual (MT)</th>
+
+                        <th class="text-right" style="font-size:0.75rem;">${year}</th>
+                        <th class="text-right" style="font-size:0.75rem;">${prevYear}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${tbodyHtml}
                 </tbody>
                 <tfoot>
                     <tr class="row-grand-total">
@@ -230,4 +257,20 @@ window.renderYtdReport = () => {
     `;
 
     wrapper.innerHTML = html;
+
+    // Expand All button
+    const expandAllBtn = document.getElementById('ytd-expand-all-btn');
+    if (expandAllBtn) {
+        expandAllBtn.addEventListener('click', () => {
+            toggleIds.forEach(id => document.body.classList.remove(id));
+        });
+    }
+
+    // Collapse All button
+    const collapseAllBtn = document.getElementById('ytd-collapse-all-btn');
+    if (collapseAllBtn) {
+        collapseAllBtn.addEventListener('click', () => {
+            toggleIds.forEach(id => document.body.classList.add(id));
+        });
+    }
 };
