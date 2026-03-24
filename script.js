@@ -33,19 +33,15 @@ document.addEventListener('DOMContentLoaded', () => {
         auth.createUserWithEmailAndPassword(emailInp.value, passInp.value).catch(e => loginErr.textContent = e.message);
     };
     
-    // Logout button injection to header
-    const addLogoutButton = () => {
-        const headerRight = document.querySelector('.header-right');
-        if (headerRight && !document.getElementById('btn-logout')) {
-            const btnLogout = document.createElement('button');
-            btnLogout.id = 'btn-logout';
-            btnLogout.className = 'btn-secondary';
-            btnLogout.style.marginLeft = '1rem';
-            btnLogout.textContent = 'Logout';
-            btnLogout.onclick = () => auth.signOut();
-            headerRight.appendChild(btnLogout);
-        }
-    };
+    // Logout sidebar handler
+    const sidebarLogout = document.getElementById('sidebar-logout');
+    if (sidebarLogout) {
+        sidebarLogout.onclick = (e) => {
+            e.preventDefault();
+            auth.signOut();
+        };
+    }
+
 
     // --- IDLE TIMEOUT LOGIC ---
     let idleTimer;
@@ -106,7 +102,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (user) {
             loginOverlay.style.display = 'none';
             appLayout.style.display = 'flex';
-            addLogoutButton();
             startIdleTimer();
             if (!isAppRunning) {
                 isAppRunning = true;
