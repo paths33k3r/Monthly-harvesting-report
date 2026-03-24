@@ -2,6 +2,70 @@ window.state = window.state || {};
 const state = window.state;
 
 document.addEventListener('DOMContentLoaded', () => {
+    // --- FIREBASE INIT ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyAavuTK1wjzYRqw54GAS5QW8ku0ahREN10",
+      authDomain: "ffb-harvesting-report.firebaseapp.com",
+      databaseURL: "https://ffb-harvesting-report-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "ffb-harvesting-report",
+      storageBucket: "ffb-harvesting-report.firebasestorage.app",
+      messagingSenderId: "783684002527",
+      appId: "1:783684002527:web:f0a5396d9495ebaf5abf6a"
+    };
+    
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.database();
+
+    // --- LOGIN UI HANDLERS ---
+    const loginOverlay = document.getElementById('login-overlay');
+    const appLayout = document.getElementById('app-layout-main');
+    const emailInp = document.getElementById('login-email');
+    const passInp = document.getElementById('login-pass');
+    const loginErr = document.getElementById('login-error');
+
+    document.getElementById('btn-login').onclick = () => {
+        loginErr.textContent = '';
+        auth.signInWithEmailAndPassword(emailInp.value, passInp.value).catch(e => loginErr.textContent = e.message);
+    };
+    document.getElementById('btn-signup').onclick = () => {
+        loginErr.textContent = '';
+        auth.createUserWithEmailAndPassword(emailInp.value, passInp.value).catch(e => loginErr.textContent = e.message);
+    };
+    
+    // Logout button injection to header
+    setTimeout(() => {
+        const headerRight = document.querySelector('.header-right');
+        if (headerRight && !document.getElementById('btn-logout')) {
+            const btnLogout = document.createElement('button');
+            btnLogout.id = 'btn-logout';
+            btnLogout.className = 'btn-secondary';
+            btnLogout.style.marginLeft = '1rem';
+            btnLogout.textContent = 'Logout';
+            btnLogout.onclick = () => auth.signOut();
+            headerRight.appendChild(btnLogout);
+        }
+    }, 1000);
+
+    let isAppRunning = false;
+    auth.onAuthStateChanged(user => {
+        if (user) {
+            loginOverlay.style.display = 'none';
+            appLayout.style.display = 'flex';
+            if (!isAppRunning) {
+                isAppRunning = true;
+                runMainApplication();
+            }
+        } else {
+            loginOverlay.style.display = 'flex';
+            appLayout.style.display = 'none';
+            if (isAppRunning) {
+                window.location.reload(); // Reload to reset state on logout
+            }
+        }
+    });
+
+    const runMainApplication = () => {
     // App State
     Object.assign(state, {
         reports: {}, // { "2025": [ { block_id, ha, op_year, gang }, ... ] }
@@ -62,12 +126,19 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const saveState = (silent = false) => {
+        if (!auth.currentUser) return;
         try {
-            localStorage.setItem('harvesting_app_state', JSON.stringify(state));
-            if (!silent) alert("Data saved successfully!");
+            db.ref('users/' + auth.currentUser.uid + '/app_state').set(JSON.stringify(state))
+                .then(() => {
+                    if (!silent) alert("Data saved successfully to cloud!");
+                })
+                .catch(e => {
+                    console.error("Firebase save error:", e);
+                    if (!silent) alert("Failed to save data. Please check console for errors.");
+                });
         } catch (e) {
             console.error("Error saving state:", e);
-            if (!silent) alert("Failed to save data. Please check console for errors.");
+            if (!silent) alert("Failed to save data completely.");
         }
     };
 
@@ -2371,79 +2442,54 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
 
-            console.log("Listeners bound. Checking localStorage...");
+            console.log("Listeners bound. Checking cloud storage...");
 
-            // Check if LocalStorage has state
-            const savedStateStr = localStorage.getItem('harvesting_app_state');
-            if (savedStateStr) {
-                try {
-                    const savedState = JSON.parse(savedStateStr);
-                    console.log("Loading saved state:", savedState);
-                    // Merge saved state
-                    Object.assign(state, savedState);
-
-                    // Ensure defaults for missing keys (if any)
-                    if (!state.ffbBudget || Object.keys(state.ffbBudget).length === 0) {
-                        state.ffbBudget = {};
-                        if (typeof INITIAL_FFB_BUDGET !== 'undefined') {
-                            state.ffbBudget["2026"] = JSON.parse(JSON.stringify(INITIAL_FFB_BUDGET));
-                        }
+            // Helper function to hydrate gangs and render
+            const finishInit = () => {
+                if (!state.ffbBudget || Object.keys(state.ffbBudget).length === 0) {
+                    state.ffbBudget = {};
+                    if (typeof INITIAL_FFB_BUDGET !== 'undefined') {
+                        state.ffbBudget["2026"] = JSON.parse(JSON.stringify(INITIAL_FFB_BUDGET));
                     }
-                    if (!state.rainfall) state.rainfall = {};
-                    if (!state.rainfall["2025"] && typeof INITIAL_RAINFALL_2025 !== 'undefined') {
-                        state.rainfall["2025"] = JSON.parse(JSON.stringify(INITIAL_RAINFALL_2025));
-                    }
-                    if (!state.rainfall["2026"] && typeof INITIAL_RAINFALL_2026 !== 'undefined') {
-                        state.rainfall["2026"] = JSON.parse(JSON.stringify(INITIAL_RAINFALL_2026));
-                    }
-                    if (!state.reports) state.reports = {};
-                    if (!state.gangsByYear) state.gangsByYear = {};
-
-                    // Hydrate gangsByYear for each report year if empty
-                    Object.keys(state.reports).forEach(year => {
-                        if (!state.gangsByYear[year] || state.gangsByYear[year].length === 0) {
-                            const yearBlocks = state.reports[year] || [];
-                            const uniqueGangs = [...new Set(yearBlocks.map(b => b.gang))].filter(g => g && g !== "Unassigned");
-                            // Also include predefined gangs for 2025 as a base
-                            if (year === "2025") {
-                                const baseGangs = Object.keys(predefinedGangs);
-                                state.gangsByYear[year] = [...new Set([...baseGangs, ...uniqueGangs])].sort();
-                            } else {
-                                state.gangsByYear[year] = uniqueGangs.sort();
-                            }
-                        }
-                    });
-
-                    renderSidebar();
-                    renderTable();
-                    recalculateTotals();
-
-                    loadingEl.classList.add('hidden');
-                    tableContainer.classList.remove('hidden');
-
-                    // DO NOT return early here - we need to bind event listeners below
-                } catch (e) {
-                    console.error("Local storage Parse error, falling back to defaults.", e);
                 }
-            } else {
-                // Initial load from file if no localStorage
+                if (!state.rainfall) state.rainfall = {};
+                if (!state.rainfall["2025"] && typeof INITIAL_RAINFALL_2025 !== 'undefined') {
+                    state.rainfall["2025"] = JSON.parse(JSON.stringify(INITIAL_RAINFALL_2025));
+                }
+                if (!state.rainfall["2026"] && typeof INITIAL_RAINFALL_2026 !== 'undefined') {
+                    state.rainfall["2026"] = JSON.parse(JSON.stringify(INITIAL_RAINFALL_2026));
+                }
+                if (!state.reports) state.reports = {};
+                if (!state.gangsByYear) state.gangsByYear = {};
+
+                Object.keys(state.reports).forEach(year => {
+                    if (!state.gangsByYear[year] || state.gangsByYear[year].length === 0) {
+                        const yearBlocks = state.reports[year] || [];
+                        const uniqueGangs = [...new Set(yearBlocks.map(b => b.gang))].filter(g => g && g !== "Unassigned");
+                        if (year === "2025" && typeof predefinedGangs !== 'undefined') {
+                            const baseGangs = Object.keys(predefinedGangs);
+                            state.gangsByYear[year] = [...new Set([...baseGangs, ...uniqueGangs])].sort();
+                        } else {
+                            state.gangsByYear[year] = uniqueGangs.sort();
+                        }
+                    }
+                });
+
+                renderSidebar();
+                renderTable();
+                recalculateTotals();
+
+                loadingEl.classList.add('hidden');
+                tableContainer.classList.remove('hidden');
+            };
+
+            const loadFreshData = async () => {
                 const res = await fetch('grouped_data.json');
                 if (!res.ok) throw new Error("Failed to load block data.");
                 const data = await res.json();
 
-                // Load all initial blocks into report year "2025" by default
                 state.reports = {};
                 state.reports["2025"] = [];
-
-                state.ffbBudget = state.ffbBudget || {};
-                state.ffbBudget["2026"] = typeof INITIAL_FFB_BUDGET !== 'undefined' ? JSON.parse(JSON.stringify(INITIAL_FFB_BUDGET)) : [];
-
-                state.rainfall = state.rainfall || {};
-                state.rainfall["2025"] = typeof INITIAL_RAINFALL_2025 !== 'undefined' ? JSON.parse(JSON.stringify(INITIAL_RAINFALL_2025)) : {};
-                state.rainfall["2026"] = typeof INITIAL_RAINFALL_2026 !== 'undefined' ? JSON.parse(JSON.stringify(INITIAL_RAINFALL_2026)) : {};
-
-                state.gangsByYear = {};
-                state.gangsByYear["2025"] = Object.keys(predefinedGangs).sort();
 
                 if (data.groups) {
                     data.groups.forEach(group => {
@@ -2464,20 +2510,52 @@ document.addEventListener('DOMContentLoaded', () => {
                 state.selectedReportYear = "2025";
                 state.activeViewType = 'report_year';
                 state.activeViewValue = "2025";
+                
+                finishInit();
+                saveState(true); // Push fresh data to cloud
+            };
 
-                renderSidebar();
-                renderTable();
-                recalculateTotals();
+            const loadLocalOrFresh = async () => {
+                const savedStateStr = localStorage.getItem('harvesting_app_state');
+                if (savedStateStr) {
+                    try {
+                        Object.assign(state, JSON.parse(savedStateStr));
+                        finishInit();
+                        saveState(true); // Migrate local data to cloud
+                    } catch (e) {
+                        console.error("Local storage Parse error", e);
+                        await loadFreshData();
+                    }
+                } else {
+                    await loadFreshData();
+                }
+            };
 
-                loadingEl.classList.add('hidden');
-                tableContainer.classList.remove('hidden');
+            // Main DB Fetch
+            try {
+                const snapshot = await db.ref('users/' + auth.currentUser.uid + '/app_state').once('value');
+                const cloudData = snapshot.val();
+                
+                if (cloudData) {
+                    console.log("Loading cloud state...");
+                    Object.assign(state, JSON.parse(cloudData));
+                    finishInit();
+                } else {
+                    console.log("No cloud state found. Checking local storage for migration...");
+                    await loadLocalOrFresh();
+                }
+            } catch (e) {
+                console.error("Firebase read error:", e);
+                // Fallback completely to local if offline or error
+                await loadLocalOrFresh();
             }
 
         } catch (error) {
             console.error(error);
             loadingEl.innerHTML = `< p style = "color:var(--danger)" > Error initializing dashboard: ${error.message}</p > `;
         }
-    };
+    }; // end init
 
     init();
+    }; // end runMainApplication
 });
