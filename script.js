@@ -2111,7 +2111,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="font-bold text-right" style="white-space: nowrap;">SUBTOTAL ${phaseName}</div>
                         </div>
                     </td>
-                    <td class="text-right font-bold" style="position: sticky; left: 340px; width: 80px; min-width: 80px; max-width: 80px; background-color: var(--bg-secondary); z-index: 6; border-right: 2px solid var(--border-color);">${group.tHa.toFixed(2)}</td>
+                    <td class="text-right font-bold" style="position: sticky; left: 340px; width: 100px; min-width: 100px; max-width: 100px; background-color: var(--bg-secondary); z-index: 6; border-right: 2px solid var(--border-color);">${group.tHa.toFixed(2)}</td>
                     ${subTMonthsHtml}
                     <td class="text-right font-bold col-total" style="border-left: 2px solid var(--border-color);">${Math.round(groupRowTotal)}</td>
                 </tr>
@@ -2162,7 +2162,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 value="${(row.mtHaMth || 0).toFixed(2)}"
                             />
                         </td>
-                        <td style="padding: 0; position: sticky; left: 340px; width: 80px; min-width: 80px; max-width: 80px; background-color: var(--bg-primary); z-index: 5; border-right: 2px solid var(--border-color);">
+                        <td style="padding: 0; position: sticky; left: 340px; width: 100px; min-width: 100px; max-width: 100px; background-color: var(--bg-primary); z-index: 5; border-right: 2px solid var(--border-color);">
                             <input type="number" step="0.01" class="edit-input ffb-input text-right font-bold" style="width: 100%; border: none; background: var(--bg-primary); padding: 0.4rem;" 
                                 data-field="ha" data-block-id="${row.block_id}" data-phase="${row.phase}"
                                 value="${(row.ha || 0).toFixed(2)}"
@@ -2233,7 +2233,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <th style="width: 70px; min-width: 70px; max-width: 70px; position: sticky; left: 130px; background-color: var(--bg-secondary); z-index: 7; border-right: 1px solid var(--border-color);">Harvest<br/>Yr.</th>
                             <th style="width: 70px; min-width: 70px; max-width: 70px; position: sticky; left: 200px; background-color: var(--bg-secondary); z-index: 7; border-right: 1px solid var(--border-color);">Mt/ha/yr</th>
                             <th style="width: 70px; min-width: 70px; max-width: 70px; position: sticky; left: 270px; background-color: var(--bg-secondary); z-index: 7; border-right: 1px solid var(--border-color);">Mt/ha/mth</th>
-                            <th style="width: 80px; min-width: 80px; max-width: 80px; position: sticky; left: 340px; background-color: var(--bg-secondary); z-index: 7; border-right: 2px solid var(--border-color);">HA</th>
+                            <th style="width: 100px; min-width: 100px; max-width: 100px; position: sticky; left: 340px; background-color: var(--bg-secondary); z-index: 7; border-right: 2px solid var(--border-color);">HA</th>
                             ${['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'].map((m) => `<th style="min-width: 60px; text-align: right; padding: 0.4rem; font-size: 0.85em;">${m}</th>`).join('')}
                             <th style="min-width: 80px; text-align: right; border-left: 2px solid var(--border-color);" class="col-total">TOTAL</th>
                             <th style="min-width: 40px; text-align: center;"></th>
@@ -2245,7 +2245,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <tfoot>
                         <tr class="row-grand-total">
                             <td colspan="5" class="grand-total-label" style="position: sticky; left: 0; width: 340px; min-width: 340px; max-width: 340px; background-color: var(--grand-total-bg); z-index: 6; border-right: 1px solid var(--border-color); text-align: right; padding-right: 1rem;">GRAND TOTAL</td>
-                            <td class="text-right font-bold" style="position: sticky; left: 340px; width: 80px; min-width: 80px; max-width: 80px; background-color: var(--grand-total-bg); z-index: 6; border-right: 2px solid var(--border-color);">${grandTotalHa.toFixed(2)}</td>
+                            <td class="text-right font-bold" style="position: sticky; left: 340px; width: 100px; min-width: 100px; max-width: 100px; background-color: var(--grand-total-bg); z-index: 6; border-right: 2px solid var(--border-color);">${grandTotalHa.toFixed(2)}</td>
                             ${tFootMonthsHtml}
                             <td class="text-right font-bold col-total" style="border-left: 2px solid var(--border-color);">${Math.round(grandTotalRowSum)}</td>
                             <td></td>
