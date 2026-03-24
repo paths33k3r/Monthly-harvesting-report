@@ -64,14 +64,14 @@ const renderIntervalTable = () => {
 
         const safeGangId = gangName.replace(/[^a-zA-Z0-9]/g, '_');
 
-        gangWrapper.innerHTML = \`
+        gangWrapper.innerHTML = `
                 <div class="performance-header" style="display: flex; justify-content: space-between; align-items: flex-end;">
                     <div>
-                        <h2>HARVESTING INTERVAL FOR THE MONTH OF \${month.toUpperCase()} \${year}</h2>
+                        <h2>HARVESTING INTERVAL FOR THE MONTH OF ${month.toUpperCase()} ${year}</h2>
                         <div class="perf-stats">
                             <div class="stat-row">
                                 <label>HARVESTER TEAM:</label>
-                                <span class="font-bold">\${gangName.toUpperCase()}</span>
+                                <span class="font-bold">${gangName.toUpperCase()}</span>
                             </div>
                         </div>
                     </div>
@@ -83,23 +83,24 @@ const renderIntervalTable = () => {
                             <tr>
                                 <th style="min-width: 60px; position: sticky; left: 0; background: var(--bg-primary); z-index: 1; border-right: 2px solid var(--border-color);">BLOCK</th>
                                 <th style="min-width: 80px; border-right: 2px solid var(--border-color);">HA</th>
-                                \${Array.from({length: 31}, (_, i) => \`<th style="min-width: 40px; text-align: center; font-size: 0.8em; padding: 0.2rem;">\${i+1}</th>\`).join('')}
+                                ${Array.from({length: 31}, (_, i) => `<th style="min-width: 40px; text-align: center; font-size: 0.8em; padding: 0.2rem;">${i+1}</th>`).join('')}
                                 <th style="min-width: 90px; text-align: center; border-left: 2px solid var(--border-color);">TOTAL MANDAY</th>
+                                <th style="min-width: 90px; text-align: center; border-left: 2px solid var(--border-color);">FFB BUDGET</th>
                                 <th style="min-width: 80px; text-align: center;">1ST RD</th>
                                 <th style="min-width: 80px; text-align: center;">2ND RD</th>
                                 <th style="min-width: 80px; text-align: center;">3RD RD</th>
                                 <th style="min-width: 80px; text-align: center;">4TH RD</th>
                             </tr>
                         </thead>
-                        <tbody id="interval-table-body-\${safeGangId}">
+                        <tbody id="interval-table-body-${safeGangId}">
                         </tbody>
                     </table>
                 </div>
-            \`;
+            `;
 
             intervalWrapper.appendChild(gangWrapper);
             
-            const tbody = document.getElementById(\`interval-table-body-\${safeGangId}\`);
+            const tbody = document.getElementById(`interval-table-body-${safeGangId}`);
 
             gBlocks.forEach(block => {
                 const bId = block.block_id;
@@ -111,8 +112,17 @@ const renderIntervalTable = () => {
                 if (typeof bData.r4 === "undefined") bData.r4 = 0;
 
                 const tr = document.createElement('tr');
-                tr.innerHTML = \`<td style="position: sticky; left: 0; background: var(--bg-primary); font-weight: 500; border-right: 2px solid var(--border-color);" class="text-center cell-block">\${bId}</td>
-                                <td class="text-right" style="border-right: 2px solid var(--border-color);">\${formatHA(block.ha)}</td>\`;
+                tr.innerHTML = `<td style="position: sticky; left: 0; background: var(--bg-primary); font-weight: 500; border-right: 2px solid var(--border-color);" class="text-center cell-block">${bId}</td>
+                                <td class="text-right" style="border-right: 2px solid var(--border-color);">${formatHA(block.ha)}</td>`;
+                
+                // Dynamically sync FFB Budget for current month
+                const monthIndex = months.indexOf(month);
+                if (state.ffbBudget && state.ffbBudget[year]) {
+                    const ffbRow = state.ffbBudget[year].find(r => String(r.block_id).trim() === String(bId).trim());
+                    if (ffbRow && ffbRow.months && ffbRow.months.length > monthIndex) {
+                        bData.budget = ffbRow.months[monthIndex] || 0;
+                    }
+                }
                 
                 bData.days.forEach((dayVal, i) => {
                     const td = document.createElement('td');
@@ -151,6 +161,7 @@ const renderIntervalTable = () => {
                 };
 
                 tr.appendChild(createPerfInput('manday', (v) => bData.manday = v, "border-left: 2px solid var(--border-color);"));
+                tr.appendChild(createPerfInput('budget', (v) => bData.budget = v, "border-left: 2px solid var(--border-color);"));
                 tr.appendChild(createPerfInput('r1', (v) => bData.r1 = v));
                 tr.appendChild(createPerfInput('r2', (v) => bData.r2 = v));
                 tr.appendChild(createPerfInput('r3', (v) => bData.r3 = v));

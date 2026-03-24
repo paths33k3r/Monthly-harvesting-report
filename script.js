@@ -2,17 +2,81 @@ window.state = window.state || {};
 const state = window.state;
 
 document.addEventListener('DOMContentLoaded', () => {
+    // --- FIREBASE INIT ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyAavuTK1wjzYRqw54GAS5QW8ku0ahREN10",
+      authDomain: "ffb-harvesting-report.firebaseapp.com",
+      databaseURL: "https://ffb-harvesting-report-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "ffb-harvesting-report",
+      storageBucket: "ffb-harvesting-report.firebasestorage.app",
+      messagingSenderId: "783684002527",
+      appId: "1:783684002527:web:f0a5396d9495ebaf5abf6a"
+    };
+    
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.database();
+
+    // --- LOGIN UI HANDLERS ---
+    const loginOverlay = document.getElementById('login-overlay');
+    const appLayout = document.getElementById('app-layout-main');
+    const emailInp = document.getElementById('login-email');
+    const passInp = document.getElementById('login-pass');
+    const loginErr = document.getElementById('login-error');
+
+    document.getElementById('btn-login').onclick = () => {
+        loginErr.textContent = '';
+        auth.signInWithEmailAndPassword(emailInp.value, passInp.value).catch(e => loginErr.textContent = e.message);
+    };
+    document.getElementById('btn-signup').onclick = () => {
+        loginErr.textContent = '';
+        auth.createUserWithEmailAndPassword(emailInp.value, passInp.value).catch(e => loginErr.textContent = e.message);
+    };
+    
+    // Logout button injection to header
+    setTimeout(() => {
+        const headerRight = document.querySelector('.header-right');
+        if (headerRight && !document.getElementById('btn-logout')) {
+            const btnLogout = document.createElement('button');
+            btnLogout.id = 'btn-logout';
+            btnLogout.className = 'btn-secondary';
+            btnLogout.style.marginLeft = '1rem';
+            btnLogout.textContent = 'Logout';
+            btnLogout.onclick = () => auth.signOut();
+            headerRight.appendChild(btnLogout);
+        }
+    }, 1000);
+
+    let isAppRunning = false;
+    auth.onAuthStateChanged(user => {
+        if (user) {
+            loginOverlay.style.display = 'none';
+            appLayout.style.display = 'flex';
+            if (!isAppRunning) {
+                isAppRunning = true;
+                runMainApplication();
+            }
+        } else {
+            loginOverlay.style.display = 'flex';
+            appLayout.style.display = 'none';
+            if (isAppRunning) {
+                window.location.reload(); // Reload to reset state on logout
+            }
+        }
+    });
+
+    const runMainApplication = () => {
+    // App State
     Object.assign(state, {
         reports: {}, // { "2025": [ { block_id, ha, op_year, gang }, ... ] }
         performance: {}, // { "2025": { "Jan": { "DARSO GANG": { manpower: 17, leave: 0, blocks: { "15": { budget: 56.34, r1: 33.38, r2: 10.51, r3: 20.07, manday: 56 } } } } } } }
-        ffbBudget: null,
-        rainfall: null,
-        harvestingReports: null,
-        harvestingReportsMeta: null,
+        ffbBudget: null, // initialized later
+        rainfall: null, // initialized later
+        gangsByYear: {}, // { "2025": ["DARSO GANG", ...], "2026": [...] }
         selectedReportYear: null,
         activeViewType: 'report_year',
         activeViewValue: null,
-        activePerfMonth: null
+        activePerfMonth: null // Used when activeViewType === 'perf_month'
     });
 
     // Predefined Gang Assignments
@@ -25,12 +89,55 @@ document.addEventListener('DOMContentLoaded', () => {
         "WENDERLINUS GANG": ["25", "26A", "27", "28", "30", "31", "33", "39"]
     };
 
+
+
     const getGangForBlock = (blockId) => {
-        for (const [gangName, blocks] of Object.entries(predefinedGangs)) {
-            if (blocks.includes(blockId)) return gangName;
+        for (const [gang, blocks] of Object.entries(predefinedGangs)) {
+            if (blocks.includes(blockId)) return gang;
         }
         return "Unassigned";
     };
+
+    const getPeakManpowerForGang = (year, month, gangName) => {
+        if (!state.performance[year] || !state.performance[year][month] || !state.performance[year][month][gangName]) return 0;
+        const gangData = state.performance[year][month][gangName];
+        if (!gangData.blocks) return 0;
+
+        // Days 1..31
+        const dailyTotals = new Array(31).fill(0);
+
+        Object.values(gangData.blocks).forEach(blockPerf => {
+            if (blockPerf.days && Array.isArray(blockPerf.days)) {
+                blockPerf.days.forEach((day, index) => {
+                    if (index < 31) {
+                        const val = parseFloat(day.hpVal) || 0;
+                        dailyTotals[index] += val;
+                    }
+                });
+            }
+        });
+
+        const peak = Math.max(...dailyTotals);
+        return peak > 0 ? peak : 0;
+    };
+
+    const saveState = (silent = false) => {
+        if (!auth.currentUser) return;
+        try {
+            db.ref('users/' + auth.currentUser.uid + '/app_state').set(JSON.stringify(state))
+                .then(() => {
+                    if (!silent) alert("Data saved successfully to cloud!");
+                })
+                .catch(e => {
+                    console.error("Firebase save error:", e);
+                    if (!silent) alert("Failed to save data. Please check console for errors.");
+                });
+        } catch (e) {
+            console.error("Error saving state:", e);
+            if (!silent) alert("Failed to save data completely.");
+        }
+    };
+
 
     // DOM Elements
     const tableBody = document.getElementById('table-body');
@@ -48,8 +155,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Performance and Interval DOM Elements
     const perfWrapper = document.getElementById('performance-wrapper');
     const intervalWrapper = document.getElementById('interval-wrapper');
-    const harvestingYtdWrapper = document.getElementById('harvesting-ytd-wrapper');
-    const harvesterComparisonWrapper = document.getElementById('harvester-comparison-wrapper');
+    const ffbWrapper = document.getElementById('ffb-budget-wrapper');
+    const rainfallWrapper = document.getElementById('rainfall-wrapper');
 
     // Chart instances keyed by gang name
     const performanceChartInstances = {};
@@ -292,21 +399,16 @@ document.addEventListener('DOMContentLoaded', () => {
             // Merge imported gangs with existing blocks. 
             // DOES NOT inject new blocks into Planting Phase Records.
             newBlocks.forEach(importedBlock => {
-                const existing = state.reports[targetYear].find(b => b.block_id === importedBlock.block_id);
-                if (existing) {
-                    existing.gang = importedBlock.gang;
-                }
-
                 // Also update the performance data for the specific block in the target month
                 const gangName = importedBlock.gang;
                 if (!state.performance[targetYear][targetMonth][gangName]) {
                     state.performance[targetYear][targetMonth][gangName] = { manpower: 0, leave: 0, blocks: {} };
                 }
-                const pBlocks = state.performance[targetYear][targetMonth][gangName].blocks;
 
+                const pBlocks = state.performance[targetYear][targetMonth][gangName].blocks;
                 pBlocks[importedBlock.block_id] = {
                     ha: importedBlock.ha,
-                    budget: pBlocks[importedBlock.block_id]?.budget || 0, // preserve budget if it exists
+                    budget: pBlocks[importedBlock.block_id]?.budget || 0,
                     manday: importedBlock.manday,
                     r1: importedBlock.r1,
                     r2: importedBlock.r2,
@@ -314,6 +416,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     r4: importedBlock.r4,
                     days: importedBlock.days
                 };
+            });
+
+            // After importing blocks, calculate and set peak manpower for all gangs in this month
+            Object.keys(state.performance[targetYear][targetMonth]).forEach(key => {
+                if (key !== 'gangAssignments') {
+                    const gangPerf = state.performance[targetYear][targetMonth][key];
+                    if (!gangPerf.isManpowerManual) {
+                        const peak = getPeakManpowerForGang(targetYear, targetMonth, key);
+                        gangPerf.manpower = peak;
+                    }
+                }
             });
 
             // Reset input so the same file can be triggered again if needed
@@ -328,28 +441,32 @@ document.addEventListener('DOMContentLoaded', () => {
             renderSidebar();
             renderTable();
             recalculateTotals();
-
-            await loadHarvestingReports();
-            renderSidebar();
-            renderTable();
+            saveState(true);
         };
         reader.readAsArrayBuffer(file);
     };
 
 
 
-    // Helper for manual import if needed
+    // Helper for manual import if needed (removed per user request - layout hardcoded directly)
+
     const handleAddReportYearManual = (newYearStr) => {
         const newYear = newYearStr.trim();
         if (state.reports[newYear]) return;
         state.reports[newYear] = [];
+        state.gangsByYear[newYear] = state.gangsByYear[state.selectedReportYear] ? JSON.parse(JSON.stringify(state.gangsByYear[state.selectedReportYear])) : [];
         state.selectedReportYear = newYear;
         state.activeViewType = 'report_year';
         state.activeViewValue = newYear;
+        saveState(true);
     };
 
     const handleAddReportYear = (e) => {
-        if (e) e.stopPropagation();
+        console.log("handleAddReportYear triggered");
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
 
         const newYearStr = prompt("Enter the new Report Year (e.g., 2026):");
         if (!newYearStr || newYearStr.trim() === "") return;
@@ -363,6 +480,58 @@ document.addEventListener('DOMContentLoaded', () => {
         // Clone current year data if exists, otherwise empty
         const sourceData = state.reports[state.selectedReportYear] || [];
         state.reports[newYear] = JSON.parse(JSON.stringify(sourceData));
+        
+        const sourceGangs = state.gangsByYear[state.selectedReportYear] || [];
+        state.gangsByYear[newYear] = JSON.parse(JSON.stringify(sourceGangs));
+
+        // Initialize empty rainfall data for the new year
+        if (!state.rainfall) state.rainfall = {};
+        if (!state.rainfall[newYear]) {
+            if (typeof createEmptyRainfallYear === 'function') {
+                state.rainfall[newYear] = createEmptyRainfallYear();
+            } else {
+                state.rainfall[newYear] = {};
+                const monthsArr = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+                monthsArr.forEach(m => state.rainfall[newYear][m] = { days: 0, mm: 0 });
+            }
+        }
+
+        state.selectedReportYear = newYear;
+        state.activeViewType = 'report_year';
+        state.activeViewValue = newYear;
+
+        renderSidebar();
+        renderTable();
+        recalculateTotals();
+    };
+
+    const handleDuplicateGangYear = (e) => {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        const years = Object.keys(state.reports).sort((a, b) => parseInt(b) - parseInt(a));
+        const sourceYear = state.selectedReportYear && state.reports[state.selectedReportYear] ?
+            state.selectedReportYear : (years.length > 0 ? years[0] : null);
+
+        if (!sourceYear) {
+            alert("No existing year found to duplicate from.");
+            return;
+        }
+
+        const newYearStr = prompt(`Duplicate gangs from Year ${sourceYear} to new Year (e.g., 2026):`);
+        if (!newYearStr || newYearStr.trim() === "") return;
+        const newYear = newYearStr.trim();
+
+        if (state.reports[newYear]) {
+            alert(`Year ${newYear} already exists!`);
+            return;
+        }
+
+        // Deep copy
+        state.reports[newYear] = JSON.parse(JSON.stringify(state.reports[sourceYear]));
+        state.gangsByYear[newYear] = JSON.parse(JSON.stringify(state.gangsByYear[sourceYear] || []));
 
         state.selectedReportYear = newYear;
         state.activeViewType = 'report_year';
@@ -375,16 +544,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const renderSidebar = () => {
         // Handle Sidebar Header styling
+        const navHeaderBudget = document.getElementById('nav-header-budget');
         const navHeaderYear = document.getElementById('nav-header-year');
         const navHeaderGangYear = document.getElementById('nav-header-gang-year');
         const navHeaderInterval = document.getElementById('nav-header-interval');
         const navHeaderPerf = document.getElementById('nav-header-perf');
 
+        if (navHeaderBudget) navHeaderBudget.style.color = state.activeViewType === 'ffb_budget' ? 'var(--text-primary)' : '';
         if (navHeaderYear) navHeaderYear.style.color = state.activeViewType === 'report_year' ? 'var(--text-primary)' : '';
         if (navHeaderGangYear) navHeaderGangYear.style.color = state.activeViewType === 'gang' ? 'var(--text-primary)' : '';
         if (navHeaderInterval) navHeaderInterval.style.color = state.activeViewType === 'interval_month' ? 'var(--text-primary)' : '';
-        const perfActiveTypes = ['perf_month', 'interval_month', 'harvesting_ytd', 'harvesters_comparison'];
-        if (navHeaderPerf) navHeaderPerf.style.color = perfActiveTypes.includes(state.activeViewType) ? 'var(--text-primary)' : '';
+        if (navHeaderPerf) navHeaderPerf.style.color = state.activeViewType === 'perf_month' ? 'var(--text-primary)' : '';
+        
+        const navHeaderYtd = document.getElementById('nav-header-ytd');
+        const navHeaderCurrentPrev = document.getElementById('nav-header-current-prev');
+        if (navHeaderYtd) navHeaderYtd.style.color = state.activeViewType === 'ytd' ? 'var(--text-primary)' : '';
+        if (navHeaderCurrentPrev) navHeaderCurrentPrev.style.color = state.activeViewType === 'current_prev' ? 'var(--text-primary)' : '';
 
         // Render Report Years
         if (sidebarYearList) {
@@ -446,18 +621,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const ulGangs = document.createElement('ul');
                 ulGangs.className = 'nav-submenu';
-                ulGangs.style.display = isOpen ? 'block' : 'none';
 
                 const blocks = state.reports[year] || [];
-                const gangs = [...new Set(blocks.map(b => b.gang))].filter(Boolean).sort();
+                // Use persistent gang list for the year
+                const gangs = (state.gangsByYear[year] || []).sort();
 
                 // Helper for rendering edit/delete icons in Gang list
-                const createActionIcon = (text, onClick) => {
+                const createActionIcon = (text, className, onClick) => {
                     const span = document.createElement('span');
+                    span.className = `sidebar-mini-icon ${className}`;
                     span.innerHTML = text;
                     span.style.cursor = 'pointer';
-                    span.style.fontSize = '0.8em';
+                    span.style.fontSize = '0.9em';
+                    span.style.padding = '2px 4px';
                     span.onclick = (e) => {
+                        e.preventDefault();
                         e.stopPropagation();
                         onClick();
                     };
@@ -487,24 +665,63 @@ document.addEventListener('DOMContentLoaded', () => {
                     actionDiv.style.display = 'flex';
                     actionDiv.style.gap = '0.5rem';
 
-                    actionDiv.appendChild(createActionIcon('✏️', () => {
+                    actionDiv.appendChild(createActionIcon('✏️', 'edit-gang', () => {
                         const newName = prompt(`Rename gang '${gang}' in Year ${year}:`);
-                        if (newName && newName.trim() !== "") {
+                        if (newName && newName.trim() !== "" && newName.trim() !== gang) {
+                            const trimmedName = newName.trim();
+                            // Update reports
                             blocks.forEach(b => {
-                                if (b.gang === gang) b.gang = newName.trim();
+                                if (b.gang === gang) b.gang = trimmedName;
                             });
+                            // Update persistent gang list
+                            const gIdx = state.gangsByYear[year].indexOf(gang);
+                            if (gIdx > -1) state.gangsByYear[year][gIdx] = trimmedName;
+
+                            // Update performance data if exists
+                            if (state.performance[year]) {
+                                Object.keys(state.performance[year]).forEach(m => {
+                                    const mData = state.performance[year][m];
+                                    if (mData.gangAssignments) {
+                                        Object.keys(mData.gangAssignments).forEach(bId => {
+                                            if (mData.gangAssignments[bId] === gang) mData.gangAssignments[bId] = trimmedName;
+                                        });
+                                    }
+                                    if (mData[gang]) {
+                                        mData[trimmedName] = mData[gang];
+                                        delete mData[gang];
+                                    }
+                                });
+                            }
                             if (state.activeViewType === 'gang' && state.activeViewValue === gang && state.selectedReportYear === year) {
-                                state.activeViewValue = newName.trim();
+                                state.activeViewValue = trimmedName;
                             }
                             renderSidebar();
                             renderTable();
                         }
                     }));
 
-                    actionDiv.appendChild(createActionIcon('🗑️', () => {
-                        if (confirm(`WARNING: Remove Gang '${gang}' from Year ${year}? ALL blocks assigned to this gang will also be completely deleted from this Year.`)) {
-                            // Filter out blocks that belong to the deleted gang
-                            state.reports[year] = state.reports[year].filter(b => b.gang !== gang);
+                    actionDiv.appendChild(createActionIcon('🗑️', 'delete-gang', () => {
+                        if (confirm(`WARNING: Remove Gang '${gang}' from Year ${year}? This will return all blocks in this gang to 'Unassigned' (it will NOT delete the planting phase data).`)) {
+                            // Non-destructive: Just unassign blocks
+                            blocks.forEach(b => {
+                                if (b.gang === gang) b.gang = "Unassigned";
+                            });
+
+                            // Remove from persistent gang list
+                            state.gangsByYear[year] = state.gangsByYear[year].filter(g => g !== gang);
+
+                            // Update performance data
+                            if (state.performance[year]) {
+                                Object.keys(state.performance[year]).forEach(m => {
+                                    const mData = state.performance[year][m];
+                                    if (mData.gangAssignments) {
+                                        Object.keys(mData.gangAssignments).forEach(bId => {
+                                            if (mData.gangAssignments[bId] === gang) mData.gangAssignments[bId] = "Unassigned";
+                                        });
+                                    }
+                                    if (mData[gang]) delete mData[gang];
+                                });
+                            }
 
                             if (state.activeViewType === 'gang' && state.activeViewValue === gang && state.selectedReportYear === year) {
                                 state.activeViewType = 'report_year';
@@ -543,9 +760,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     e.stopPropagation();
                     const newGang = prompt(`Enter new Gang name for Year ${year}:`);
                     if (newGang && newGang.trim()) {
+                        const trimmed = newGang.trim();
+                        if (!state.gangsByYear[year]) state.gangsByYear[year] = [];
+                        if (!state.gangsByYear[year].includes(trimmed)) {
+                            state.gangsByYear[year].push(trimmed);
+                        }
                         state.selectedReportYear = year;
                         state.activeViewType = 'gang';
-                        state.activeViewValue = newGang.trim();
+                        state.activeViewValue = trimmed;
                         renderSidebar();
                         renderTable();
                         recalculateTotals();
@@ -554,26 +776,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 liAddGang.appendChild(aAddGang);
                 ulGangs.appendChild(liAddGang);
 
-                // Add nested toggle logic specifically for this dynamic header
-                divYearHeader.onclick = (e) => {
-                    e.stopPropagation();
-                    const isClosing = divYearHeader.classList.contains('open');
-
-                    if (isClosing) {
-                        divYearHeader.classList.remove('open');
-                        ulGangs.style.display = 'none';
-                    } else {
-                        divYearHeader.classList.add('open');
-                        ulGangs.style.display = 'block';
-                    }
-                };
-
                 liYear.appendChild(divYearHeader);
                 liYear.appendChild(ulGangs);
 
                 sidebarGangYearList.appendChild(liYear);
             });
         }
+
 
         // Render Performance Navigation
         const renderMonthNav = (containerId, targetViewType) => {
@@ -594,7 +803,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const ulMonthsContainer = document.createElement('div');
                 ulMonthsContainer.className = 'nav-submenu';
-                ulMonthsContainer.style.display = isYearOpen ? 'block' : 'none';
                 ulMonthsContainer.style.padding = '0.5rem 1rem';
 
                 const selectMonth = document.createElement('select');
@@ -614,18 +822,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     defaultOpt.selected = true;
                 }
                 selectMonth.appendChild(defaultOpt);
-
-                divYearHeader.onclick = (e) => {
-                    e.stopPropagation();
-                    const isClosing = divYearHeader.classList.contains('open');
-                    if (isClosing) {
-                        divYearHeader.classList.remove('open');
-                        ulMonthsContainer.style.display = 'none';
-                    } else {
-                        divYearHeader.classList.add('open');
-                        ulMonthsContainer.style.display = 'block';
-                    }
-                };
 
                 months.forEach(month => {
                     const opt = document.createElement('option');
@@ -660,33 +856,191 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         };
 
-        const updateHarvestingNavLink = (itemId, linkId, viewType) => {
-            const item = document.getElementById(itemId);
-            const link = document.getElementById(linkId);
-            if (item) item.classList.toggle('active', state.activeViewType === viewType);
-            if (link) {
-                link.onclick = (e) => {
+        // Render FFB Budget Navigation
+        const renderFfbBudgetNav = () => {
+            const container = document.getElementById('sidebar-budget-list');
+            if (!container) return;
+            container.innerHTML = '';
+
+            const ffbYears = state.ffbBudget ?
+                Object.keys(state.ffbBudget)
+                    .filter(key => /^\d{4}$/.test(key)) // Only 4-digit years
+                    .sort((a, b) => parseInt(a) - parseInt(b)) : [];
+
+            ffbYears.forEach(year => {
+                const li = document.createElement('li');
+                li.className = 'nav-item';
+                if (state.activeViewType === 'ffb_budget' && state.activeViewValue === year) {
+                    li.classList.add('active');
+                }
+
+                const a = document.createElement('a');
+                a.href = '#';
+                a.className = 'nav-link';
+                a.textContent = year;
+                a.onclick = (e) => {
                     e.preventDefault();
-                    state.activeViewType = viewType;
+                    state.selectedReportYear = year;
+                    state.activeViewType = 'ffb_budget';
+                    state.activeViewValue = year;
                     renderSidebar();
                     renderTable();
+                    recalculateTotals();
                 };
-            }
+                li.appendChild(a);
+                container.appendChild(li);
+            });
+
+            // Add FFB Year Button
+            const liAddFfbYear = document.createElement('li');
+            liAddFfbYear.className = 'nav-item';
+            const aAddFfbYear = document.createElement('a');
+            aAddFfbYear.href = '#';
+            aAddFfbYear.className = 'nav-link add-year-link';
+            aAddFfbYear.innerHTML = `<span style="margin-right:0.5rem;">➕</span> Add Year`;
+            aAddFfbYear.onclick = (e) => {
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+
+                const newYearStr = prompt("Enter the new FFB Budget Year (e.g., 2027):");
+                if (!newYearStr || newYearStr.trim() === "") return;
+                const newYear = newYearStr.trim();
+
+                if (state.ffbBudget && state.ffbBudget[newYear]) {
+                    alert(`FFB Budget Year ${newYear} already exists!`);
+                    return;
+                }
+
+                if (!state.ffbBudget) state.ffbBudget = {};
+
+                // Duplicate last year's data or create empty if none exists
+                const existingYears = Object.keys(state.ffbBudget).sort((a, b) => parseInt(a) - parseInt(b));
+                if (existingYears.length > 0) {
+                    const lastYear = existingYears[existingYears.length - 1];
+                    state.ffbBudget[newYear] = JSON.parse(JSON.stringify(state.ffbBudget[lastYear]));
+                    // Reset amounts to zero for the new year clone? Or keep as requested: "duplicate previous year's data so i could edit it with ease"
+                    // We will keep it exactly identical as requested.
+                } else {
+                    state.ffbBudget[newYear] = [];
+                }
+
+                state.selectedReportYear = newYear;
+                state.activeViewType = 'ffb_budget';
+                state.activeViewValue = newYear;
+
+                renderSidebar();
+                renderTable();
+                recalculateTotals();
+            };
+            liAddFfbYear.appendChild(aAddFfbYear);
+            container.appendChild(liAddFfbYear);
+        };
+        // Render Rainfall Navigation
+        const renderRainfallNav = () => {
+            const container = document.getElementById('sidebar-rainfall-list');
+            if (!container) return;
+            container.innerHTML = '';
+
+            const rfYears = state.rainfall ? 
+                Object.keys(state.rainfall)
+                .filter(key => /^\d{4}$/.test(key))
+                .sort((a,b) => parseInt(a) - parseInt(b)) : [];
+
+            rfYears.forEach(year => {
+                const li = document.createElement('li');
+                li.className = 'nav-item';
+                if (state.activeViewType === 'rainfall_record' && state.activeViewValue === year) {
+                    li.classList.add('active');
+                }
+
+                const a = document.createElement('a');
+                a.href = '#';
+                a.className = 'nav-link';
+                a.textContent = year;
+                a.onclick = (e) => {
+                    e.preventDefault();
+                    state.selectedReportYear = year;
+                    state.activeViewType = 'rainfall_record';
+                    state.activeViewValue = year;
+                    renderSidebar();
+                    renderTable();
+                    recalculateTotals();
+                };
+                li.appendChild(a);
+                container.appendChild(li);
+            });
+
+            // Add Rainfall Year Button
+            const liAddYear = document.createElement('li');
+            liAddYear.className = 'nav-item';
+            const aAddYear = document.createElement('a');
+            aAddYear.href = '#';
+            aAddYear.className = 'nav-link add-year-link';
+            aAddYear.innerHTML = `<span style="margin-right:0.5rem;">➕</span> Add Year`;
+            aAddYear.onclick = (e) => {
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+
+                const newYearStr = prompt("Enter the new Rainfall Year (e.g., 2026):");
+                if (!newYearStr || newYearStr.trim() === "") return;
+                const newYear = newYearStr.trim();
+
+                if (state.rainfall && state.rainfall[newYear]) {
+                    alert(`Rainfall Record for ${newYear} already exists!`);
+                    return;
+                }
+
+                if (!state.rainfall) state.rainfall = {};
+
+                // Use the helper from rainfallData.js to construct an empty object
+                if (typeof createEmptyRainfallYear === 'function') {
+                    state.rainfall[newYear] = createEmptyRainfallYear();
+                }
+
+                state.selectedReportYear = newYear;
+                state.activeViewType = 'rainfall_record';
+                state.activeViewValue = newYear;
+
+                renderSidebar();
+                renderTable();
+                recalculateTotals();
+                saveState(true);
+            };
+            liAddYear.appendChild(aAddYear);
+            container.appendChild(liAddYear);
         };
 
-        updateHarvestingNavLink('nav-item-harvesting-ytd', 'nav-link-harvesting-ytd', 'harvesting_ytd');
-        updateHarvestingNavLink('nav-item-harvesters-comparison', 'nav-link-harvesters-comparison', 'harvesters_comparison');
-
+        renderFfbBudgetNav();
+        renderRainfallNav();
         renderMonthNav('sidebar-interval-list', 'interval_month');
         renderMonthNav('sidebar-perf-list', 'perf_month');
+        renderMonthNav('sidebar-ytd-list', 'ytd');
+        renderMonthNav('sidebar-current-prev-list', 'current_prev');
     };
 
     const renderTable = () => {
         tableBody.innerHTML = '';
-        perfWrapper.innerHTML = '';
-        intervalWrapper.innerHTML = '';
-        if (harvestingYtdWrapper) harvestingYtdWrapper.innerHTML = '';
-        if (harvesterComparisonWrapper) harvesterComparisonWrapper.innerHTML = '';
+        perfWrapper.innerHTML = ''; // Clear dynamically appended performance widgets
+        intervalWrapper.innerHTML = ''; // Clear dynamically appended interval widgets
+        const ffbWrapper = document.getElementById('ffb-budget-wrapper');
+        const rainfallWrapper = document.getElementById('rainfall-wrapper');
+        const ytdWrapper = document.getElementById('ytd-wrapper');
+        const currentPrevWrapper = document.getElementById('current-prev-wrapper');
+
+        if (ffbWrapper) ffbWrapper.innerHTML = ''; // Clear FFB budget widgets
+        if (rainfallWrapper) rainfallWrapper.innerHTML = ''; // Clear Rainfall widgets
+        if (ytdWrapper) ytdWrapper.innerHTML = '';
+        if (currentPrevWrapper) currentPrevWrapper.innerHTML = '';
+
+        // Hide special wrappers by default
+        if (ffbWrapper) ffbWrapper.classList.add('hidden');
+        if (rainfallWrapper) rainfallWrapper.classList.add('hidden');
+        if (ytdWrapper) ytdWrapper.classList.add('hidden');
+        if (currentPrevWrapper) currentPrevWrapper.classList.add('hidden');
 
         const isPerfView = state.activeViewType === 'perf_month';
         const isIntervalView = state.activeViewType === 'interval_month';
@@ -703,20 +1057,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (harvestingYtdWrapper) harvestingYtdWrapper.classList.add('hidden');
         if (harvesterComparisonWrapper) harvesterComparisonWrapper.classList.add('hidden');
 
-        if (isHarvestingYtdView || isHarvestersComparisonView) {
-            mainReportWrapper.classList.add('hidden');
-            perfWrapper.classList.add('hidden');
-            intervalWrapper.classList.add('hidden');
-            if (harvestingYtdWrapper) harvestingYtdWrapper.classList.toggle('hidden', !isHarvestingYtdView);
-            if (harvesterComparisonWrapper) harvesterComparisonWrapper.classList.toggle('hidden', !isHarvestersComparisonView);
-            if (isHarvestingYtdView) {
-                renderHarvestingYtdReport();
-            }
-            if (isHarvestersComparisonView) {
-                renderHarvesterComparisonReport();
-            }
-            return;
-        }
+        const isPerfView = state.activeViewType === 'perf_month';
+        const isIntervalView = state.activeViewType === 'interval_month';
+        const isFfbBudgetView = state.activeViewType === 'ffb_budget';
+        const isRainfallView = state.activeViewType === 'rainfall_record';
+        const isYtdView = state.activeViewType === 'ytd';
+        const isCurrentPrevView = state.activeViewType === 'current_prev';
 
         if (isPerfView) {
             mainReportWrapper.classList.add('hidden');
@@ -729,6 +1075,48 @@ document.addEventListener('DOMContentLoaded', () => {
             intervalWrapper.classList.remove('hidden');
             if (typeof renderIntervalTable === 'function') {
                 renderIntervalTable();
+            }
+        } else if (isFfbBudgetView) {
+            mainReportWrapper.classList.add('hidden');
+            perfWrapper.classList.add('hidden');
+            intervalWrapper.classList.add('hidden');
+            if (ffbWrapper) {
+                ffbWrapper.classList.remove('hidden');
+                renderFfbBudgetTable();
+            }
+            tableContainer.classList.add('hidden');
+        } else if (isRainfallView) {
+            mainReportWrapper.classList.add('hidden');
+            perfWrapper.classList.add('hidden');
+            intervalWrapper.classList.add('hidden');
+            tableContainer.classList.add('hidden');
+            if (rainfallWrapper) {
+                rainfallWrapper.classList.remove('hidden');
+                if (typeof renderRainfallTable === 'function') {
+                    renderRainfallTable();
+                }
+            }
+        } else if (isYtdView) {
+            mainReportWrapper.classList.add('hidden');
+            perfWrapper.classList.add('hidden');
+            intervalWrapper.classList.add('hidden');
+            tableContainer.classList.add('hidden');
+            if (ytdWrapper) {
+                ytdWrapper.classList.remove('hidden');
+                if (typeof renderYtdReport === 'function') {
+                    renderYtdReport();
+                }
+            }
+        } else if (isCurrentPrevView) {
+            mainReportWrapper.classList.add('hidden');
+            perfWrapper.classList.add('hidden');
+            intervalWrapper.classList.add('hidden');
+            tableContainer.classList.add('hidden');
+            if (currentPrevWrapper) {
+                currentPrevWrapper.classList.remove('hidden');
+                if (typeof renderCurrentPrevReport === 'function') {
+                    renderCurrentPrevReport();
+                }
             }
         } else {
             perfWrapper.classList.add('hidden');
@@ -839,14 +1227,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     btnDelete.className = 'btn-icon delete';
                     btnDelete.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
                     btnDelete.onclick = () => {
-                        const confirmRemove = confirm(`Are you sure you want to remove block ${block.block_id}?`);
-                        if (!confirmRemove) return;
-
                         if (state.activeViewType === 'gang') {
-                            // Just unassign from gang
+                            const confirmUnassign = confirm(`Are you sure you want to unassign block ${block.block_id} from gang ${state.activeViewValue}? It will remain in the Planting Phase Record.`);
+                            if (!confirmUnassign) return;
                             block.gang = "Unassigned";
                         } else {
-                            // Completely delete from Report Year
+                            const confirmDelete = confirm(`WARNING: Are you sure you want to PERMANENTLY delete block ${block.block_id} from the Planting Phase Record for ${state.selectedReportYear}?`);
+                            if (!confirmDelete) return;
                             const idx = state.reports[state.selectedReportYear].indexOf(block);
                             if (idx > -1) {
                                 state.reports[state.selectedReportYear].splice(idx, 1);
@@ -963,9 +1350,12 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <label>HARVESTER TEAM:</label>
                                 <span class="font-bold">${gangName.toUpperCase()}</span>
                             </div>
-                            <div class="stat-row">
+                            <div class="stat-row" style="display: flex; align-items: center; gap: 0.5rem;">
                                 <label>TOTAL MANPOWER:</label>
                                 <input type="number" id="perf-manpower-${safeGangId}" class="edit-input" style="width: 80px; padding: 0.25rem; border: 1px solid var(--border-color);" value="${perfData.manpower || 0}" min="0">
+                                <button class="btn-icon" id="btn-sync-manpower-${safeGangId}" title="Refresh from Interval" style="padding: 2px 6px; font-size: 0.8rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer;">
+                                    🔄 Sync
+                                </button>
                             </div>
                             <div class="stat-row">
                                 <label>TOTAL ON LONG LEAVE:</label>
@@ -1043,8 +1433,30 @@ document.addEventListener('DOMContentLoaded', () => {
             const inputManpower = document.getElementById(`perf-manpower-${safeGangId}`);
             const inputLeave = document.getElementById(`perf-leave-${safeGangId}`);
 
-            inputManpower.oninput = (e) => { perfData.manpower = parseFloat(e.target.value) || 0; calculatePerformanceTotals(perfData, gBlocks, safeGangId); };
-            inputLeave.oninput = (e) => { perfData.leave = parseFloat(e.target.value) || 0; calculatePerformanceTotals(perfData, gBlocks, safeGangId); };
+            inputManpower.oninput = (e) => {
+                perfData.manpower = parseFloat(e.target.value) || 0;
+                perfData.isManpowerManual = true;
+                calculatePerformanceTotals(perfData, gBlocks, safeGangId);
+            };
+            inputManpower.onchange = () => saveState(true);
+
+            inputLeave.oninput = (e) => {
+                perfData.leave = parseFloat(e.target.value) || 0;
+                calculatePerformanceTotals(perfData, gBlocks, safeGangId);
+            };
+            inputLeave.onchange = () => saveState(true);
+
+            const btnSync = document.getElementById(`btn-sync-manpower-${safeGangId}`);
+            if (btnSync) {
+                btnSync.onclick = () => {
+                    const peak = getPeakManpowerForGang(year, month, gangName);
+                    perfData.manpower = peak;
+                    perfData.isManpowerManual = false;
+                    inputManpower.value = peak;
+                    calculatePerformanceTotals(perfData, gBlocks, safeGangId);
+                    saveState(true);
+                };
+            }
 
             const btnTransfer = document.getElementById(`btn-transfer-${safeGangId}`);
             if (btnTransfer) {
@@ -1092,9 +1504,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 const bData = perfData.blocks[bId];
 
+                // Dynamically sync FFB Budget for current month
+                const monthIndex = months.indexOf(month);
+                if (state.ffbBudget && state.ffbBudget[year]) {
+                    // Try to find matching block budget. FFB rows might have 'block_id' or 'block'
+                    const ffbRow = state.ffbBudget[year].find(r => String(r.block_id).trim() === String(bId).trim());
+                    if (ffbRow && ffbRow.months && ffbRow.months.length > monthIndex) {
+                        bData.budget = ffbRow.months[monthIndex] || 0;
+                    }
+                }
+
                 const tr = document.createElement('tr');
                 tr.innerHTML = `<td class="text-center cell-block">${bId}</td><td class="text-right">${formatHA(block.ha)}</td>`;
 
+                // createPerfInput handles input logic. If linked, any manual edits here are volatile until next render, serving purely as a temporary view if they don't want to use FFB structure.
                 tr.appendChild(createPerfInput(bData, 'budget', (v) => bData.budget = v));
                 tr.appendChild(createPerfInput(bData, 'r1', (v) => bData.r1 = v));
                 tr.appendChild(createPerfInput(bData, 'r2', (v) => bData.r2 = v));
@@ -1159,7 +1582,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 const rowTotalEl = document.getElementById(`perf-row-total-${safeGangId}-${bId}`);
                 const rowMtEl = document.getElementById(`perf-row-mt-${safeGangId}-${bId}`);
 
-                if (rowTotalEl) rowTotalEl.textContent = formatHA(rowTotal);
+                if (rowTotalEl) {
+                    rowTotalEl.textContent = formatHA(rowTotal);
+                    if (parseFloat(bData.budget) > 0 && rowTotal < parseFloat(bData.budget)) {
+                        rowTotalEl.classList.add('text-danger-important');
+                    } else {
+                        rowTotalEl.classList.remove('text-danger-important');
+                    }
+                }
                 if (rowMtEl) rowMtEl.textContent = bData.manday > 0 ? (rowTotal / bData.manday).toFixed(2) : "0.00";
             }
         });
@@ -1178,7 +1608,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (pTotalR1) pTotalR1.textContent = formatHA(tR1);
         if (pTotalR2) pTotalR2.textContent = formatHA(tR2);
         if (pTotalR3) pTotalR3.textContent = formatHA(tR3);
-        if (pTotalAll) pTotalAll.textContent = formatHA(tTotal);
+        if (pTotalAll) {
+            pTotalAll.textContent = formatHA(tTotal);
+            if (tBudget > 0 && tTotal < tBudget) {
+                pTotalAll.classList.add('text-danger-important');
+            } else {
+                pTotalAll.classList.remove('text-danger-important');
+            }
+        }
         if (pTotalManday) pTotalManday.textContent = formatHA(tManday);
         if (pTotalMtManday) pTotalMtManday.textContent = tManday > 0 ? (tTotal / tManday).toFixed(2) : "0.00";
 
@@ -1365,6 +1802,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 0.85rem;">
                         <thead>
                             <tr style="border-bottom: 1px solid var(--border-color);">
+                                <th style="padding: 0.25rem 0.5rem; color: var(--text-muted); font-weight: 600;">FFB BUDGET</th>
                                 <th style="padding: 0.25rem 0.5rem; color: var(--text-muted); font-weight: 600;">1ST RD</th>
                                 <th style="padding: 0.25rem 0.5rem; color: var(--text-muted); font-weight: 600;">2ND RD</th>
                                 <th style="padding: 0.25rem 0.5rem; color: var(--text-muted); font-weight: 600;">3RD RD</th>
@@ -1374,6 +1812,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </thead>
                         <tbody>
                             <tr>
+                                <td id="interval-sum-budget" style="padding: 0.25rem 0.5rem; font-weight: 700; color: var(--text-primary);">0.00</td>
                                 <td id="interval-sum-r1" style="padding: 0.25rem 0.5rem; font-weight: 500;">0.00</td>
                                 <td id="interval-sum-r2" style="padding: 0.25rem 0.5rem; font-weight: 500;">0.00</td>
                                 <td id="interval-sum-r3" style="padding: 0.25rem 0.5rem; font-weight: 500;">0.00</td>
@@ -1393,6 +1832,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <th style="min-width: 80px; border-right: 2px solid var(--border-color);">HA</th>
                             ${Array.from({ length: 31 }, (_, i) => `<th style="min-width: 40px; text-align: center; font-size: 0.8em; padding: 0.2rem;">${i + 1}</th>`).join('')}
                             <th style="min-width: 90px; text-align: center; border-left: 2px solid var(--border-color);">TOTAL MANDAY</th>
+                            <th style="min-width: 90px; text-align: center; border-left: 2px solid var(--border-color);">FFB BUDGET</th>
                             <th style="min-width: 80px; text-align: center;">1ST RD</th>
                             <th style="min-width: 80px; text-align: center;">2ND RD</th>
                             <th style="min-width: 80px; text-align: center;">3RD RD</th>
@@ -1409,7 +1849,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const tbody = document.getElementById(`interval-table-body-all`);
 
-        let sR1 = 0, sR2 = 0, sR3 = 0, sR4 = 0;
+        let sBudget = 0, sR1 = 0, sR2 = 0, sR3 = 0, sR4 = 0;
 
         blocks.forEach(block => {
             const bId = block.block_id;
@@ -1428,6 +1868,16 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!bData.days) bData.days = new Array(31).fill("");
             if (typeof bData.r4 === "undefined") bData.r4 = 0;
 
+            // Dynamically sync FFB Budget for current month
+            const monthIndex = months.indexOf(month);
+            if (state.ffbBudget && state.ffbBudget[year]) {
+                const ffbRow = state.ffbBudget[year].find(r => String(r.block_id).trim() === String(bId).trim());
+                if (ffbRow && ffbRow.months && ffbRow.months.length > monthIndex) {
+                    bData.budget = ffbRow.months[monthIndex] || 0;
+                }
+            }
+
+            sBudget += bData.budget || 0;
             sR1 += bData.r1 || 0;
             sR2 += bData.r2 || 0;
             sR3 += bData.r3 || 0;
@@ -1506,6 +1956,7 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             tr.appendChild(createPerfInput('manday', (v) => bData.manday = v, "border-left: 2px solid var(--border-color);"));
+            tr.appendChild(createPerfInput('budget', (v) => bData.budget = v, "border-left: 2px solid var(--border-color);"));
             tr.appendChild(createPerfInput('r1', (v) => { bData.r1 = v; renderIntervalTable(); }));
             tr.appendChild(createPerfInput('r2', (v) => { bData.r2 = v; renderIntervalTable(); }));
             tr.appendChild(createPerfInput('r3', (v) => { bData.r3 = v; renderIntervalTable(); }));
@@ -1515,17 +1966,386 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Set the summary totals
+        const sumBudgetEl = document.getElementById('interval-sum-budget');
         const sumR1El = document.getElementById('interval-sum-r1');
         const sumR2El = document.getElementById('interval-sum-r2');
         const sumR3El = document.getElementById('interval-sum-r3');
         const sumR4El = document.getElementById('interval-sum-r4');
         const sumTotalEl = document.getElementById('interval-sum-total');
 
+        if (sumBudgetEl) sumBudgetEl.textContent = formatHA(sBudget);
         if (sumR1El) sumR1El.textContent = formatHA(sR1);
         if (sumR2El) sumR2El.textContent = formatHA(sR2);
         if (sumR3El) sumR3El.textContent = formatHA(sR3);
         if (sumR4El) sumR4El.textContent = formatHA(sR4);
         if (sumTotalEl) sumTotalEl.textContent = formatHA(sR1 + sR2 + sR3 + sR4);
+    };
+
+    const renderFfbBudgetTable = () => {
+        const ffbBudgetWrapper = document.getElementById('ffb-budget-wrapper');
+        if (!ffbBudgetWrapper) return;
+
+        // Capture current scroll positions and active element
+        const tableContainer = ffbBudgetWrapper.querySelector('.table-container');
+        const scrollLeft = tableContainer ? tableContainer.scrollLeft : 0;
+        const scrollTop = tableContainer ? tableContainer.scrollTop : 0;
+
+        const activeEl = document.activeElement;
+        const activeData = (activeEl && activeEl.dataset && activeEl.dataset.blockId) ? {
+            blockId: activeEl.dataset.blockId,
+            phase: activeEl.dataset.phase,
+            field: activeEl.dataset.field,
+            monthIdx: activeEl.dataset.monthIdx
+        } : null;
+
+        ffbBudgetWrapper.innerHTML = '';
+
+        const year = state.activeViewValue;
+        if (!state.ffbBudget || !state.ffbBudget[year] || state.ffbBudget[year].length === 0) {
+            ffbBudgetWrapper.innerHTML = '<p style="padding: 2rem;">No FFB Budget data found for this year. Please import data first.</p>';
+            return;
+        }
+
+        const data = state.ffbBudget[year];
+
+        // Group the data by phase
+        const groupedData = {};
+        data.forEach(row => {
+            const p = row.phase || "Unassigned";
+            if (!groupedData[p]) groupedData[p] = { rows: [], tHa: 0, tMonths: new Array(12).fill(0) };
+            groupedData[p].rows.push(row);
+            groupedData[p].tHa += row.ha || 0;
+            row.months.forEach((m, i) => {
+                groupedData[p].tMonths[i] += (m || 0);
+            });
+        });
+
+        const wrapper = document.createElement('div');
+        wrapper.style.marginBottom = '3rem';
+        wrapper.style.padding = '0';
+
+        let grandTotalHa = 0;
+        let grandTotalMonths = new Array(12).fill(0);
+        let tbodyHtml = '';
+
+        Object.keys(groupedData).sort().forEach((phaseName, index) => {
+            const group = groupedData[phaseName];
+            grandTotalHa += group.tHa;
+
+            let groupRowTotal = 0;
+            let subTMonthsHtml = '';
+            group.tMonths.forEach((m, i) => {
+                grandTotalMonths[i] += m;
+                groupRowTotal += m;
+                subTMonthsHtml += `<td class="text-right" style="padding: 0.4rem; font-weight: 600;">${Math.round(m)}</td>`;
+            });
+
+            // Add the Group Header Row (now combined with Subtotal)
+            const toggleId = `ffb-budget-toggle-group-${index}`;
+            tbodyHtml += `
+                <tr class="row-group-header" onclick="document.body.classList.toggle('${toggleId}')" style="cursor: pointer; background: var(--bg-overlay, var(--group-bg));">
+                    <td colspan="5" style="position: sticky; left: 0; width: 340px; min-width: 340px; max-width: 340px; background-color: var(--bg-secondary); z-index: 6; border-right: 1px solid var(--border-color); padding: 0 1rem;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                            <div style="display: flex; align-items: center; gap: 0.8rem;">
+                                <span class="group-toggle" id="${toggleId}-icon">▼</span>
+                                <span class="text-muted" style="font-weight: normal; font-size: 0.9em; white-space: nowrap;">(${group.rows.length} blocks)</span>
+                            </div>
+                            <div class="font-bold text-right" style="white-space: nowrap;">SUBTOTAL ${phaseName}</div>
+                        </div>
+                    </td>
+                    <td class="text-right font-bold" style="position: sticky; left: 340px; width: 80px; min-width: 80px; max-width: 80px; background-color: var(--bg-secondary); z-index: 6; border-right: 2px solid var(--border-color);">${Math.round(group.tHa)}</td>
+                    ${subTMonthsHtml}
+                    <td class="text-right font-bold col-total" style="border-left: 2px solid var(--border-color);">${Math.round(groupRowTotal)}</td>
+                </tr>
+            `;
+
+            // Add individual block rows
+            group.rows.forEach(row => {
+                let rowTotal = 0;
+                let monthsHtml = '';
+                row.months.forEach((m, mIdx) => {
+                    rowTotal += (m || 0);
+                    monthsHtml += `
+                        <td style="padding: 0;">
+                            <input type="number" step="1" class="edit-input ffb-input text-right" style="width: 100%; border: none; background: transparent; padding: 0.4rem;" 
+                                data-field="month" data-month-idx="${mIdx}" data-block-id="${row.block_id}" data-phase="${row.phase}"
+                                value="${Math.round(m || 0)}"
+                            />
+                        </td>
+                    `;
+                });
+
+                tbodyHtml += `
+                    <tr class="row-block ffb-budget-row-block ffb-budget-group-${index} ${toggleId}-hideable">
+                        <td style="padding: 0; position: sticky; left: 0; width: 60px; min-width: 60px; max-width: 60px; background-color: var(--bg-primary); z-index: 5; border-right: 1px solid var(--border-color); text-align: center; font-weight: 500;">
+                            ${row.block_id}
+                        </td>
+                        <td style="padding: 0; position: sticky; left: 60px; width: 70px; min-width: 70px; max-width: 70px; background-color: var(--bg-primary); z-index: 5; border-right: 1px solid var(--border-color);">
+                            <input type="text" class="edit-input ffb-input text-center" style="width: 100%; border: none; background: var(--bg-primary); padding: 0.4rem; font-size: 0.85em;" 
+                                data-field="ageMth" data-block-id="${row.block_id}" data-phase="${row.phase}"
+                                value="${row.ageMth || ''}"
+                            />
+                        </td>
+                        <td style="padding: 0; position: sticky; left: 130px; width: 70px; min-width: 70px; max-width: 70px; background-color: var(--bg-primary); z-index: 5; border-right: 1px solid var(--border-color);">
+                            <input type="number" step="1" class="edit-input ffb-input text-center" style="width: 100%; border: none; background: var(--bg-primary); padding: 0.4rem; font-size: 0.85em;" 
+                                data-field="harvestYr" data-block-id="${row.block_id}" data-phase="${row.phase}"
+                                value="${Math.round(parseFloat(row.harvestYr) || 0)}"
+                            />
+                        </td>
+                        <td style="padding: 0; position: sticky; left: 200px; width: 70px; min-width: 70px; max-width: 70px; background-color: var(--bg-primary); z-index: 5; border-right: 1px solid var(--border-color);">
+                            <input type="number" step="1" class="edit-input ffb-input text-right" style="width: 100%; border: none; background: var(--bg-primary); padding: 0.4rem; font-size: 0.85em;" 
+                                data-field="mtHaYr" data-block-id="${row.block_id}" data-phase="${row.phase}"
+                                value="${Math.round(row.mtHaYr || 0)}"
+                            />
+                        </td>
+                        <td style="padding: 0; position: sticky; left: 270px; width: 70px; min-width: 70px; max-width: 70px; background-color: var(--bg-primary); z-index: 5; border-right: 1px solid var(--border-color);">
+                            <input type="number" step="1" class="edit-input ffb-input text-right" style="width: 100%; border: none; background: var(--bg-primary); padding: 0.4rem; font-size: 0.85em;" 
+                                data-field="mtHaMth" data-block-id="${row.block_id}" data-phase="${row.phase}"
+                                value="${Math.round(row.mtHaMth || 0)}"
+                            />
+                        </td>
+                        <td style="padding: 0; position: sticky; left: 340px; width: 80px; min-width: 80px; max-width: 80px; background-color: var(--bg-primary); z-index: 5; border-right: 2px solid var(--border-color);">
+                            <input type="number" step="1" class="edit-input ffb-input text-right font-bold" style="width: 100%; border: none; background: var(--bg-primary); padding: 0.4rem;" 
+                                data-field="ha" data-block-id="${row.block_id}" data-phase="${row.phase}"
+                                value="${Math.round(row.ha || 0)}"
+                            />
+                        </td>
+                        ${monthsHtml}
+                        <td class="text-right font-bold col-total" style="border-left: 2px solid var(--border-color);">${Math.round(rowTotal)}</td>
+                    </tr>
+                `;
+            });
+
+            // Insert dynamic CSS for toggling
+            if (!document.getElementById(`style-${toggleId}`)) {
+                const style = document.createElement('style');
+                style.id = `style-${toggleId}`;
+                style.innerHTML = `
+                    body.${toggleId} .${toggleId}-hideable { display: none !important; }
+                    body.${toggleId} #${toggleId}-icon { transform: rotate(-90deg); }
+                `;
+                document.head.appendChild(style);
+            }
+            // Set collapsed by default
+            document.body.classList.add(toggleId);
+        });
+
+        let grandTotalRowSum = grandTotalMonths.reduce((a, b) => a + b, 0);
+        let tFootMonthsHtml = grandTotalMonths.map(m => `<td class="text-right font-bold col-total" style="font-size: 0.9em;">${Math.round(m)}</td>`).join('');
+
+        wrapper.innerHTML = `
+            <div class="performance-header">
+                <h2>PROPOSED FFB ESTIMATE PRODUCTION FOR YEAR ${year}</h2>
+            </div>
+            <div class="summary-table-container" style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+                 <div class="toolbar-left" style="display: flex; gap: 0.5rem; align-items: center;">
+                     <button class="btn-secondary" id="ffb-expand-all-btn" style="padding: 0.5rem 1rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer;">
+                        <span>+</span> Expand All
+                     </button>
+                     <button class="btn-secondary" id="ffb-collapse-all-btn" style="padding: 0.5rem 1rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer;">
+                        <span>-</span> Collapse All
+                     </button>
+                 </div>
+                 <div class="toolbar-right" style="display: flex; gap: 0.5rem; align-items: center;">
+                     <button class="btn-danger" id="clear-budget-btn"><span>🗑️</span> Clear Budget for ${year}</button>
+                     <button class="btn-primary" id="add-ffb-block-btn"><span>➕</span> Add Block</button>
+                     <button class="btn-primary" id="save-ffb-btn" style="background-color: #10b981; border-color: #10b981;" title="Save all changes"><span>💾</span> Save</button>
+                 </div>
+            </div>
+            <div class="table-container" style="overflow-x: auto; padding-bottom: 2rem;">
+                <table class="grouped-table" style="min-width: 1600px;">
+                    <thead>
+                        <tr>
+                            <th style="width: 60px; min-width: 60px; max-width: 60px; position: sticky; left: 0; background-color: var(--bg-secondary); z-index: 7; border-right: 1px solid var(--border-color);">BLK</th>
+                            <th style="width: 70px; min-width: 70px; max-width: 70px; position: sticky; left: 60px; background-color: var(--bg-secondary); z-index: 7; border-right: 1px solid var(--border-color);">Age<br/>(mth)</th>
+                            <th style="width: 70px; min-width: 70px; max-width: 70px; position: sticky; left: 130px; background-color: var(--bg-secondary); z-index: 7; border-right: 1px solid var(--border-color);">Harvest<br/>Yr.</th>
+                            <th style="width: 70px; min-width: 70px; max-width: 70px; position: sticky; left: 200px; background-color: var(--bg-secondary); z-index: 7; border-right: 1px solid var(--border-color);">Mt/ha/yr</th>
+                            <th style="width: 70px; min-width: 70px; max-width: 70px; position: sticky; left: 270px; background-color: var(--bg-secondary); z-index: 7; border-right: 1px solid var(--border-color);">Mt/ha/mth</th>
+                            <th style="width: 80px; min-width: 80px; max-width: 80px; position: sticky; left: 340px; background-color: var(--bg-secondary); z-index: 7; border-right: 2px solid var(--border-color);">HA</th>
+                            ${['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'].map((m) => `<th style="min-width: 60px; text-align: right; padding: 0.4rem; font-size: 0.85em;">${m}</th>`).join('')}
+                            <th style="min-width: 80px; text-align: right; border-left: 2px solid var(--border-color);" class="col-total">TOTAL</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${tbodyHtml}
+                    </tbody>
+                    <tfoot>
+                        <tr class="row-grand-total">
+                            <td colspan="5" class="grand-total-label" style="position: sticky; left: 0; width: 340px; min-width: 340px; max-width: 340px; background-color: var(--grand-total-bg); z-index: 6; border-right: 1px solid var(--border-color); text-align: right; padding-right: 1rem;">GRAND TOTAL</td>
+                            <td class="text-right font-bold" style="position: sticky; left: 340px; width: 80px; min-width: 80px; max-width: 80px; background-color: var(--grand-total-bg); z-index: 6; border-right: 2px solid var(--border-color);">${Math.round(grandTotalHa)}</td>
+                            ${tFootMonthsHtml}
+                            <td class="text-right font-bold col-total" style="border-left: 2px solid var(--border-color);">${Math.round(grandTotalRowSum)}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        `;
+
+        ffbBudgetWrapper.appendChild(wrapper);
+
+        // Global Expand/Collapse Handlers
+        const expandAllBtn = document.getElementById('ffb-expand-all-btn');
+        if (expandAllBtn) {
+            expandAllBtn.addEventListener('click', () => {
+                Object.keys(groupedData).forEach((_, idx) => {
+                    document.body.classList.remove(`ffb-budget-toggle-group-${idx}`);
+                });
+            });
+        }
+
+        const collapseAllBtn = document.getElementById('ffb-collapse-all-btn');
+        if (collapseAllBtn) {
+            collapseAllBtn.addEventListener('click', () => {
+                Object.keys(groupedData).forEach((_, idx) => {
+                    document.body.classList.add(`ffb-budget-toggle-group-${idx}`);
+                });
+            });
+        }
+
+        // Restore scroll positions
+        const newTableContainer = ffbBudgetWrapper.querySelector('.table-container');
+        if (newTableContainer) {
+            newTableContainer.scrollLeft = scrollLeft;
+            newTableContainer.scrollTop = scrollTop;
+        }
+
+        // Restore focus
+        if (activeData) {
+            let selector = `.ffb-input[data-block-id="${activeData.blockId}"][data-phase="${activeData.phase}"][data-field="${activeData.field}"]`;
+            if (activeData.monthIdx !== undefined) {
+                selector += `[data-month-idx="${activeData.monthIdx}"]`;
+            }
+            const elToFocus = ffbBudgetWrapper.querySelector(selector);
+            if (elToFocus) {
+                elToFocus.focus();
+                // For number inputs, selecting the text usually works better on mobile/desktop
+                if (elToFocus.tagName === 'INPUT') elToFocus.select();
+            }
+        }
+
+        // Helper to show modal
+        const showModal = (title, bodyHtml, onConfirm) => {
+            const overlay = document.getElementById('ffb-modal-overlay');
+            const titleEl = document.getElementById('ffb-modal-title');
+            const bodyEl = document.getElementById('ffb-modal-body');
+            const confirmBtn = document.getElementById('ffb-modal-confirm');
+            const cancelBtn = document.getElementById('ffb-modal-cancel');
+
+            if (!overlay || !titleEl || !bodyEl || !confirmBtn || !cancelBtn) return;
+
+            titleEl.textContent = title;
+            bodyEl.innerHTML = bodyHtml;
+            overlay.style.display = 'flex';
+
+            // Clean up old listeners
+            const newConfirmBtn = confirmBtn.cloneNode(true);
+            confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+            const newCancelBtn = cancelBtn.cloneNode(true);
+            cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+
+            newCancelBtn.onclick = () => { overlay.style.display = 'none'; };
+            newConfirmBtn.onclick = () => {
+                if (onConfirm()) {
+                    overlay.style.display = 'none';
+                }
+            };
+        };
+
+        const clearBtn = document.getElementById('clear-budget-btn');
+        if (clearBtn) {
+            clearBtn.onclick = () => {
+                showModal(
+                    `Clear Budget for ${year}`,
+                    `<p>Are you sure you want to delete all FFB budget data for Year ${year}? This action cannot be undone.</p>`,
+                    () => {
+                        state.ffbBudget[year] = [];
+                        renderFfbBudgetTable();
+                        return true;
+                    }
+                );
+            };
+        }
+
+        const addFfbBlockBtn = document.getElementById('add-ffb-block-btn');
+        if (addFfbBlockBtn) {
+            addFfbBlockBtn.onclick = () => {
+                const bodyHtml = `
+                    <div style="display: flex; flex-direction: column; gap: 1rem;">
+                        <div>
+                            <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Phase (e.g., OP2010)</label>
+                            <input type="text" id="modal-phase-input" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px;" value="OP" />
+                        </div>
+                        <div>
+                            <label style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Block ID</label>
+                            <input type="text" id="modal-block-input" style="width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px;" placeholder="e.g. BLK-1" />
+                        </div>
+                    </div>
+                `;
+
+                showModal('Add New Block', bodyHtml, () => {
+                    const phaseInput = document.getElementById('modal-phase-input');
+                    const blockInput = document.getElementById('modal-block-input');
+                    const phase = phaseInput ? phaseInput.value.trim() : "";
+                    const blockId = blockInput ? blockInput.value.trim() : "";
+
+                    if (!phase || !blockId) {
+                        alert("Phase and Block ID are required.");
+                        return false; // don't close modal
+                    }
+
+                    state.ffbBudget[year].push({
+                        phase: phase,
+                        block_id: blockId,
+                        ha: 0,
+                        ageMth: "",
+                        harvestYr: "",
+                        ageYrMth: "",
+                        harvestYrMth: "",
+                        mtHaYr: 0,
+                        mtHaMth: 0,
+                        months: new Array(12).fill(0)
+                    });
+                    renderFfbBudgetTable();
+                    return true;
+                });
+            };
+        }
+
+        const saveFfbBtn = document.getElementById('save-ffb-btn');
+        if (saveFfbBtn) {
+            saveFfbBtn.onclick = saveState;
+        }
+        // Attach event listeners
+        const inputs = wrapper.querySelectorAll('.ffb-input');
+        inputs.forEach(input => {
+            input.addEventListener('change', (e) => {
+                const target = e.target;
+                const field = target.dataset.field;
+                const blockId = target.dataset.blockId;
+                const phase = target.dataset.phase;
+
+                const rowData = state.ffbBudget[year].find(r => r.block_id === blockId && r.phase === phase);
+                if (!rowData) return;
+
+                if (field === 'month') {
+                    const idx = parseInt(target.dataset.monthIdx);
+                    rowData.months[idx] = parseFloat(target.value) || 0;
+                } else if (['mtHaYr', 'mtHaMth', 'ha'].includes(field)) {
+                    rowData[field] = parseFloat(target.value) || 0;
+                } else {
+                    rowData[field] = target.value; // string fields
+                }
+
+                // Re-render immediately to update subtotals
+                renderFfbBudgetTable();
+            });
+
+            if (input.type === 'number') {
+                input.addEventListener('blur', (e) => {
+                    e.target.value = Math.round(parseFloat(e.target.value) || 0).toString();
+                });
+            }
+        });
     };
 
 
@@ -1652,79 +2472,214 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const init = async () => {
         try {
-            const tBtn = document.getElementById('sidebar-download-template');
-            if (tBtn) {
-                tBtn.onclick = (e) => {
-                    e.preventDefault();
-                    const bStr = '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';
-                    const uri = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,' + bStr;
+            const downloadAsExcel = async (filename, templateKey) => {
+                try {
+                    const bStr = window.AppTemplates[templateKey];
+                    if (!bStr) throw new Error(`Template base64 data not found in templates.js for key ${templateKey}`);
+
+                    // Convert base64 to raw binary data held in a string
+                    const byteCharacters = atob(bStr);
+                    const byteNumbers = new Array(byteCharacters.length);
+                    for (let i = 0; i < byteCharacters.length; i++) {
+                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+                    }
+                    const byteArray = new Uint8Array(byteNumbers);
+
+                    // Create a Blob with the Excel MIME type and trigger download using Object URL
+                    const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                    const blobUrl = URL.createObjectURL(blob);
+
                     const a = document.createElement('a');
                     a.style.display = 'none';
-                    a.href = uri;
-                    a.download = 'Harvesting_Template.xlsx';
+                    a.href = blobUrl;
+                    a.download = filename;
                     document.body.appendChild(a);
                     a.click();
-
                     setTimeout(() => {
                         document.body.removeChild(a);
+                        URL.revokeObjectURL(blobUrl);
                     }, 100);
-                };
+                } catch (error) {
+                    console.error("Download error:", error);
+                    alert("Failed to download " + filename + ". " + error.message);
+                }
+            };
+
+            // FFB Budget template download removed.
+
+            const tBtnInterval = document.getElementById('sidebar-download-template');
+            if (tBtnInterval) {
+                console.log("Binding Download Template listener (addEventListener)");
+                tBtnInterval.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    console.log("Download Template clicked");
+                    downloadAsExcel('Harvesting_Template.xlsx', 'harvestingInterval');
+                });
+            } else {
+                console.warn("Download Template button NOT found in DOM");
             }
             const addBlockBtn = document.getElementById('add-block-btn');
-            if (addBlockBtn) addBlockBtn.onclick = handleGlobalAddBlock;
+            if (addBlockBtn) {
+                addBlockBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    handleGlobalAddBlock();
+                });
+            }
+
+            const globalAddYearGangBtn = document.getElementById('global-add-year-gang-btn');
+            if (globalAddYearGangBtn) {
+                console.log("Binding Add Year (Duplicate) listener (addEventListener)");
+                globalAddYearGangBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    console.log("Add Year (Duplicate) clicked");
+                    handleDuplicateGangYear(e);
+                });
+            } else {
+                console.warn("Add Year (Duplicate) button NOT found in DOM");
+            }
 
             const deleteYearBtn = document.getElementById('delete-year-btn');
-            if (deleteYearBtn) deleteYearBtn.onclick = handleDeleteYear;
-
+            if (deleteYearBtn) {
+                deleteYearBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    handleDeleteYear();
+                });
+            }
 
             const importExcelBtn = document.getElementById('sidebar-import-excel');
             const importExcelInput = document.getElementById('sidebar-import-input');
 
             if (importExcelBtn && importExcelInput) {
-                importExcelBtn.onclick = () => importExcelInput.click();
+                importExcelBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    importExcelInput.click();
+                });
                 importExcelInput.onchange = handleImportExcel;
             }
 
-            const res = await fetch('grouped_data.json');
-            if (!res.ok) throw new Error("Failed to load block data.");
-            const data = await res.json();
-
-            // Load all initial blocks into report year "2025" by default
-            state.reports = {};
-            state.reports["2025"] = [];
-
-            if (data.groups) {
-                data.groups.forEach(group => {
-                    const opYear = group.op_year;
-                    if (group.blocks) {
-                        group.blocks.forEach(b => {
-                            state.reports["2025"].push({
-                                block_id: b.block_id,
-                                ha: b.ha,
-                                op_year: opYear,
-                                gang: getGangForBlock(b.block_id)
-                            });
-                        });
-                    }
+            // Bind Global Save button for Planting Phase Record
+            const saveMainBtn = document.getElementById('save-main-btn');
+            if (saveMainBtn) {
+                saveMainBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    saveState();
                 });
             }
 
-            state.selectedReportYear = "2025";
-            state.activeViewType = 'report_year';
-            state.activeViewValue = "2025";
+            console.log("Listeners bound. Checking cloud storage...");
 
-            renderSidebar();
-            renderTable();
-            recalculateTotals();
+            // Helper function to hydrate gangs and render
+            const finishInit = () => {
+                if (!state.ffbBudget || Object.keys(state.ffbBudget).length === 0) {
+                    state.ffbBudget = {};
+                    if (typeof INITIAL_FFB_BUDGET !== 'undefined') {
+                        state.ffbBudget["2026"] = JSON.parse(JSON.stringify(INITIAL_FFB_BUDGET));
+                    }
+                }
+                if (!state.rainfall) state.rainfall = {};
+                if (!state.rainfall["2025"] && typeof INITIAL_RAINFALL_2025 !== 'undefined') {
+                    state.rainfall["2025"] = JSON.parse(JSON.stringify(INITIAL_RAINFALL_2025));
+                }
+                if (!state.rainfall["2026"] && typeof INITIAL_RAINFALL_2026 !== 'undefined') {
+                    state.rainfall["2026"] = JSON.parse(JSON.stringify(INITIAL_RAINFALL_2026));
+                }
+                if (!state.reports) state.reports = {};
+                if (!state.gangsByYear) state.gangsByYear = {};
 
-            loadingEl.classList.add('hidden');
-            tableContainer.classList.remove('hidden');
+                Object.keys(state.reports).forEach(year => {
+                    if (!state.gangsByYear[year] || state.gangsByYear[year].length === 0) {
+                        const yearBlocks = state.reports[year] || [];
+                        const uniqueGangs = [...new Set(yearBlocks.map(b => b.gang))].filter(g => g && g !== "Unassigned");
+                        if (year === "2025" && typeof predefinedGangs !== 'undefined') {
+                            const baseGangs = Object.keys(predefinedGangs);
+                            state.gangsByYear[year] = [...new Set([...baseGangs, ...uniqueGangs])].sort();
+                        } else {
+                            state.gangsByYear[year] = uniqueGangs.sort();
+                        }
+                    }
+                });
+
+                renderSidebar();
+                renderTable();
+                recalculateTotals();
+
+                loadingEl.classList.add('hidden');
+                tableContainer.classList.remove('hidden');
+            };
+
+            const loadFreshData = async () => {
+                const res = await fetch('grouped_data.json');
+                if (!res.ok) throw new Error("Failed to load block data.");
+                const data = await res.json();
+
+                state.reports = {};
+                state.reports["2025"] = [];
+
+                if (data.groups) {
+                    data.groups.forEach(group => {
+                        const opYear = group.op_year;
+                        if (group.blocks) {
+                            group.blocks.forEach(b => {
+                                state.reports["2025"].push({
+                                    block_id: b.block_id,
+                                    ha: b.ha,
+                                    op_year: opYear,
+                                    gang: getGangForBlock(b.block_id)
+                                });
+                            });
+                        }
+                    });
+                }
+
+                state.selectedReportYear = "2025";
+                state.activeViewType = 'report_year';
+                state.activeViewValue = "2025";
+                
+                finishInit();
+                saveState(true); // Push fresh data to cloud
+            };
+
+            const loadLocalOrFresh = async () => {
+                const savedStateStr = localStorage.getItem('harvesting_app_state');
+                if (savedStateStr) {
+                    try {
+                        Object.assign(state, JSON.parse(savedStateStr));
+                        finishInit();
+                        saveState(true); // Migrate local data to cloud
+                    } catch (e) {
+                        console.error("Local storage Parse error", e);
+                        await loadFreshData();
+                    }
+                } else {
+                    await loadFreshData();
+                }
+            };
+
+            // Main DB Fetch
+            try {
+                const snapshot = await db.ref('users/' + auth.currentUser.uid + '/app_state').once('value');
+                const cloudData = snapshot.val();
+                
+                if (cloudData) {
+                    console.log("Loading cloud state...");
+                    Object.assign(state, JSON.parse(cloudData));
+                    finishInit();
+                } else {
+                    console.log("No cloud state found. Checking local storage for migration...");
+                    await loadLocalOrFresh();
+                }
+            } catch (e) {
+                console.error("Firebase read error:", e);
+                // Fallback completely to local if offline or error
+                await loadLocalOrFresh();
+            }
 
         } catch (error) {
             console.error(error);
             loadingEl.innerHTML = `< p style = "color:var(--danger)" > Error initializing dashboard: ${error.message}</p > `;
         }
-    };
+    }; // end init
 
     init();
+    }; // end runMainApplication
 });
