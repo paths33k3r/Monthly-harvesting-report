@@ -501,6 +501,79 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
+    const handleImportFfbBudget = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const data = new Uint8Array(event.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+
+            const excelData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+            if (excelData.length < 2) {
+                alert("Excel file does not contain enough data rows.");
+                return;
+            }
+
+            const importYear = prompt("Enter the year for this FFB Budget import (e.g., 2026):", state.selectedReportYear || "2026");
+            if (!importYear) {
+                alert("Import cancelled. Year is required.");
+                return;
+            }
+
+            if (!state.ffbBudget) state.ffbBudget = {};
+            state.ffbBudget[importYear] = [];
+
+            // Assume header is at row 1 (index 0)
+            // Columns: Phase, Block, Age (mth), Harvest Yr, Mt/ha/yr, Mt/ha/mth, HA, Jan, Feb, ..., Dec
+            for (let i = 1; i < excelData.length; i++) {
+                const row = excelData[i];
+                if (!row || row.length < 7) continue;
+
+                const phase = row[0] ? String(row[0]).trim() : "Unassigned";
+                const blockId = row[1] ? String(row[1]).trim() : "";
+                if (!blockId) continue;
+
+                const ageMth = row[2] != null ? String(row[2]).trim() : "";
+                const harvestYr = parseFloat(row[3]) || 0;
+                const mtHaYr = parseFloat(row[4]) || 0;
+                const mtHaMth = parseFloat(row[5]) || 0;
+                const ha = parseFloat(row[6]) || 0;
+
+                const months = [];
+                for (let m = 0; m < 12; m++) {
+                    months.push(parseFloat(row[7 + m]) || 0);
+                }
+
+                state.ffbBudget[importYear].push({
+                    phase,
+                    block_id: blockId,
+                    ageMth,
+                    harvestYr,
+                    mtHaYr,
+                    mtHaMth,
+                    ha,
+                    months
+                });
+            }
+
+            e.target.value = '';
+            alert(`Successfully imported ${state.ffbBudget[importYear].length} blocks for year ${importYear}!`);
+            
+            // Switch view if it was FFB Budget already
+            if (state.activeViewType === 'ffb_budget') {
+                state.activeViewValue = importYear;
+                renderTable();
+            }
+            saveState(true);
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
     // Helper for manual import if needed (removed per user request - layout hardcoded directly)
 
     const handleAddReportYearManual = (newYearStr) => {
@@ -2605,18 +2678,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             };
 
-            // FFB Budget template download removed.
-
             const tBtnInterval = document.getElementById('sidebar-download-template');
+            const tBtnFfb = document.getElementById('sidebar-download-ffb-template');
+
             if (tBtnInterval) {
-                console.log("Binding Download Template listener (addEventListener)");
                 tBtnInterval.addEventListener('click', (e) => {
                     e.preventDefault();
-                    console.log("Download Template clicked");
                     downloadAsExcel('Harvesting_Template.xlsx', 'harvestingInterval');
                 });
-            } else {
-                console.warn("Download Template button NOT found in DOM");
+            }
+
+            if (tBtnFfb) {
+                tBtnFfb.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    downloadAsExcel('FFB_Budget_Template.xlsx', 'ffbBudget');
+                });
             }
             const addBlockBtn = document.getElementById('add-block-btn');
             if (addBlockBtn) {
@@ -2655,6 +2731,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     importExcelInput.click();
                 });
                 importExcelInput.onchange = handleImportExcel;
+            }
+
+            const importFfbBtn = document.getElementById('sidebar-import-ffb');
+            const importFfbInput = document.getElementById('sidebar-import-ffb-input');
+
+            if (importFfbBtn && importFfbInput) {
+                importFfbBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    importFfbInput.click();
+                });
+                importFfbInput.onchange = handleImportFfbBudget;
             }
 
             // Bind Global Save button for Planting Phase Record
