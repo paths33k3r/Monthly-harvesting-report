@@ -1107,8 +1107,6 @@ document.addEventListener('DOMContentLoaded', () => {
             tableContainer.classList.add('hidden');
             return;
         }
-        if (harvestingYtdWrapper) harvestingYtdWrapper.classList.add('hidden');
-        if (harvesterComparisonWrapper) harvesterComparisonWrapper.classList.add('hidden');
 
         const isFfbBudgetView = state.activeViewType === 'ffb_budget';
         const isRainfallView = state.activeViewType === 'rainfall_record';
@@ -2497,11 +2495,13 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const renderHarvestingYtdReport = () => {
-        renderHarvestingReportTable(harvestingYtdWrapper, state.harvestingReports?.harvestingYtdByGang, 'Harvesting YTD by Gang');
+        const wrapper = document.getElementById('ytd-wrapper');
+        renderHarvestingReportTable(wrapper, state.harvestingReports?.harvestingYtdByGang, 'Harvesting YTD by Gang');
     };
 
     const renderHarvesterComparisonReport = () => {
-        renderHarvestingReportTable(harvesterComparisonWrapper, state.harvestingReports?.harvestersMonthComparison, "Harvesters' Current vs Previous Month");
+        const wrapper = document.getElementById('current-prev-wrapper');
+        renderHarvestingReportTable(wrapper, state.harvestingReports?.harvestersMonthComparison, "Harvesters' Current vs Previous Month");
     };
 
     const loadHarvestingReports = async () => {
