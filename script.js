@@ -1508,7 +1508,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 const rowTotalEl = document.getElementById(`perf-row-total-${safeGangId}-${bId}`);
                 const rowMtEl = document.getElementById(`perf-row-mt-${safeGangId}-${bId}`);
 
-                if (rowTotalEl) rowTotalEl.textContent = formatHA(rowTotal);
+                if (rowTotalEl) {
+                    rowTotalEl.textContent = formatHA(rowTotal);
+                    if (bData.budget > 0 && rowTotal < bData.budget) {
+                        rowTotalEl.style.color = '#ef4444'; // Red if less than budget
+                    } else {
+                        rowTotalEl.style.color = ''; // Default
+                    }
+                }
                 if (rowMtEl) rowMtEl.textContent = bData.manday > 0 ? (rowTotal / bData.manday).toFixed(2) : "0.00";
             }
         });
@@ -1527,7 +1534,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (pTotalR1) pTotalR1.textContent = formatHA(tR1);
         if (pTotalR2) pTotalR2.textContent = formatHA(tR2);
         if (pTotalR3) pTotalR3.textContent = formatHA(tR3);
-        if (pTotalAll) pTotalAll.textContent = formatHA(tTotal);
+        if (pTotalAll) {
+            pTotalAll.textContent = formatHA(tTotal);
+            if (tBudget > 0 && tTotal < tBudget) {
+                pTotalAll.style.color = '#ef4444'; // Red if less than budget
+            } else {
+                pTotalAll.style.color = ''; // Default
+            }
+        }
         if (pTotalManday) pTotalManday.textContent = formatHA(tManday);
         if (pTotalMtManday) pTotalMtManday.textContent = tManday > 0 ? (tTotal / tManday).toFixed(2) : "0.00";
 
