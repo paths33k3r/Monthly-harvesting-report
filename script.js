@@ -2170,6 +2170,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         </td>
                         ${monthsHtml}
                         <td class="text-right font-bold col-total" style="border-left: 2px solid var(--border-color);">${Math.round(rowTotal)}</td>
+                        <td style="padding: 0.2rem 0.4rem; text-align: center; white-space: nowrap;">
+                            <button class="ffb-delete-btn" data-block-id="${row.block_id}" data-phase="${row.phase}"
+                                style="background: none; border: 1px solid transparent; border-radius: 4px; cursor: pointer; color: var(--danger); padding: 0.2rem 0.5rem; font-size: 1rem; line-height: 1; transition: background 0.2s;"
+                                title="Delete this block">🗑️</button>
+                        </td>
                     </tr>
                 `;
             });
@@ -2231,6 +2236,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <th style="width: 80px; min-width: 80px; max-width: 80px; position: sticky; left: 340px; background-color: var(--bg-secondary); z-index: 7; border-right: 2px solid var(--border-color);">HA</th>
                             ${['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'].map((m) => `<th style="min-width: 60px; text-align: right; padding: 0.4rem; font-size: 0.85em;">${m}</th>`).join('')}
                             <th style="min-width: 80px; text-align: right; border-left: 2px solid var(--border-color);" class="col-total">TOTAL</th>
+                            <th style="min-width: 40px; text-align: center;"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -2242,6 +2248,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <td class="text-right font-bold" style="position: sticky; left: 340px; width: 80px; min-width: 80px; max-width: 80px; background-color: var(--grand-total-bg); z-index: 6; border-right: 2px solid var(--border-color);">${Math.round(grandTotalHa)}</td>
                             ${tFootMonthsHtml}
                             <td class="text-right font-bold col-total" style="border-left: 2px solid var(--border-color);">${Math.round(grandTotalRowSum)}</td>
+                            <td></td>
                         </tr>
                     </tfoot>
                 </table>
@@ -2412,6 +2419,24 @@ document.addEventListener('DOMContentLoaded', () => {
                     e.target.value = Math.round(parseFloat(e.target.value) || 0).toString();
                 });
             }
+        });
+
+        // Attach delete button handlers
+        const deleteBtns = wrapper.querySelectorAll('.ffb-delete-btn');
+        deleteBtns.forEach(btn => {
+            btn.addEventListener('mouseenter', () => { btn.style.background = 'rgba(239,68,68,0.1)'; btn.style.borderColor = 'var(--danger)'; });
+            btn.addEventListener('mouseleave', () => { btn.style.background = 'none'; btn.style.borderColor = 'transparent'; });
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const blockId = btn.dataset.blockId;
+                const phase = btn.dataset.phase;
+                if (!confirm(`Delete block "${blockId}" (${phase}) from Year ${year}? This only affects ${year} and cannot be undone.`)) return;
+                // Remove only from the current year — other years are untouched
+                state.ffbBudget[year] = state.ffbBudget[year].filter(
+                    r => !(r.block_id === blockId && r.phase === phase)
+                );
+                renderFfbBudgetTable();
+            });
         });
     };
 
