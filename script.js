@@ -2047,6 +2047,15 @@ document.addEventListener('DOMContentLoaded', () => {
             monthIdx: activeEl.dataset.monthIdx
         } : null;
 
+        // Capture current group collapse state BEFORE clearing the DOM
+        const collapsedGroups = new Set();
+        const expandedGroups = new Set();
+        document.body.classList.forEach(cls => {
+            if (cls.startsWith('ffb-budget-toggle-group-')) {
+                collapsedGroups.add(cls);
+            }
+        });
+
         ffbBudgetWrapper.innerHTML = '';
 
         const year = state.activeViewValue;
@@ -2175,8 +2184,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
                 document.head.appendChild(style);
             }
-            // Set collapsed by default
-            document.body.classList.add(toggleId);
+            // Restore previous collapse state; collapse by default only on first render
+            const hadPriorState = document.body.classList.contains(toggleId) || 
+                                  document.querySelectorAll(`.${toggleId}-hideable`).length > 0;
+            if (!hadPriorState || collapsedGroups.has(toggleId)) {
+                document.body.classList.add(toggleId);
+            } else {
+                document.body.classList.remove(toggleId);
+            }
         });
 
         let grandTotalRowSum = grandTotalMonths.reduce((a, b) => a + b, 0);
