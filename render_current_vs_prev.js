@@ -131,14 +131,14 @@ window.renderCurrentPrevReport = () => {
                     <td class="text-right">${r1 > 0 ? formatNum(r1) : '-'}</td>
                     <td class="text-right">${r2 > 0 ? formatNum(r2) : '-'}</td>
                     <td class="text-right">${r3 > 0 ? formatNum(r3) : '-'}</td>
-                    <td class="text-right font-bold">${formatNum(currTot)}</td>
+                    <td class="text-right font-bold ${currBud > 0 && currTot < currBud ? 'text-danger-important' : ''}">${formatNum(currTot)}</td>
                     
                     <td class="text-right">${formatNum(currBud)}</td>
                     
                     <td class="text-right">${formatNum(currActualMtHa)}</td>
                     <td class="text-right">${formatNum(currBudgetMtHa)}</td>
                     
-                    <td class="text-right font-bold" style="color:var(--text-muted);">${formatNum(prevTot)}</td>
+                    <td class="text-right font-bold ${prevBud > 0 && prevTot < prevBud ? 'text-danger-important' : ''}" style="${prevBud > 0 && prevTot < prevBud ? '' : 'color:var(--text-muted);'}">${formatNum(prevTot)}</td>
                     <td class="text-right" style="color:var(--text-muted);">${formatNum(prevBud)}</td>
                     <td class="text-right" style="color:var(--text-muted);">${formatNum(prevActualMtHa)}</td>
                 </tr>
@@ -162,14 +162,14 @@ window.renderCurrentPrevReport = () => {
                 <td class="text-right font-bold">${formatNum(s_R1)}</td>
                 <td class="text-right font-bold">${formatNum(s_R2)}</td>
                 <td class="text-right font-bold">${formatNum(s_R3)}</td>
-                <td class="text-right font-bold" style="color: #3b82f6;">${formatNum(s_CurrTot)}</td>
+                <td class="text-right font-bold ${s_CurrBud > 0 && s_CurrTot < s_CurrBud ? 'text-danger-important' : ''}" style="${s_CurrBud > 0 && s_CurrTot < s_CurrBud ? '' : 'color: #3b82f6;'}">${formatNum(s_CurrTot)}</td>
                 
                 <td class="text-right font-bold">${formatNum(s_CurrBud)}</td>
                 
                 <td class="text-right font-bold" style="color: #10b981;">${formatNum(s_currActualMtHa)}</td>
                 <td class="text-right font-bold">${formatNum(s_currBudgetMtHa)}</td>
                 
-                <td class="text-right font-bold" style="color: #f59e0b;">${formatNum(s_PrevTot)}</td>
+                <td class="text-right font-bold ${s_PrevBud > 0 && s_PrevTot < s_PrevBud ? 'text-danger-important' : ''}" style="${s_PrevBud > 0 && s_PrevTot < s_PrevBud ? '' : 'color: #f59e0b;'}">${formatNum(s_PrevTot)}</td>
                 <td class="text-right font-bold">${formatNum(s_PrevBud)}</td>
                 <td class="text-right font-bold">${formatNum(s_prevActualMtHa)}</td>
             </tr>
@@ -248,11 +248,11 @@ window.renderCurrentPrevReport = () => {
                         <td class="text-right font-bold">${formatNum(gT_R1)}</td>
                         <td class="text-right font-bold">${formatNum(gT_R2)}</td>
                         <td class="text-right font-bold">${formatNum(gT_R3)}</td>
-                        <td class="text-right font-bold">${formatNum(gT_CurrTot)}</td>
+                        <td class="text-right font-bold ${gT_CurrBud > 0 && gT_CurrTot < gT_CurrBud ? 'text-danger-important' : ''}">${formatNum(gT_CurrTot)}</td>
                         <td class="text-right font-bold">${formatNum(gT_CurrBud)}</td>
                         <td class="text-right font-bold">${formatNum(gT_currActualMtHa)}</td>
                         <td class="text-right font-bold">${formatNum(gT_currBudgetMtHa)}</td>
-                        <td class="text-right font-bold">${formatNum(gT_PrevTot)}</td>
+                        <td class="text-right font-bold ${gT_PrevBud > 0 && gT_PrevTot < gT_PrevBud ? 'text-danger-important' : ''}">${formatNum(gT_PrevTot)}</td>
                         <td class="text-right font-bold">${formatNum(gT_PrevBud)}</td>
                         <td class="text-right font-bold">${formatNum(gT_prevActualMtHa)}</td>
                     </tr>

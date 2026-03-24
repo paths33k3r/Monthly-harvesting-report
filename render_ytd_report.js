@@ -132,10 +132,10 @@ window.renderYtdReport = () => {
                     <td class="text-right">${formatNum(ha)}</td>
                     
                     <td class="text-right" style="color:var(--text-muted);">${formatNum(currBud)}</td>
-                    <td class="text-right font-bold">${formatNum(currAct)}</td>
+                    <td class="text-right font-bold ${currBud > 0 && currAct < currBud ? 'text-danger-important' : ''}">${formatNum(currAct)}</td>
                     
                     <td class="text-right" style="color:var(--text-muted);">${formatNum(prevBud)}</td>
-                    <td class="text-right font-bold">${formatNum(prevAct)}</td>
+                    <td class="text-right font-bold ${prevBud > 0 && prevAct < prevBud ? 'text-danger-important' : ''}">${formatNum(prevAct)}</td>
                     
                     <td class="text-right font-bold ${variance >= 0 ? 'text-success' : 'text-danger'}">${variance > 0 ? '+' : ''}${formatNum(variance)}</td>
                     
@@ -160,10 +160,10 @@ window.renderYtdReport = () => {
                 <td class="text-right font-bold">${formatNum(s_HA)}</td>
                 
                 <td class="text-right font-bold">${formatNum(s_CurrBud)}</td>
-                <td class="text-right font-bold" style="color: #3b82f6;">${formatNum(s_CurrAct)}</td>
+                <td class="text-right font-bold ${s_CurrBud > 0 && s_CurrAct < s_CurrBud ? 'text-danger-important' : ''}" style="${s_CurrBud > 0 && s_CurrAct < s_CurrBud ? '' : 'color: #3b82f6;'}">${formatNum(s_CurrAct)}</td>
                 
                 <td class="text-right font-bold">${formatNum(s_PrevBud)}</td>
-                <td class="text-right font-bold" style="color: #f59e0b;">${formatNum(s_PrevAct)}</td>
+                <td class="text-right font-bold ${s_PrevBud > 0 && s_PrevAct < s_PrevBud ? 'text-danger-important' : ''}" style="${s_PrevBud > 0 && s_PrevAct < s_PrevBud ? '' : 'color: #f59e0b;'}">${formatNum(s_PrevAct)}</td>
                 
                 <td class="text-right font-bold ${s_Var >= 0 ? 'text-success' : 'text-danger'}">${s_Var > 0 ? '+' : ''}${formatNum(s_Var)}</td>
                 
@@ -240,9 +240,9 @@ window.renderYtdReport = () => {
                         <td class="text-left font-bold">ALL BLOCKS</td>
                         <td class="text-right font-bold">${formatNum(gT_HA)}</td>
                         <td class="text-right font-bold">${formatNum(gT_CurrBud)}</td>
-                        <td class="text-right font-bold">${formatNum(gT_CurrAct)}</td>
+                        <td class="text-right font-bold ${gT_CurrBud > 0 && gT_CurrAct < gT_CurrBud ? 'text-danger-important' : ''}">${formatNum(gT_CurrAct)}</td>
                         <td class="text-right font-bold">${formatNum(gT_PrevBud)}</td>
-                        <td class="text-right font-bold">${formatNum(gT_PrevAct)}</td>
+                        <td class="text-right font-bold ${gT_PrevBud > 0 && gT_PrevAct < gT_PrevBud ? 'text-danger-important' : ''}">${formatNum(gT_PrevAct)}</td>
                         <td class="text-right font-bold ${gT_Var >= 0 ? 'text-success' : 'text-danger'}">${gT_Var > 0 ? '+' : ''}${formatNum(gT_Var)}</td>
                         <td class="text-right font-bold">${formatNum(gT_currMtHa)}</td>
                         <td class="text-right font-bold">${formatNum(gT_prevMtHa)}</td>

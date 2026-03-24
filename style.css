@@ -656,6 +656,10 @@ main {
     color: #166534 !important;
 }
 
+.text-danger-important {
+    color: #ef4444 !important;
+}
+
 .perf-dashboard-bottom {
     display: flex;
     gap: 2rem;

@@ -1510,10 +1510,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (rowTotalEl) {
                     rowTotalEl.textContent = formatHA(rowTotal);
-                    if (bData.budget > 0 && rowTotal < bData.budget) {
-                        rowTotalEl.style.setProperty('color', '#ef4444', 'important'); // Red if less than budget
+                    if (parseFloat(bData.budget) > 0 && rowTotal < parseFloat(bData.budget)) {
+                        rowTotalEl.classList.add('text-danger-important');
                     } else {
-                        rowTotalEl.style.removeProperty('color'); // Default
+                        rowTotalEl.classList.remove('text-danger-important');
                     }
                 }
                 if (rowMtEl) rowMtEl.textContent = bData.manday > 0 ? (rowTotal / bData.manday).toFixed(2) : "0.00";
@@ -1537,9 +1537,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (pTotalAll) {
             pTotalAll.textContent = formatHA(tTotal);
             if (tBudget > 0 && tTotal < tBudget) {
-                pTotalAll.style.setProperty('color', '#ef4444', 'important'); // Red if less than budget
+                pTotalAll.classList.add('text-danger-important');
             } else {
-                pTotalAll.style.removeProperty('color'); // Default
+                pTotalAll.classList.remove('text-danger-important');
             }
         }
         if (pTotalManday) pTotalManday.textContent = formatHA(tManday);
