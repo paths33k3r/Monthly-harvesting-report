@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     
     // Logout button injection to header
-    setTimeout(() => {
+    const addLogoutButton = () => {
         const headerRight = document.querySelector('.header-right');
         if (headerRight && !document.getElementById('btn-logout')) {
             const btnLogout = document.createElement('button');
@@ -45,13 +45,69 @@ document.addEventListener('DOMContentLoaded', () => {
             btnLogout.onclick = () => auth.signOut();
             headerRight.appendChild(btnLogout);
         }
-    }, 1000);
+    };
+
+    // --- IDLE TIMEOUT LOGIC ---
+    let idleTimer;
+    let warningCountdownTimer;
+    const IDLE_LIMIT = 15 * 60 * 1000; // 15 minutes
+    const WARNING_LIMIT = 30; // 30 seconds
+
+    const startIdleTimer = () => {
+        if (!auth.currentUser) return;
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(showIdleWarning, IDLE_LIMIT);
+    };
+
+    const showIdleWarning = () => {
+        const modal = document.getElementById('idle-modal-overlay');
+        const countdownEl = document.getElementById('idle-countdown');
+        if (!modal) return;
+
+        modal.style.display = 'flex';
+        let remaining = WARNING_LIMIT;
+        countdownEl.textContent = remaining;
+
+        clearInterval(warningCountdownTimer);
+        warningCountdownTimer = setInterval(() => {
+            remaining--;
+            countdownEl.textContent = remaining;
+            if (remaining <= 0) {
+                clearInterval(warningCountdownTimer);
+                auth.signOut();
+            }
+        }, 1000);
+    };
+
+    const resetIdleState = () => {
+        const modal = document.getElementById('idle-modal-overlay');
+        if (modal && modal.style.display === 'flex') {
+            modal.style.display = 'none';
+            clearInterval(warningCountdownTimer);
+            startIdleTimer();
+        } else {
+            startIdleTimer();
+        }
+    };
+
+    // Listen for activity
+    ['mousemove', 'mousedown', 'keypress', 'touchstart', 'scroll'].forEach(evt => {
+        window.addEventListener(evt, () => {
+            if (auth.currentUser) startIdleTimer();
+        }, true);
+    });
+
+    const btnStayIn = document.getElementById('btn-stay-logged-in');
+    if (btnStayIn) btnStayIn.onclick = resetIdleState;
+
 
     let isAppRunning = false;
     auth.onAuthStateChanged(user => {
         if (user) {
             loginOverlay.style.display = 'none';
             appLayout.style.display = 'flex';
+            addLogoutButton();
+            startIdleTimer();
             if (!isAppRunning) {
                 isAppRunning = true;
                 runMainApplication();
@@ -59,6 +115,8 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             loginOverlay.style.display = 'flex';
             appLayout.style.display = 'none';
+            clearTimeout(idleTimer);
+            clearInterval(warningCountdownTimer);
             if (isAppRunning) {
                 window.location.reload(); // Reload to reset state on logout
             }
@@ -1057,8 +1115,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (harvestingYtdWrapper) harvestingYtdWrapper.classList.add('hidden');
         if (harvesterComparisonWrapper) harvesterComparisonWrapper.classList.add('hidden');
 
-        const isPerfView = state.activeViewType === 'perf_month';
-        const isIntervalView = state.activeViewType === 'interval_month';
         const isFfbBudgetView = state.activeViewType === 'ffb_budget';
         const isRainfallView = state.activeViewType === 'rainfall_record';
         const isYtdView = state.activeViewType === 'ytd';
