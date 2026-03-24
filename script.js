@@ -528,29 +528,46 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!state.ffbBudget) state.ffbBudget = {};
             state.ffbBudget[importYear] = [];
 
-            // Assume header is at row 1 (index 0)
-            // Columns: Phase, Block, Age (mth), Harvest Yr, Mt/ha/yr, Mt/ha/mth, HA, Jan, Feb, ..., Dec
+            // Format:
+            // Row 0: Headers (BLK, AGE (MTH), HARVEST YR., etc.)
+            // Row N: "SUBTOTAL OP2010" (in first column)
+            // Row N+1: "1", "168-180", 11.00, etc.
+
+            let currentPhase = "Unassigned";
+
             for (let i = 1; i < excelData.length; i++) {
                 const row = excelData[i];
-                if (!row || row.length < 7) continue;
+                if (!row || row.length < 1) continue;
 
-                const phase = row[0] ? String(row[0]).trim() : "Unassigned";
-                const blockId = row[1] ? String(row[1]).trim() : "";
-                if (!blockId) continue;
+                const firstColRaw = String(row[0] || "").trim();
+                if (!firstColRaw) continue;
 
-                const ageMth = row[2] != null ? String(row[2]).trim() : "";
-                const harvestYr = parseFloat(row[3]) || 0;
-                const mtHaYr = parseFloat(row[4]) || 0;
-                const mtHaMth = parseFloat(row[5]) || 0;
-                const ha = parseFloat(row[6]) || 0;
+                // Check for Subtotal/Phase row
+                const isSubtotal = firstColRaw.toUpperCase().startsWith("SUBTOTAL");
+                if (isSubtotal) {
+                    // Extract phase name e.g. "SUBTOTAL OP2010" -> "OP2010"
+                    currentPhase = firstColRaw.substring(8).trim();
+                    continue;
+                }
+
+                // If it's not a subtotal, treat it as a block row.
+                // We need at least enough columns for block, age, harvest yr, mt/ha/yr, mt/ha/mth, ha, and jan
+                if (row.length < 7) continue;
+
+                const blockId = firstColRaw; 
+                const ageMth = row[1] != null ? String(row[1]).trim() : "";
+                const harvestYr = parseFloat(row[2]) || 0;
+                const mtHaYr = parseFloat(row[3]) || 0;
+                const mtHaMth = parseFloat(row[4]) || 0;
+                const ha = parseFloat(row[5]) || 0;
 
                 const months = [];
                 for (let m = 0; m < 12; m++) {
-                    months.push(parseFloat(row[7 + m]) || 0);
+                    months.push(parseFloat(row[6 + m]) || 0);
                 }
 
                 state.ffbBudget[importYear].push({
-                    phase,
+                    phase: currentPhase,
                     block_id: blockId,
                     ageMth,
                     harvestYr,
