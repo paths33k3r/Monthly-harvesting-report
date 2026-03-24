@@ -2048,8 +2048,8 @@ document.addEventListener('DOMContentLoaded', () => {
         } : null;
 
         // Capture current group collapse state BEFORE clearing the DOM
+        const isAlreadyRendered = !!document.getElementById('ffb-expand-all-btn');
         const collapsedGroups = new Set();
-        const expandedGroups = new Set();
         document.body.classList.forEach(cls => {
             if (cls.startsWith('ffb-budget-toggle-group-')) {
                 collapsedGroups.add(cls);
@@ -2185,12 +2185,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.head.appendChild(style);
             }
             // Restore previous collapse state; collapse by default only on first render
-            const hadPriorState = document.body.classList.contains(toggleId) || 
-                                  document.querySelectorAll(`.${toggleId}-hideable`).length > 0;
-            if (!hadPriorState || collapsedGroups.has(toggleId)) {
-                document.body.classList.add(toggleId);
+            if (isAlreadyRendered) {
+                if (collapsedGroups.has(toggleId)) {
+                    document.body.classList.add(toggleId);
+                } else {
+                    document.body.classList.remove(toggleId);
+                }
             } else {
-                document.body.classList.remove(toggleId);
+                // First render for this view: default to collapsed
+                document.body.classList.add(toggleId);
             }
         });
 
