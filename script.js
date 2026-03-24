@@ -1511,9 +1511,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (rowTotalEl) {
                     rowTotalEl.textContent = formatHA(rowTotal);
                     if (bData.budget > 0 && rowTotal < bData.budget) {
-                        rowTotalEl.style.color = '#ef4444'; // Red if less than budget
+                        rowTotalEl.style.setProperty('color', '#ef4444', 'important'); // Red if less than budget
                     } else {
-                        rowTotalEl.style.color = ''; // Default
+                        rowTotalEl.style.removeProperty('color'); // Default
                     }
                 }
                 if (rowMtEl) rowMtEl.textContent = bData.manday > 0 ? (rowTotal / bData.manday).toFixed(2) : "0.00";
@@ -1537,9 +1537,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (pTotalAll) {
             pTotalAll.textContent = formatHA(tTotal);
             if (tBudget > 0 && tTotal < tBudget) {
-                pTotalAll.style.color = '#ef4444'; // Red if less than budget
+                pTotalAll.style.setProperty('color', '#ef4444', 'important'); // Red if less than budget
             } else {
-                pTotalAll.style.color = ''; // Default
+                pTotalAll.style.removeProperty('color'); // Default
             }
         }
         if (pTotalManday) pTotalManday.textContent = formatHA(tManday);
