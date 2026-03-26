@@ -121,7 +121,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg);
   object-fit: contain;
   image-rendering: auto;
   filter: drop-shadow(0 8px 24px rgba(0,0,0,.7));
-  transition: transform .08s ease-out;
+  transition: transform .12s cubic-bezier(.2,.8,.4,1), filter .15s ease-out;
   transform-origin: bottom center;
 }
 .game-sprite {
@@ -131,14 +131,46 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg);
   width: 180px;
 }
 
-/* Hit impact flash — brief scale punch + brightness */
+/* ── Hit animations — distinct per action for natural seated drumming ── */
+
+/* Generic hit (fallback) */
 .char-sprite.char-hit {
-  animation: charHit .18s ease-out forwards;
+  animation: charHit .22s cubic-bezier(.2,.6,.3,1) forwards;
 }
 @keyframes charHit {
-  0%   { transform: scale(1.08); filter: drop-shadow(0 8px 24px rgba(0,0,0,.7)) brightness(1.4); }
-  60%  { transform: scale(1.02); filter: drop-shadow(0 8px 24px rgba(0,0,0,.7)) brightness(1.1); }
+  0%   { transform: scale(1.06); filter: drop-shadow(0 8px 24px rgba(0,0,0,.7)) brightness(1.35); }
+  50%  { transform: scale(1.02); filter: drop-shadow(0 8px 24px rgba(0,0,0,.7)) brightness(1.12); }
   100% { transform: scale(1);    filter: drop-shadow(0 8px 24px rgba(0,0,0,.7)) brightness(1); }
+}
+
+/* Left arm hit — lean left toward hi-hat/snare */
+.char-sprite.char-hit-left {
+  animation: charHitLeft .24s cubic-bezier(.2,.7,.35,1) forwards;
+}
+@keyframes charHitLeft {
+  0%   { transform: rotate(-3deg) translateX(-4px) scale(1.04); filter: drop-shadow(0 8px 24px rgba(0,0,0,.7)) brightness(1.4); }
+  40%  { transform: rotate(-1.5deg) translateX(-2px) scale(1.02); filter: drop-shadow(0 8px 24px rgba(0,0,0,.7)) brightness(1.15); }
+  100% { transform: rotate(0) translateX(0) scale(1);            filter: drop-shadow(0 8px 24px rgba(0,0,0,.7)) brightness(1); }
+}
+
+/* Right arm hit — lean right toward tom/floor tom */
+.char-sprite.char-hit-right {
+  animation: charHitRight .24s cubic-bezier(.2,.7,.35,1) forwards;
+}
+@keyframes charHitRight {
+  0%   { transform: rotate(3deg) translateX(4px) scale(1.04); filter: drop-shadow(0 8px 24px rgba(0,0,0,.7)) brightness(1.4); }
+  40%  { transform: rotate(1.5deg) translateX(2px) scale(1.02); filter: drop-shadow(0 8px 24px rgba(0,0,0,.7)) brightness(1.15); }
+  100% { transform: rotate(0) translateX(0) scale(1);          filter: drop-shadow(0 8px 24px rgba(0,0,0,.7)) brightness(1); }
+}
+
+/* Kick — subtle forward duck as foot stomps the pedal */
+.char-sprite.char-hit-kick {
+  animation: charKick .28s cubic-bezier(.25,.8,.3,1) forwards;
+}
+@keyframes charKick {
+  0%   { transform: translateY(3px) scale(0.98); filter: drop-shadow(0 8px 24px rgba(0,0,0,.7)) brightness(1.3); }
+  35%  { transform: translateY(1px) scale(0.99); filter: drop-shadow(0 8px 24px rgba(0,0,0,.7)) brightness(1.1); }
+  100% { transform: translateY(0) scale(1);      filter: drop-shadow(0 8px 24px rgba(0,0,0,.7)) brightness(1); }
 }
 
 /* ══════════════════════════════════════════════════════

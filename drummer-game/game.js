@@ -218,14 +218,16 @@ const Character = {
       .map(id => document.getElementById(id)).filter(Boolean);
     const src = CHAR_SPRITES[pose] || CHAR_SPRITES.idle;
     imgs.forEach(img => {
+      img.classList.remove('char-hit', 'char-hit-left', 'char-hit-right', 'char-hit-kick');
       img.src = src;
+      void img.offsetWidth;
       img.classList.add('char-hit');
     });
     clearTimeout(Character._poseTimer);
     Character._poseTimer = setTimeout(() => {
       imgs.forEach(img => {
         img.src = CHAR_SPRITES.idle;
-        img.classList.remove('char-hit');
+        img.classList.remove('char-hit', 'char-hit-left', 'char-hit-right', 'char-hit-kick');
       });
     }, durationMs);
   },
@@ -235,22 +237,29 @@ const Character = {
     const img = document.getElementById('gameCharImg');
     if (!img) return;
 
-    let pose;
+    let pose, animClass;
     if (lane === 4) {
       pose = 'kick';
-    } else if (lane === 0 || lane === 2) {
+      animClass = 'char-hit-kick';
+    } else if (lane === 0 || lane === 1) {
       pose = 'hitLeft';
+      animClass = 'char-hit-left';
     } else {
       pose = 'hitRight';
+      animClass = 'char-hit-right';
     }
 
+    // Remove all animation classes first, then force reflow for re-trigger
+    img.classList.remove('char-hit', 'char-hit-left', 'char-hit-right', 'char-hit-kick');
     img.src = CHAR_SPRITES[pose];
-    img.classList.add('char-hit');
+    void img.offsetWidth; // force reflow so animation restarts
+    img.classList.add(animClass);
+
     clearTimeout(Character._poseTimer);
     Character._poseTimer = setTimeout(() => {
+      img.classList.remove('char-hit', 'char-hit-left', 'char-hit-right', 'char-hit-kick');
       img.src = CHAR_SPRITES.idle;
-      img.classList.remove('char-hit');
-    }, 200);
+    }, lane === 4 ? 260 : 220);
   },
 
   // Show idle on all character images
