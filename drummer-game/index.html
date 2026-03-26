@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Noob Drummer 🥁</title>
+  <meta name="description" content="A Guitar Hero-style drum rhythm game. Hit the beats, level up, unlock gear!" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ══════════════════════════════════════════════════════
+       SCREEN: MAIN MENU
+  ══════════════════════════════════════════════════════ -->
+  <div id="screen-menu" class="screen active">
+    <div class="menu-bg-glow"></div>
+
+    <div class="menu-content">
+      <div class="logo-group">
+        <div class="logo-drum-icon">🥁</div>
+        <h1 class="logo-title">NOOB<br><span class="logo-accent">DRUMMER</span></h1>
+        <p class="logo-sub">RHYTHM SMASH</p>
+      </div>
+
+      <!-- Idle drummer on menu -->
+      <div class="menu-character" id="menuCharacter">
+        <img id="menuCharImg" src="assets/drummer_idle.png" alt="Drummer" class="char-sprite" />
+      </div>
+
+      <div class="menu-buttons">
+        <button class="btn-primary" id="btnPlay">▶ PLAY</button>
+        <button class="btn-secondary" id="btnLoadout">👕 LOADOUT</button>
+        <button class="btn-secondary" id="btnHowTo">❓ HOW TO PLAY</button>
+      </div>
+
+      <p class="menu-version">v1.0 | Keys: A S D F SPACE</p>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       SCREEN: HOW TO PLAY
+  ══════════════════════════════════════════════════════ -->
+  <div id="screen-howto" class="screen">
+    <div class="overlay-panel">
+      <h2>HOW TO PLAY</h2>
+      <div class="howto-grid">
+        <div class="howto-key cyan">A</div><p>Hi-Hat</p>
+        <div class="howto-key red">S</div><p>Snare</p>
+        <div class="howto-key yellow">D</div><p>Tom</p>
+        <div class="howto-key orange">F</div><p>Floor Tom</p>
+        <div class="howto-key purple">SPC</div><p>Bass Kick</p>
+      </div>
+      <p class="howto-tip">Hit the key when a note reaches the <span class="glow-text">HIT ZONE</span> at the bottom.</p>
+      <div class="rating-table">
+        <div class="rating-row"><span class="r-perfect">PERFECT</span><span>±50ms → +300 × combo</span></div>
+        <div class="rating-row"><span class="r-good">GOOD</span><span>±120ms → +100 × combo</span></div>
+        <div class="rating-row"><span class="r-miss">MISS</span><span>combo reset · lose HP</span></div>
+      </div>
+      <p class="howto-tip">Unlock new gear every 10 levels. Reach <b>Level 100</b> for full Rockstar status! 🤘</p>
+      <button class="btn-secondary" id="btnHowToBack">← BACK</button>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       SCREEN: LOADOUT
+  ══════════════════════════════════════════════════════ -->
+  <div id="screen-loadout" class="screen">
+    <div class="overlay-panel loadout-panel">
+      <h2>LOADOUT</h2>
+      <div class="loadout-body">
+        <!-- Preview character -->
+        <div class="loadout-char-preview">
+          <img id="loadoutCharImg" src="assets/drummer_idle.png" alt="Drummer" class="char-sprite loadout-sprite" />
+        </div>
+
+        <!-- Unlocks list -->
+        <div class="loadout-unlocks" id="loadoutUnlocks">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+      <button class="btn-secondary" id="btnLoadoutBack">← BACK</button>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       SCREEN: LEVEL SELECT / PLAY
+  ══════════════════════════════════════════════════════ -->
+  <div id="screen-levelselect" class="screen">
+    <div class="overlay-panel">
+      <h2>SELECT LEVEL</h2>
+      <div class="level-info-box">
+        <div class="level-number-big" id="lsLevel">1</div>
+        <div class="level-meta">
+          <p id="lsDifficulty">Difficulty: Noob</p>
+          <p id="lsLanes">Active Lanes: 2</p>
+          <p id="lsBpm">BPM: ~60</p>
+          <p id="lsHighScore">Best Score: 0</p>
+        </div>
+      </div>
+      <div class="level-arrows">
+        <button class="arrow-btn" id="btnLvlDown">◀</button>
+        <input type="range" id="levelSlider" min="1" max="100" value="1" />
+        <button class="arrow-btn" id="btnLvlUp">▶</button>
+      </div>
+      <div class="ls-buttons">
+        <button class="btn-primary" id="btnStartGame">▶ START</button>
+        <button class="btn-secondary" id="btnLSBack">← BACK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       SCREEN: IN-GAME
+  ══════════════════════════════════════════════════════ -->
+  <div id="screen-game" class="screen">
+
+    <!-- HUD Top Bar -->
+    <div class="hud-top">
+      <div class="hud-block">
+        <div class="hud-label">SCORE</div>
+        <div class="hud-value" id="hudScore">0</div>
+      </div>
+      <div class="hud-block center">
+        <div class="hud-label">LEVEL</div>
+        <div class="hud-value level-badge" id="hudLevel">1</div>
+        <div class="hud-label">COMBO</div>
+        <div class="combo-counter" id="hudCombo">×0</div>
+      </div>
+      <div class="hud-block right">
+        <div class="hud-label">HP</div>
+        <div class="hp-bar-wrap">
+          <div class="hp-bar-fill" id="hpBarFill"></div>
+        </div>
+        <div class="hud-value" id="hudHp">100</div>
+      </div>
+    </div>
+
+    <!-- Note Lanes -->
+    <div class="lanes-container" id="lanesContainer">
+      <div class="lane" id="lane-0" data-lane="0" data-key="A">
+        <div class="lane-label">A<br><small>HI-HAT</small></div>
+        <div class="hit-zone" id="hz-0"></div>
+      </div>
+      <div class="lane" id="lane-1" data-lane="1" data-key="S">
+        <div class="lane-label">S<br><small>SNARE</small></div>
+        <div class="hit-zone" id="hz-1"></div>
+      </div>
+      <div class="lane" id="lane-2" data-lane="2" data-key="D">
+        <div class="lane-label">D<br><small>TOM</small></div>
+        <div class="hit-zone" id="hz-2"></div>
+      </div>
+      <div class="lane" id="lane-3" data-lane="3" data-key="F">
+        <div class="lane-label">F<br><small>FLOOR</small></div>
+        <div class="hit-zone" id="hz-3"></div>
+      </div>
+      <div class="lane" id="lane-4" data-lane="4" data-key="SPC">
+        <div class="lane-label">SPC<br><small>KICK</small></div>
+        <div class="hit-zone" id="hz-4"></div>
+      </div>
+    </div>
+
+    <!-- Hit feedback overlay -->
+    <div class="hit-feedback" id="hitFeedback"></div>
+
+    <!-- Drummer Character (in-game) -->
+    <div class="ingame-character" id="ingameCharacter">
+      <img id="gameCharImg" src="assets/drummer_idle.png" alt="Drummer" class="char-sprite game-sprite" />
+    </div>
+
+    <!-- Pause button -->
+    <button class="pause-btn" id="btnPause">⏸</button>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       SCREEN: PAUSE
+  ══════════════════════════════════════════════════════ -->
+  <div id="screen-pause" class="screen">
+    <div class="overlay-panel small">
+      <h2>PAUSED</h2>
+      <button class="btn-primary" id="btnResume">▶ RESUME</button>
+      <button class="btn-secondary" id="btnQuitPause">✕ QUIT</button>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       SCREEN: LEVEL COMPLETE
+  ══════════════════════════════════════════════════════ -->
+  <div id="screen-complete" class="screen">
+    <div class="overlay-panel">
+      <div class="complete-badge">LEVEL COMPLETE! 🎉</div>
+      <div class="score-breakdown">
+        <div class="sb-row"><span>Score</span><span id="sbScore">0</span></div>
+        <div class="sb-row"><span>Perfect Hits</span><span id="sbPerfect">0</span></div>
+        <div class="sb-row"><span>Good Hits</span><span id="sbGood">0</span></div>
+        <div class="sb-row"><span>Misses</span><span id="sbMiss">0</span></div>
+        <div class="sb-row"><span>Max Combo</span><span id="sbCombo">0</span></div>
+        <div class="sb-row highlight"><span>Best Score</span><span id="sbBest">0</span></div>
+      </div>
+      <!-- Unlock notification -->
+      <div class="unlock-box" id="unlockBox" style="display:none">
+        <div class="unlock-title">🏆 NEW UNLOCK!</div>
+        <div class="unlock-item-name" id="unlockItemName"></div>
+      </div>
+      <div class="complete-buttons">
+        <button class="btn-primary" id="btnNextLevel">NEXT LEVEL ▶</button>
+        <button class="btn-secondary" id="btnRetryComplete">↺ RETRY</button>
+        <button class="btn-secondary" id="btnMenuComplete">⌂ MENU</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       SCREEN: GAME OVER
+  ══════════════════════════════════════════════════════ -->
+  <div id="screen-gameover" class="screen">
+    <div class="overlay-panel">
+      <div class="gameover-title">GAME OVER 💀</div>
+      <div class="score-breakdown">
+        <div class="sb-row"><span>Final Score</span><span id="goScore">0</span></div>
+        <div class="sb-row"><span>Max Combo</span><span id="goCombo">0</span></div>
+        <div class="sb-row"><span>Level Reached</span><span id="goLevel">1</span></div>
+      </div>
+      <div class="complete-buttons">
+        <button class="btn-primary" id="btnRetryGO">↺ RETRY</button>
+        <button class="btn-secondary" id="btnMenuGO">⌂ MENU</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
