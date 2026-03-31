@@ -688,30 +688,52 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = new Uint8Array(event.target.result);
             const workbook = XLSX.read(data, { type: 'array' });
 
-            // Sheet selection: if multiple sheets, let user choose or import all
+            // Sheet selection: auto-detect harvesting interval sheet, let user confirm or override
             const sheetNames = workbook.SheetNames;
             let sheetsToImport = [];
-            if (sheetNames.length > 1) {
-                const sheetList = sheetNames.map((name, idx) => `${idx + 1}. ${name}`).join('\n');
+
+            // Auto-detect: look for sheet whose row 2 starts with GANG / YEAR / BLOCK / HA
+            const isIntervalSheet = (name) => {
+                try {
+                    const ws = workbook.Sheets[name];
+                    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: true });
+                    for (let r = 0; r <= Math.min(5, rows.length - 1); r++) {
+                        const row = rows[r];
+                        if (row && String(row[0] || '').trim().toUpperCase() === 'GANG' &&
+                            String(row[2] || '').trim().toUpperCase().startsWith('BLOCK')) {
+                            return true;
+                        }
+                    }
+                } catch (e) { /* ignore */ }
+                return false;
+            };
+
+            const detectedIndices = sheetNames.reduce((acc, name, idx) => {
+                if (isIntervalSheet(name)) acc.push(idx);
+                return acc;
+            }, []);
+
+            if (sheetNames.length === 1) {
+                sheetsToImport = [sheetNames[0]];
+            } else {
+                const sheetList = sheetNames.map((name, idx) => {
+                    const tag = detectedIndices.includes(idx) ? ' ✓ (harvesting data detected)' : '';
+                    return `${idx + 1}. ${name}${tag}`;
+                }).join('\n');
+
+                const defaultChoice = detectedIndices.length > 0 ? String(detectedIndices[0] + 1) : '1';
                 const sheetChoice = prompt(
-                    `This file has ${sheetNames.length} worksheets:\n${sheetList}\n\nEnter a sheet number to import ONE sheet, or enter 0 to import ALL sheets:`,
-                    "0"
+                    `This file has ${sheetNames.length} worksheets:\n${sheetList}\n\nEnter a sheet number to import (✓ = harvesting data detected):`,
+                    defaultChoice
                 );
                 if (!sheetChoice) { e.target.value = ''; return; }
-                const trimmed = sheetChoice.trim();
-                if (trimmed === '0' || trimmed.toLowerCase() === 'all') {
-                    sheetsToImport = sheetNames; // import all
-                } else {
-                    const sheetIndex = parseInt(trimmed) - 1;
-                    if (isNaN(sheetIndex) || sheetIndex < 0 || sheetIndex >= sheetNames.length) {
-                        alert("Invalid sheet selection. Import cancelled.");
-                        e.target.value = '';
-                        return;
-                    }
-                    sheetsToImport = [sheetNames[sheetIndex]];
+                const sheetIndex = parseInt(sheetChoice.trim()) - 1;
+                if (isNaN(sheetIndex) || sheetIndex < 0 || sheetIndex >= sheetNames.length) {
+                    alert("Invalid sheet selection. Import cancelled.");
+                    e.target.value = '';
+                    return;
                 }
-            } else {
-                sheetsToImport = [sheetNames[0]];
+                sheetsToImport = [sheetNames[sheetIndex]];
             }
 
             // Ask user for target month and year when importing this interval data
