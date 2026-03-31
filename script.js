@@ -688,31 +688,30 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = new Uint8Array(event.target.result);
             const workbook = XLSX.read(data, { type: 'array' });
 
-            // Sheet selection: if multiple sheets, let user choose
+            // Sheet selection: if multiple sheets, let user choose or import all
             const sheetNames = workbook.SheetNames;
-            let selectedSheetName;
+            let sheetsToImport = [];
             if (sheetNames.length > 1) {
                 const sheetList = sheetNames.map((name, idx) => `${idx + 1}. ${name}`).join('\n');
-                const sheetChoice = prompt(`This file has ${sheetNames.length} worksheets:\n${sheetList}\n\nEnter the sheet number to import:`, "1");
+                const sheetChoice = prompt(
+                    `This file has ${sheetNames.length} worksheets:\n${sheetList}\n\nEnter a sheet number to import ONE sheet, or enter 0 to import ALL sheets:`,
+                    "0"
+                );
                 if (!sheetChoice) { e.target.value = ''; return; }
-                const sheetIndex = parseInt(sheetChoice.trim()) - 1;
-                if (isNaN(sheetIndex) || sheetIndex < 0 || sheetIndex >= sheetNames.length) {
-                    alert("Invalid sheet selection. Import cancelled.");
-                    e.target.value = '';
-                    return;
+                const trimmed = sheetChoice.trim();
+                if (trimmed === '0' || trimmed.toLowerCase() === 'all') {
+                    sheetsToImport = sheetNames; // import all
+                } else {
+                    const sheetIndex = parseInt(trimmed) - 1;
+                    if (isNaN(sheetIndex) || sheetIndex < 0 || sheetIndex >= sheetNames.length) {
+                        alert("Invalid sheet selection. Import cancelled.");
+                        e.target.value = '';
+                        return;
+                    }
+                    sheetsToImport = [sheetNames[sheetIndex]];
                 }
-                selectedSheetName = sheetNames[sheetIndex];
             } else {
-                selectedSheetName = sheetNames[0];
-            }
-            const worksheet = workbook.Sheets[selectedSheetName];
-
-            // Convert to array of arrays, preserving blank rows directly so we can grab the adjacent 2nd rows
-            const excelData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: true });
-
-            if (excelData.length < 4) {
-                alert("Excel file does not contain enough data rows.");
-                return;
+                sheetsToImport = [sheetNames[0]];
             }
 
             // Ask user for target month and year when importing this interval data
@@ -745,73 +744,59 @@ document.addEventListener('DOMContentLoaded', () => {
             let currentGang = "Unassigned";
             const newBlocks = [];
 
-            for (let i = 4; i < excelData.length; i++) {
-                const row = excelData[i];
-                if (!row || row.length === 0) continue;
+            // Helper: parse a single sheet's rows into newBlocks
+            const parseSheetData = (excelData) => {
+                if (!excelData || excelData.length < 4) return;
+                for (let i = 4; i < excelData.length; i++) {
+                    const row = excelData[i];
+                    if (!row || row.length === 0) continue;
 
-                // If column 0 has text, it's a new gang
-                const gangCol = row[0];
-                if (gangCol && typeof gangCol === 'string' && gangCol.trim() !== '') {
-                    currentGang = gangCol.trim();
-                }
+                    const gangCol = row[0];
+                    if (gangCol && typeof gangCol === 'string' && gangCol.trim() !== '') {
+                        currentGang = gangCol.trim();
+                    }
 
-                // Year is column 1
-                const yearCol = row[1];
-                // Block is column 2
-                const blockCol = row[2];
-                // HA is column 3
-                const haCol = row[3];
+                    const yearCol = row[1];
+                    const blockCol = row[2];
+                    const haCol = row[3];
 
-                if (yearCol && blockCol) {
-                    const parsedYear = String(yearCol).trim();
-                    if (parsedYear) {
-                        // We found a block row
-                        const blockId = String(blockCol).trim();
-                        const haValue = parseFloat(haCol) || 0;
+                    if (yearCol && blockCol) {
+                        const parsedYear = String(yearCol).trim();
+                        if (parsedYear) {
+                            const blockId = String(blockCol).trim();
+                            const haValue = parseFloat(haCol) || 0;
+                            const manpowerRow = (i + 1 < excelData.length) ? excelData[i + 1] : [];
+                            const daysData = [];
+                            for (let d = 0; d < 31; d++) {
+                                const roundVal = row[4 + d];
+                                const hpVal = manpowerRow[4 + d];
+                                daysData.push({
+                                    roundVal: roundVal != null ? String(roundVal).trim() : "",
+                                    hpVal: hpVal != null ? String(hpVal).trim() : ""
+                                });
+                            }
+                            const totalManday = parseFloat(row[35]) || 0;
+                            const r1 = parseFloat(row[36]) || 0;
+                            const r2 = parseFloat(row[38]) || 0;
+                            const r3 = parseFloat(row[40]) || 0;
+                            const r4 = parseFloat(row[42]) || 0;
 
-                        // Days 1..31 start at index 4 (Column E)
-                        // Get the current row for rounds, and the next row for manpower
-                        const manpowerRow = (i + 1 < excelData.length) ? excelData[i + 1] : [];
-                        const daysData = [];
-                        for (let d = 0; d < 31; d++) {
-                            const roundVal = row[4 + d];
-                            const hpVal = manpowerRow[4 + d];
-
-                            daysData.push({
-                                roundVal: roundVal != null ? String(roundVal).trim() : "",
-                                hpVal: hpVal != null ? String(hpVal).trim() : ""
+                            newBlocks.push({
+                                block_id: blockId, ha: haValue, op_year: parsedYear, gang: currentGang,
+                                days: daysData, manday: totalManday, r1, r2, r3, r4
                             });
+                            state.performance[targetYear][targetMonth].gangAssignments[blockId] = currentGang;
                         }
-
-                        // Index 35 is TOTAL MANDAY (Column AJ)
-                        const totalManday = parseFloat(row[35]) || 0;
-                        // Index 36 is 1ST RD (Column AK)
-                        const r1 = parseFloat(row[36]) || 0;
-                        // Index 38 is 2ND RD (Column AM, assuming merge cell skip)
-                        const r2 = parseFloat(row[38]) || 0;
-                        // Index 40 is 3RD RD (Column AO)
-                        const r3 = parseFloat(row[40]) || 0;
-                        // Index 42 is 4TH RD (Column AQ)
-                        const r4 = parseFloat(row[42]) || 0;
-
-                        newBlocks.push({
-                            block_id: blockId,
-                            ha: haValue,
-                            op_year: parsedYear,
-                            gang: currentGang,
-                            days: daysData,
-                            manday: totalManday,
-                            r1: r1,
-                            r2: r2,
-                            r3: r3,
-                            r4: r4
-                        });
-
-                        // Ensure gang is mapped for the specific month
-                        state.performance[targetYear][targetMonth].gangAssignments[blockId] = currentGang;
                     }
                 }
-            }
+            };
+
+            // Parse all selected sheets
+            sheetsToImport.forEach(sheetName => {
+                const ws = workbook.Sheets[sheetName];
+                const excelData = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: true });
+                parseSheetData(excelData);
+            });
 
             if (newBlocks.length === 0) {
                 alert("No valid data found in the Excel file format.");
