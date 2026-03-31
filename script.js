@@ -3476,6 +3476,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 const sprayData = spraySnap.val();
                 if (sprayData) {
                     state.spraying = JSON.parse(sprayData);
+                    // Reinitialize any year whose blocks all have empty month data (e.g. first-time load before data was entered)
+                    if (typeof getDefaultSprayingData === 'function') {
+                        Object.keys(state.spraying).filter(k => /^\d{4}$/.test(k)).forEach(yr => {
+                            const yd = state.spraying[yr];
+                            if (!yd || !yd.phases) return;
+                            const hasData = yd.phases.some(p => (p.blocks || []).some(b =>
+                                Object.values(b.months || {}).some(mv =>
+                                    mv.roundGly || mv.roundAly || mv.litresGly || mv.gmAly || mv.haGly || mv.haAly
+                                )
+                            ));
+                            if (!hasData) state.spraying[yr] = getDefaultSprayingData();
+                        });
+                    }
                     console.log("Spraying data loaded from cloud.");
                 } else {
                     if (!state.spraying) state.spraying = {};

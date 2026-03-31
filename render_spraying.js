@@ -165,7 +165,6 @@ const renderPhaseTable = (wrapper, phase, phaseIdx, yearStr, MONTHS) => {
     const headerStyle = 'background:#1e293b; color:#f8fafc; padding:6px 8px; text-align:center; border:1px solid #334155; font-weight:600; font-size:0.75rem; text-transform:uppercase; white-space:nowrap;';
 
     const fixedHeaders = [
-        { text: 'Phase', rowspan: 3, style: 'min-width:60px;' },
         { text: 'Block No', rowspan: 3, style: 'min-width:60px;' },
         { text: 'Year', rowspan: 3, style: 'min-width:50px;' },
         { text: 'Ha Previous', rowspan: 3, style: 'min-width:70px;' },
@@ -242,15 +241,6 @@ const renderPhaseTable = (wrapper, phase, phaseIdx, yearStr, MONTHS) => {
         SUB_ROWS.forEach((subRow, subIdx) => {
             const tr = document.createElement('tr');
             tr.style.background = subIdx === 0 ? '#fff' : subIdx === 1 ? '#f8fafc' : '#f1f5f9';
-
-            // Phase (only first sub-row of first block shows it via rowspan)
-            if (blockIdx === 0 && subIdx === 0) {
-                const tdPhase = document.createElement('td');
-                tdPhase.rowSpan = phase.blocks.length * 3;
-                tdPhase.style.cssText = cellStyle + 'font-weight:700; color:var(--accent); writing-mode:vertical-rl; text-align:center; padding:4px; min-width:60px; background:#eff6ff;';
-                tdPhase.textContent = phaseLabel;
-                tr.appendChild(tdPhase);
-            }
 
             // Block No (only first sub-row)
             if (subIdx === 0) {
@@ -598,12 +588,20 @@ const createSprayInput = (type, value, onChange, highlight = false) => {
 const getDefaultSprayingData = () => {
     const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
-    const makeBlock = (blockNo, plantYear, haPrevious, haPresent) => ({
+    const emptyMonth = () => ({ roundGly: '', roundAly: '', litresGly: '', gmAly: '', haGly: '', haAly: '' });
+
+    // md: helper to create a month data entry (GLY and ALLY share the same round and Ha)
+    const md = (round, litresGly, gmAly, ha) => ({
+        roundGly: round, roundAly: round,
+        litresGly, gmAly, haGly: ha, haAly: ha
+    });
+
+    const makeBlock = (blockNo, plantYear, haPrevious, haPresent, monthData = {}) => ({
         blockNo: String(blockNo),
         plantYear: String(plantYear),
         haPrevious,
         haPresent,
-        months: Object.fromEntries(MONTHS.map(m => [m, { roundGly: '', roundAly: '', litresGly: '', gmAly: '', haGly: '', haAly: '' }]))
+        months: Object.fromEntries(MONTHS.map(m => [m, monthData[m] ? { ...emptyMonth(), ...monthData[m] } : emptyMonth()]))
     });
 
     return {
@@ -611,48 +609,61 @@ const getDefaultSprayingData = () => {
             {
                 phaseName: 'OP2010',
                 blocks: [
-                    makeBlock(1,  2010, 53.2,  53.09),
-                    makeBlock(2,  2010, 60.4,  60.27),
-                    makeBlock(3,  2010, 69.2,  69.04),
-                    makeBlock(4,  2010, 70.6,  70.51),
-                    makeBlock(5,  2010, 50.4,  50.4),
-                    makeBlock(6,  2010, 58.6,  58.6),
-                    makeBlock(7,  2010, 23.6,  23.6),
-                    makeBlock(8,  2010, 61.6,  61.6),
-                    makeBlock(9,  2010, 38.3,  38.3),
-                    makeBlock(11, 2010, 44.5,  44.5),
-                    makeBlock(12, 2010, 71.0,  71.0),
-                    makeBlock(23, 2010, 14.6,  14.6),
+                    makeBlock(1,  2010, 53.2,  53.09, { FEB: md(1,40,2000,53.2),  MAY: md(2,40,2000,53.2),  AUG: md(3,40,2000,53.2)  }),
+                    makeBlock(2,  2010, 60.4,  60.27, { APR: md(1,80,4000,60.4),  JUL: md(2,80,4000,60.4),  OCT: md(3,80,4000,60.27) }),
+                    makeBlock(3,  2010, 69.2,  69.04, { MAR: md(1,60,3000,69.2),  JUN: md(2,60,3000,69.2),  SEP: md(3,60,3000,69.2)  }),
+                    makeBlock(4,  2010, 70.6,  70.51, { MAR: md(1,60,3000,70.6),  JUN: md(2,60,3000,70.6),  SEP: md(3,60,3000,70.6)  }),
+                    makeBlock(5,  2010, 50.4,  50.4,  { FEB: md(1,40,2000,50.4),  JUN: md(2,40,2000,50.4),  AUG: md(3,40,2000,50.4)  }),
+                    makeBlock(6,  2010, 58.6,  58.6,  { MAY: md(1,40,2000,58.6),  JUL: md(2,60,3000,58.6),  OCT: md(3,40,2000,58.6)  }),
+                    makeBlock(7,  2010, 23.6,  23.6,  { FEB: md(1,20,1000,23.6),  MAY: md(2,20,1000,23.6),  AUG: md(3,20,1000,23.6)  }),
+                    makeBlock(8,  2010, 61.6,  61.6,  { APR: md(1,40,2000,61.6),  JUL: md(2,40,2000,61.6),  OCT: md(3,40,2000,61.6)  }),
+                    makeBlock(9,  2010, 38.3,  38.3,  { APR: md(1,40,2000,38.3),  JUL: md(2,40,2000,38.3),  OCT: md(3,40,2000,38.3)  }),
+                    makeBlock(11, 2010, 44.5,  44.5,  { APR: md(1,40,2000,44.5),  JUL: md(2,40,2000,44.5),  OCT: md(3,40,2000,44.5)  }),
+                    makeBlock(12, 2010, 71.0,  71.0,  { FEB: md(1,60,3000,71),    JUN: md(2,60,3000,71),    AUG: md(3,60,3000,71)    }),
+                    makeBlock(23, 2010, 14.6,  14.6,  { FEB: md(1,20,1000,14.6),  JUN: md(2,20,1000,14.6),  AUG: md(3,20,1000,14.6)  }),
                 ]
             },
             {
                 phaseName: 'OP2011',
                 blocks: [
-                    makeBlock(10, 2011, 19.1,  19.1),
-                    makeBlock(13, 2011, 60.8,  60.8),
-                    makeBlock(14, 2011, 41.6,  41.6),
-                    makeBlock(15, 2011, 49.3,  49.17),
-                    makeBlock(16, 2011, 53.2,  52.61),
-                    makeBlock(17, 2011, 45.7,  45.58),
-                    makeBlock(18, 2011, 40.8,  40.8),
+                    makeBlock(10, 2011, 19.1,  19.1,  { MAY: md(1,20,1000,19.1),  JUL: md(2,20,1000,19.1),  OCT: md(3,20,1000,19.1)  }),
+                    makeBlock(13, 2011, 60.8,  60.8,  { FEB: md(1,40,2000,60.8),  MAY: md(2,40,2000,60.8),  AUG: md(3,40,2000,60.8)  }),
+                    makeBlock(14, 2011, 41.6,  41.6,  { APR: md(1,40,2000,41.6),  JUL: md(2,40,2000,41.6),  OCT: md(3,40,2000,41.6)  }),
+                    makeBlock(15, 2011, 49.3,  49.17, { APR: md(1,60,3000,49.3),  JUL: md(2,80,4000,49.3),  OCT: md(3,60,3000,49.17) }),
+                    makeBlock(16, 2011, 53.2,  52.61, { MAR: md(1,40,2000,53.2),  JUN: md(2,40,2000,53.2),  SEP: md(3,40,2000,53.2)  }),
+                    makeBlock(17, 2011, 45.7,  45.58, { FEB: md(1,40,2000,45.7),  MAY: md(2,40,2000,45.7),  AUG: md(3,40,2000,45.7)  }),
+                    makeBlock(18, 2011, 40.8,  40.8,  { MAR: md(1,40,2000,40.8),  JUN: md(2,40,2000,40.8),  SEP: md(3,40,2000,40.8)  }),
                 ]
             },
             {
                 phaseName: 'OP2012',
                 blocks: [
-                    makeBlock(19, 2012, 50.6,  50.6),
-                    makeBlock(20, 2012, 62.1,  61.98),
-                    makeBlock(21, 2012, 72.2,  71.59),
-                    makeBlock(22, 2012, 52.3,  52.08),
-                    makeBlock(24, 2012, 44.7,  44.67),
+                    makeBlock(19, 2012, 50.6,  50.6,  { FEB: md(1,60,3000,50.6),  JUN: md(2,60,3000,50.6),  AUG: md(3,60,3000,50.6)  }),
+                    makeBlock(20, 2012, 62.1,  61.98, { FEB: md(1,40,2000,62.1),  MAY: md(2,40,2000,62.1),  AUG: md(3,40,2000,62.1)  }),
+                    makeBlock(21, 2012, 72.2,  71.59, { MAR: md(1,80,4000,72.2),  JUN: md(2,80,4000,72.2),  SEP: md(3,80,4000,72.2)  }),
+                    makeBlock(22, 2012, 52.3,  52.08, { MAR: md(1,40,2000,52.3),  JUN: md(2,40,2000,52.3),  SEP: md(3,40,2000,52.3)  }),
+                    makeBlock(24, 2012, 44.7,  44.67, { MAY: md(1,40,2000,44.7),  JUL: md(2,40,2000,44.7),  OCT: md(3,40,2000,44.67) }),
                 ]
             },
             {
                 phaseName: 'OP2015',
                 blocks: [
-                    makeBlock(25,    2015, 38.22, 38.23),
-                    makeBlock('26A', 2015, 22.72, 22.72),
+                    makeBlock(25,    2015, 38.22, 38.23, { MAR: md(1,40,2000,38.22), AUG: md(2,40,2000,38.22) }),
+                    makeBlock('26A', 2015, 22.72, 22.72, { MAR: md(1,20,1000,22.72), JUN: md(2,20,1000,22.72), SEP: md(3,20,1000,22.72) }),
                     makeBlock('26B', 2015, 0,     0),
+                    makeBlock(27,    2015, 18.64, 14.3,  { FEB: md(1,20,1000,18.64), MAY: md(2,20,1000,18.64), AUG: md(3,40,2000,18.64) }),
+                    makeBlock(28,    2015, 25.5,  21.94, { APR: md(1,20,1000,25.5),  JUN: md(2,20,1000,25.5),  SEP: md(3,20,1000,25.5)  }),
+                    makeBlock(29,    2015, 11.38, 19.26, { MAY: md(1,20,1000,11.38), JUL: md(2,20,1000,11.38), OCT: md(3,20,1000,19.26) }),
+                    makeBlock(30,    2015, 24.35, 24.3,  { MAY: md(1,40,2000,24.35), JUL: md(2,40,2000,24.35), OCT: md(3,20,1000,24.3)  }),
+                    makeBlock(31,    2015, 34.08, 34.02, { APR: md(1,40,2000,34.08), JUL: md(2,40,2000,34.08), OCT: md(3,40,2000,34.02) }),
+                    makeBlock(32,    2015, 0,     0),
+                ]
+            },
+            {
+                phaseName: 'OP2016',
+                blocks: [
+                    makeBlock(33, 2016, 28.72, 28.42, { APR: md(1,20,1000,28.72), JUN: md(2,20,1000,28.72), SEP: md(3,20,1000,28.72) }),
+                    makeBlock(39, 2016, 4.5,   4.5,   { APR: md(1,7,333,4.5),     JUN: md(2,7,333,4.5),     SEP: md(3,6,334,4.5)    }),
                 ]
             }
         ]
