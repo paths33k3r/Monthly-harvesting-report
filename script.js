@@ -282,8 +282,24 @@ document.addEventListener('DOMContentLoaded', () => {
             const snap = await db.ref('user_roles').once('value');
             usersData = snap.val() || {};
         } catch (e) {
-            wrapper.innerHTML = `<div style="padding:1rem; color:var(--danger);">Error loading users: ${e.message}</div>`;
-            return;
+            // Permission denied on parent node — fall back to empty and continue
+            console.warn('Could not read all user_roles:', e.message);
+            usersData = {};
+        }
+
+        // Always ensure the currently logged-in user appears in the list.
+        // This handles first-time setup or cases where the write was blocked.
+        const currentUid = auth.currentUser && auth.currentUser.uid;
+        if (currentUid && !usersData[currentUid]) {
+            const entry = {
+                email: (auth.currentUser && auth.currentUser.email) || (currentUserRole && currentUserRole.email) || '(unknown)',
+                role: (currentUserRole && currentUserRole.role) || 'admin',
+                allowedMenus: (currentUserRole && currentUserRole.allowedMenus) || 'all',
+                firstLogin: (currentUserRole && currentUserRole.firstLogin) || false
+            };
+            usersData[currentUid] = entry;
+            // Try to persist the entry so future reads have it
+            db.ref('user_roles/' + currentUid).set(entry).catch(() => {});
         }
 
         const allMenuOptions = [
