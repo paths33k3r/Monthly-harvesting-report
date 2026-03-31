@@ -860,6 +860,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     r4: importedBlock.r4,
                     days: importedBlock.days
                 };
+                // Always update gangAssignments so the renderer finds the correct gang key
+                state.performance[targetYear][targetMonth].gangAssignments[importedBlock.block_id] = gangName;
             });
 
             // After importing blocks, calculate and set peak manpower for all gangs in this month
