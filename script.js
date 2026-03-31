@@ -26,11 +26,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('btn-login').onclick = () => {
         loginErr.textContent = '';
-        auth.signInWithEmailAndPassword(emailInp.value, passInp.value).catch(e => loginErr.textContent = e.message);
+        const email = emailInp.value.trim();
+        const password = passInp.value;
+        const rememberMe = document.getElementById('remember-me').checked;
+        const persistence = rememberMe
+            ? firebase.auth.Auth.Persistence.LOCAL
+            : firebase.auth.Auth.Persistence.SESSION;
+        auth.setPersistence(persistence)
+            .then(() => auth.signInWithEmailAndPassword(email, password))
+            .then(() => {
+                if (rememberMe) {
+                    const expiry = Date.now() + 90 * 24 * 60 * 60 * 1000; // 3 months
+                    localStorage.setItem('rm_expiry_' + email, String(expiry));
+                } else {
+                    localStorage.removeItem('rm_expiry_' + email);
+                }
+            })
+            .catch(e => { loginErr.textContent = e.message; });
     };
-    document.getElementById('btn-signup').onclick = () => {
+
+    // Forgot password handlers
+    const forgotPwOverlay = document.getElementById('forgot-pw-overlay');
+    document.getElementById('btn-forgot-password').onclick = (e) => {
+        e.preventDefault();
         loginErr.textContent = '';
-        auth.createUserWithEmailAndPassword(emailInp.value, passInp.value).catch(e => loginErr.textContent = e.message);
+        document.getElementById('forgot-pw-email').value = emailInp.value;
+        document.getElementById('forgot-pw-msg').textContent = '';
+        forgotPwOverlay.style.display = 'flex';
+    };
+    document.getElementById('btn-forgot-pw-cancel').onclick = () => {
+        forgotPwOverlay.style.display = 'none';
+    };
+    document.getElementById('btn-forgot-pw-send').onclick = () => {
+        const fpEmail = document.getElementById('forgot-pw-email').value.trim();
+        const msgEl = document.getElementById('forgot-pw-msg');
+        if (!fpEmail) { msgEl.style.color = 'var(--danger)'; msgEl.textContent = 'Please enter your email.'; return; }
+        auth.sendPasswordResetEmail(fpEmail)
+            .then(() => { msgEl.style.color = '#10b981'; msgEl.textContent = 'Reset link sent! Check your inbox.'; })
+            .catch(e => { msgEl.style.color = 'var(--danger)'; msgEl.textContent = e.message; });
     };
     
     // Logout sidebar handler
@@ -39,6 +72,17 @@ document.addEventListener('DOMContentLoaded', () => {
         sidebarLogout.onclick = (e) => {
             e.preventDefault();
             auth.signOut();
+        };
+    }
+
+    // User Management nav handler
+    const sidebarUserMgmt = document.getElementById('sidebar-user-mgmt');
+    if (sidebarUserMgmt) {
+        sidebarUserMgmt.onclick = (e) => {
+            e.preventDefault();
+            state.activeViewType = 'user_mgmt';
+            renderSidebar();
+            renderTable();
         };
     }
 
@@ -100,6 +144,14 @@ document.addEventListener('DOMContentLoaded', () => {
     let isAppRunning = false;
     auth.onAuthStateChanged(user => {
         if (user) {
+            // Check remember me expiry
+            const rmKey = 'rm_expiry_' + user.email;
+            const rmExpiry = localStorage.getItem(rmKey);
+            if (rmExpiry && Date.now() > parseInt(rmExpiry)) {
+                localStorage.removeItem(rmKey);
+                auth.signOut();
+                return;
+            }
             loginOverlay.style.display = 'none';
             appLayout.style.display = 'flex';
             startIdleTimer();
@@ -150,6 +202,309 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         return "Unassigned";
     };
+
+    // =====================================================================
+    // USER MANAGEMENT & ROLES
+    // =====================================================================
+    let currentUserRole = null; // { role, allowedMenus, firstLogin, email, ... }
+
+    const ALL_MENU_KEYS = ['ffbBudget', 'planting', 'gangs', 'performance', 'rainfall', 'dataManagement'];
+
+    const loadUserRole = async (uid) => {
+        try {
+            const snap = await db.ref('user_roles/' + uid).once('value');
+            const data = snap.val();
+            if (data) {
+                currentUserRole = data;
+            } else {
+                // First ever user — grant admin rights and save
+                currentUserRole = { role: 'admin', allowedMenus: 'all', firstLogin: false, email: auth.currentUser.email, createdAt: Date.now() };
+                await db.ref('user_roles/' + uid).set(currentUserRole);
+            }
+        } catch (e) {
+            console.error('loadUserRole error:', e);
+            currentUserRole = { role: 'admin', allowedMenus: 'all', firstLogin: false };
+        }
+    };
+
+    const applyRolePermissions = () => {
+        if (!currentUserRole) return;
+        const isAdmin = currentUserRole.role === 'admin';
+        const userMgmtItem = document.getElementById('nav-user-mgmt-item');
+        if (userMgmtItem) userMgmtItem.style.display = isAdmin ? '' : 'none';
+
+        if (!isAdmin && Array.isArray(currentUserRole.allowedMenus)) {
+            const allowed = currentUserRole.allowedMenus;
+            document.querySelectorAll('.nav-menu > .nav-item[data-menu-key]').forEach(item => {
+                const key = item.getAttribute('data-menu-key');
+                item.style.display = allowed.includes(key) ? '' : 'none';
+            });
+        }
+    };
+
+    const checkFirstLogin = () => {
+        if (currentUserRole && currentUserRole.firstLogin) {
+            const overlay = document.getElementById('first-login-overlay');
+            if (overlay) overlay.style.display = 'flex';
+
+            document.getElementById('btn-set-new-pw').onclick = () => {
+                const pw1 = document.getElementById('new-pw-1').value;
+                const pw2 = document.getElementById('new-pw-2').value;
+                const msgEl = document.getElementById('first-login-msg');
+                if (!pw1 || pw1.length < 6) { msgEl.textContent = 'Password must be at least 6 characters.'; return; }
+                if (pw1 !== pw2) { msgEl.textContent = 'Passwords do not match.'; return; }
+                auth.currentUser.updatePassword(pw1)
+                    .then(() => {
+                        db.ref('user_roles/' + auth.currentUser.uid + '/firstLogin').set(false);
+                        currentUserRole.firstLogin = false;
+                        overlay.style.display = 'none';
+                        alert('Password updated successfully!');
+                    })
+                    .catch(e => { msgEl.textContent = e.message; });
+            };
+        }
+    };
+
+    const renderUserManagementPanel = async () => {
+        const wrapper = document.getElementById('user-mgmt-wrapper');
+        if (!wrapper) return;
+
+        // Hide all other wrappers
+        ['main-report-wrapper', 'interval-wrapper', 'performance-wrapper',
+         'ytd-wrapper', 'current-prev-wrapper', 'ffb-budget-wrapper', 'rainfall-wrapper']
+            .forEach(id => { const el = document.getElementById(id); if (el) el.classList.add('hidden'); });
+        wrapper.classList.remove('hidden');
+
+        wrapper.innerHTML = '<div style="padding:1rem; color:var(--text-secondary);">Loading users...</div>';
+
+        let usersData = {};
+        try {
+            const snap = await db.ref('user_roles').once('value');
+            usersData = snap.val() || {};
+        } catch (e) {
+            wrapper.innerHTML = `<div style="padding:1rem; color:var(--danger);">Error loading users: ${e.message}</div>`;
+            return;
+        }
+
+        const allMenuOptions = [
+            { key: 'ffbBudget',    label: 'FFB Budget Estimate' },
+            { key: 'planting',     label: 'Planting Phase Record' },
+            { key: 'gangs',        label: 'Harvesting Gangs' },
+            { key: 'performance',  label: 'Harvesting Performance' },
+            { key: 'rainfall',     label: 'Rainfall Record' },
+            { key: 'dataManagement', label: 'Data Management' }
+        ];
+
+        wrapper.innerHTML = `
+        <div style="padding:1.5rem;">
+            <h2 style="margin-top:0; margin-bottom:1.5rem;">User Management</h2>
+
+            <!-- Create New User -->
+            <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:8px; padding:1.5rem; margin-bottom:2rem;">
+                <h3 style="margin-top:0; margin-bottom:1rem; font-size:1rem;">Create New User</h3>
+                <div style="display:flex; gap:1rem; align-items:flex-end; flex-wrap:wrap;">
+                    <div style="flex:1; min-width:200px;">
+                        <label style="font-size:0.85rem; color:var(--text-secondary); display:block; margin-bottom:4px;">Email Address</label>
+                        <input type="email" id="new-user-email" placeholder="user@example.com" class="edit-input" style="width:100%; padding:0.6rem; border:1px solid var(--border-color); border-radius:4px;" />
+                    </div>
+                    <div style="min-width:130px;">
+                        <label style="font-size:0.85rem; color:var(--text-secondary); display:block; margin-bottom:4px;">Role</label>
+                        <select id="new-user-role" class="edit-input" style="width:100%; padding:0.6rem; border:1px solid var(--border-color); border-radius:4px; background:var(--bg-card);">
+                            <option value="user">Normal User</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                    <button id="btn-create-user" class="btn-primary" style="padding:0.6rem 1.5rem; white-space:nowrap;">Create User</button>
+                </div>
+                <div style="margin-top:1rem;">
+                    <label style="font-size:0.85rem; color:var(--text-secondary); display:block; margin-bottom:6px;">Allowed Menus (for Normal User role):</label>
+                    <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                        ${allMenuOptions.map(m => `
+                            <label style="display:flex;align-items:center;gap:5px;font-size:0.85rem;cursor:pointer;padding:4px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-secondary);">
+                                <input type="checkbox" class="new-user-menu-cb" value="${m.key}" checked /> ${m.label}
+                            </label>`).join('')}
+                    </div>
+                </div>
+                <p id="create-user-msg" style="margin-top:0.75rem; min-height:1.2rem; font-size:0.9rem;"></p>
+            </div>
+
+            <!-- Existing Users Table -->
+            <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:8px; padding:1.5rem;">
+                <h3 style="margin-top:0; margin-bottom:1rem; font-size:1rem;">Existing Users</h3>
+                <table style="width:100%; border-collapse:collapse; font-size:0.9rem;">
+                    <thead>
+                        <tr style="border-bottom:2px solid var(--border-color);">
+                            <th style="text-align:left; padding:8px; color:var(--text-secondary); font-weight:600;">Email</th>
+                            <th style="text-align:left; padding:8px; color:var(--text-secondary); font-weight:600;">Role</th>
+                            <th style="text-align:left; padding:8px; color:var(--text-secondary); font-weight:600;">Allowed Menus</th>
+                            <th style="text-align:left; padding:8px; color:var(--text-secondary); font-weight:600;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="user-table-body">
+                        ${Object.entries(usersData).map(([uid, u]) => `
+                            <tr data-uid="${uid}" style="border-bottom:1px solid var(--border-color);">
+                                <td style="padding:10px 8px;">${u.email || '(unknown)'}</td>
+                                <td style="padding:10px 8px;">
+                                    <select class="user-role-select edit-input" data-uid="${uid}" style="padding:4px 8px; border:1px solid var(--border-color); border-radius:4px; background:var(--bg-card); font-size:0.85rem;">
+                                        <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
+                                        <option value="user" ${u.role === 'user' ? 'selected' : ''}>Normal User</option>
+                                    </select>
+                                </td>
+                                <td style="padding:10px 8px; font-size:0.8rem; color:var(--text-secondary);">
+                                    ${u.role === 'admin' ? 'All' : (Array.isArray(u.allowedMenus) ? u.allowedMenus.join(', ') : 'All')}
+                                </td>
+                                <td style="padding:10px 8px; display:flex; gap:6px;">
+                                    <button class="btn-edit-user btn-primary" data-uid="${uid}" style="padding:4px 10px; font-size:0.8rem;">Edit</button>
+                                    <button class="btn-reset-pw btn-secondary" data-uid="${uid}" data-email="${u.email || ''}" style="padding:4px 10px; font-size:0.8rem;">Reset PW</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>`;
+
+        // Edit User — opens inline edit modal
+        wrapper.querySelectorAll('.btn-edit-user').forEach(btn => {
+            btn.onclick = () => {
+                const uid = btn.getAttribute('data-uid');
+                const userData = usersData[uid];
+                if (!userData) return;
+                showEditUserModal(uid, userData, allMenuOptions, () => renderUserManagementPanel());
+            };
+        });
+
+        // Reset Password
+        wrapper.querySelectorAll('.btn-reset-pw').forEach(btn => {
+            btn.onclick = () => {
+                const email = btn.getAttribute('data-email');
+                if (!email) { alert('No email address on record for this user.'); return; }
+                if (confirm(`Send password reset email to ${email}?`)) {
+                    auth.sendPasswordResetEmail(email)
+                        .then(() => alert(`Reset email sent to ${email}.`))
+                        .catch(e => alert('Error: ' + e.message));
+                }
+            };
+        });
+
+        // Create User
+        document.getElementById('btn-create-user').onclick = () => createNewUser(allMenuOptions);
+    };
+
+    const showEditUserModal = (uid, userData, allMenuOptions, onSaved) => {
+        const existing = document.getElementById('edit-user-modal-overlay');
+        if (existing) existing.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'edit-user-modal-overlay';
+        overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10000;display:flex;justify-content:center;align-items:center;';
+        overlay.innerHTML = `
+            <div style="background:var(--bg-card);padding:2rem;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.2);width:480px;max-width:95vw;">
+                <h3 style="margin-top:0;">Edit User: ${userData.email || uid}</h3>
+                <div style="margin-bottom:1rem;">
+                    <label style="font-size:0.85rem;color:var(--text-secondary);display:block;margin-bottom:4px;">Role</label>
+                    <select id="edit-role-select" style="padding:0.6rem;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);width:200px;">
+                        <option value="user" ${userData.role === 'user' ? 'selected' : ''}>Normal User</option>
+                        <option value="admin" ${userData.role === 'admin' ? 'selected' : ''}>Admin</option>
+                    </select>
+                </div>
+                <div id="edit-menu-section" style="${userData.role === 'admin' ? 'opacity:0.4;pointer-events:none;' : ''}">
+                    <label style="font-size:0.85rem;color:var(--text-secondary);display:block;margin-bottom:6px;">Allowed Menus:</label>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                        ${allMenuOptions.map(m => {
+                            const checked = userData.role === 'admin' || userData.allowedMenus === 'all' || (Array.isArray(userData.allowedMenus) && userData.allowedMenus.includes(m.key));
+                            return `<label style="display:flex;align-items:center;gap:5px;font-size:0.85rem;cursor:pointer;padding:4px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-secondary);">
+                                <input type="checkbox" class="edit-menu-cb" value="${m.key}" ${checked ? 'checked' : ''} /> ${m.label}
+                            </label>`;
+                        }).join('')}
+                    </div>
+                </div>
+                <div style="display:flex;gap:0.75rem;margin-top:1.5rem;justify-content:flex-end;">
+                    <button id="edit-user-cancel" class="btn-secondary" style="padding:0.6rem 1.5rem;">Cancel</button>
+                    <button id="edit-user-save" class="btn-primary" style="padding:0.6rem 1.5rem;">Save</button>
+                </div>
+                <p id="edit-user-msg" style="margin-top:0.5rem;min-height:1.2rem;font-size:0.85rem;color:var(--danger);"></p>
+            </div>`;
+        document.body.appendChild(overlay);
+
+        const roleSelect = document.getElementById('edit-role-select');
+        const menuSection = document.getElementById('edit-menu-section');
+        roleSelect.onchange = () => {
+            menuSection.style.opacity = roleSelect.value === 'admin' ? '0.4' : '1';
+            menuSection.style.pointerEvents = roleSelect.value === 'admin' ? 'none' : '';
+        };
+        document.getElementById('edit-user-cancel').onclick = () => overlay.remove();
+        document.getElementById('edit-user-save').onclick = async () => {
+            const newRole = roleSelect.value;
+            const checkedMenus = [...overlay.querySelectorAll('.edit-menu-cb:checked')].map(cb => cb.value);
+            const allowedMenus = newRole === 'admin' ? 'all' : checkedMenus;
+            try {
+                await db.ref('user_roles/' + uid).update({ role: newRole, allowedMenus });
+                overlay.remove();
+                if (onSaved) onSaved();
+            } catch (e) {
+                document.getElementById('edit-user-msg').textContent = 'Error: ' + e.message;
+            }
+        };
+    };
+
+    const createNewUser = (allMenuOptions) => {
+        const emailVal = document.getElementById('new-user-email').value.trim();
+        const roleVal = document.getElementById('new-user-role').value;
+        const msgEl = document.getElementById('create-user-msg');
+        const checkedMenus = [...document.querySelectorAll('.new-user-menu-cb:checked')].map(cb => cb.value);
+
+        if (!emailVal) { msgEl.style.color = 'var(--danger)'; msgEl.textContent = 'Please enter an email address.'; return; }
+        msgEl.style.color = 'var(--text-secondary)'; msgEl.textContent = 'Creating user...';
+
+        // Use secondary Firebase app so admin doesn't get logged out
+        let secondaryApp;
+        try {
+            secondaryApp = firebase.app('secondary');
+        } catch (e) {
+            secondaryApp = firebase.initializeApp(firebase.app().options, 'secondary');
+        }
+        const secondaryAuth = secondaryApp.auth();
+
+        const tempPassword = 'user';
+        secondaryAuth.createUserWithEmailAndPassword(emailVal, tempPassword)
+            .then(async (cred) => {
+                const newUid = cred.user.uid;
+                const allowedMenus = roleVal === 'admin' ? 'all' : checkedMenus;
+                await db.ref('user_roles/' + newUid).set({
+                    email: emailVal,
+                    role: roleVal,
+                    allowedMenus,
+                    firstLogin: true,
+                    createdAt: Date.now()
+                });
+                await secondaryAuth.signOut();
+
+                // Build welcome email via mailto
+                const appUrl = window.location.href.split('#')[0];
+                const emailBody = encodeURIComponent(
+                    `Hello,\n\nYour account for the Harvesting Performance Dashboard has been created.\n\nLogin URL: ${appUrl}\nEmail: ${emailVal}\nTemporary Password: ${tempPassword}\n\nPlease login and change your password when prompted.\n\nThank you.`
+                );
+                const mailtoLink = `mailto:${emailVal}?subject=Your%20Dashboard%20Account&body=${emailBody}`;
+
+                msgEl.style.color = '#10b981';
+                msgEl.textContent = `User "${emailVal}" created successfully!`;
+                document.getElementById('new-user-email').value = '';
+
+                const sendNow = confirm(`User "${emailVal}" created!\nTemp password: ${tempPassword}\n\nClick OK to open your email client to send the welcome email, or Cancel to skip.`);
+                if (sendNow) window.open(mailtoLink, '_blank');
+
+                renderUserManagementPanel(); // Refresh list
+            })
+            .catch(e => {
+                secondaryAuth.signOut().catch(() => {});
+                msgEl.style.color = 'var(--danger)';
+                msgEl.textContent = 'Error: ' + e.message;
+            });
+    };
+    // =====================================================================
+    // END USER MANAGEMENT
+    // =====================================================================
 
     const getPeakManpowerForGang = (year, month, gangName) => {
         if (!state.performance[year] || !state.performance[year][month] || !state.performance[year][month][gangName]) return 0;
@@ -332,8 +687,25 @@ document.addEventListener('DOMContentLoaded', () => {
         reader.onload = (event) => {
             const data = new Uint8Array(event.target.result);
             const workbook = XLSX.read(data, { type: 'array' });
-            const firstSheetName = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[firstSheetName];
+
+            // Sheet selection: if multiple sheets, let user choose
+            const sheetNames = workbook.SheetNames;
+            let selectedSheetName;
+            if (sheetNames.length > 1) {
+                const sheetList = sheetNames.map((name, idx) => `${idx + 1}. ${name}`).join('\n');
+                const sheetChoice = prompt(`This file has ${sheetNames.length} worksheets:\n${sheetList}\n\nEnter the sheet number to import:`, "1");
+                if (!sheetChoice) { e.target.value = ''; return; }
+                const sheetIndex = parseInt(sheetChoice.trim()) - 1;
+                if (isNaN(sheetIndex) || sheetIndex < 0 || sheetIndex >= sheetNames.length) {
+                    alert("Invalid sheet selection. Import cancelled.");
+                    e.target.value = '';
+                    return;
+                }
+                selectedSheetName = sheetNames[sheetIndex];
+            } else {
+                selectedSheetName = sheetNames[0];
+            }
+            const worksheet = workbook.Sheets[selectedSheetName];
 
             // Convert to array of arrays, preserving blank rows directly so we can grab the adjacent 2nd rows
             const excelData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: true });
@@ -449,7 +821,19 @@ document.addEventListener('DOMContentLoaded', () => {
             // Select the target year in the UI as the active year
             state.selectedReportYear = targetYear;
 
-            // Merge imported gangs with existing blocks. 
+            // Check if existing data exists for this month and offer to overwrite
+            const existingMonthData = state.performance[targetYear]?.[targetMonth];
+            const hasExistingGangData = existingMonthData && Object.keys(existingMonthData).some(k => k !== 'gangAssignments');
+            if (hasExistingGangData) {
+                const shouldOverwrite = confirm(
+                    `Existing data found for ${targetMonth} ${targetYear}.\n\nClick OK to OVERWRITE (clears old data first).\nClick Cancel to MERGE (adds/updates blocks, keeps others).`
+                );
+                if (shouldOverwrite) {
+                    state.performance[targetYear][targetMonth] = { gangAssignments: {} };
+                }
+            }
+
+            // Merge/overwrite imported gangs with existing blocks.
             // DOES NOT inject new blocks into Planting Phase Records.
             newBlocks.forEach(importedBlock => {
                 // Also update the performance data for the specific block in the target month
@@ -720,6 +1104,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 a.href = '#';
                 a.className = 'nav-link';
                 a.textContent = year;
+                a.dataset.viewHash = `#view=report_year&year=${year}`;
                 a.onclick = (e) => {
                     e.preventDefault();
                     state.selectedReportYear = year;
@@ -795,6 +1180,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const a = document.createElement('a');
                     a.href = '#';
                     a.className = 'nav-link';
+                    a.dataset.viewHash = `#view=gang&year=${year}&gang=${encodeURIComponent(gang)}`;
 
                     a.style.display = 'flex';
                     a.style.justifyContent = 'space-between';
@@ -992,7 +1378,27 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 };
 
-                ulMonthsContainer.appendChild(selectMonth);
+                const monthNavRow = document.createElement('div');
+                monthNavRow.style.cssText = 'display:flex;align-items:center;gap:4px;';
+                monthNavRow.appendChild(selectMonth);
+
+                const openTabBtn = document.createElement('button');
+                openTabBtn.title = 'Open in new tab';
+                openTabBtn.textContent = '↗';
+                openTabBtn.style.cssText = 'padding:2px 6px;cursor:pointer;border:1px solid var(--border-color);border-radius:3px;background:var(--bg-secondary);color:var(--text-secondary);font-size:0.85rem;flex-shrink:0;';
+                openTabBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    const selectedMonth = selectMonth.value;
+                    if (selectedMonth) {
+                        const hash = `#view=${targetViewType}&year=${year}&month=${encodeURIComponent(selectedMonth)}`;
+                        window.open(window.location.pathname + hash, '_blank');
+                    } else {
+                        alert('Please select a month first.');
+                    }
+                };
+                monthNavRow.appendChild(openTabBtn);
+
+                ulMonthsContainer.appendChild(monthNavRow);
                 liYear.appendChild(divYearHeader);
                 liYear.appendChild(ulMonthsContainer);
                 container.appendChild(liYear);
@@ -1021,6 +1427,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 a.href = '#';
                 a.className = 'nav-link';
                 a.textContent = year;
+                a.dataset.viewHash = `#view=ffb_budget&year=${year}`;
                 a.onclick = (e) => {
                     e.preventDefault();
                     state.selectedReportYear = year;
@@ -1102,6 +1509,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 a.href = '#';
                 a.className = 'nav-link';
                 a.textContent = year;
+                a.dataset.viewHash = `#view=rainfall_record&year=${year}`;
                 a.onclick = (e) => {
                     e.preventDefault();
                     state.selectedReportYear = year;
@@ -1174,16 +1582,28 @@ document.addEventListener('DOMContentLoaded', () => {
         const ytdWrapper = document.getElementById('ytd-wrapper');
         const currentPrevWrapper = document.getElementById('current-prev-wrapper');
 
+        const userMgmtWrapper = document.getElementById('user-mgmt-wrapper');
         if (ffbWrapper) ffbWrapper.innerHTML = ''; // Clear FFB budget widgets
         if (rainfallWrapper) rainfallWrapper.innerHTML = ''; // Clear Rainfall widgets
         if (ytdWrapper) ytdWrapper.innerHTML = '';
         if (currentPrevWrapper) currentPrevWrapper.innerHTML = '';
+        if (userMgmtWrapper) { userMgmtWrapper.innerHTML = ''; userMgmtWrapper.classList.add('hidden'); }
 
         // Hide special wrappers by default
         if (ffbWrapper) ffbWrapper.classList.add('hidden');
         if (rainfallWrapper) rainfallWrapper.classList.add('hidden');
         if (ytdWrapper) ytdWrapper.classList.add('hidden');
         if (currentPrevWrapper) currentPrevWrapper.classList.add('hidden');
+
+        // User Management view
+        if (state.activeViewType === 'user_mgmt') {
+            mainReportWrapper.classList.add('hidden');
+            perfWrapper.classList.add('hidden');
+            intervalWrapper.classList.add('hidden');
+            tableContainer.classList.add('hidden');
+            renderUserManagementPanel();
+            return;
+        }
 
         const isPerfView = state.activeViewType === 'perf_month';
         const isIntervalView = state.activeViewType === 'interval_month';
@@ -2770,6 +3190,42 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
 
+            // --- RIGHT-CLICK CONTEXT MENU ---
+            const ctxMenu = document.getElementById('nav-context-menu');
+            const ctxNewTab = document.getElementById('nav-ctx-newtab');
+            let ctxTargetHash = null;
+
+            if (ctxMenu && ctxNewTab) {
+                document.addEventListener('contextmenu', (ev) => {
+                    const navLink = ev.target.closest('[data-view-hash]');
+                    if (!navLink) {
+                        ctxMenu.style.display = 'none';
+                        return;
+                    }
+                    ev.preventDefault();
+                    ctxTargetHash = navLink.getAttribute('data-view-hash');
+                    // Keep menu within viewport
+                    const menuWidth = 160, menuHeight = 40;
+                    const left = Math.min(ev.clientX, window.innerWidth - menuWidth - 8);
+                    const top = Math.min(ev.clientY, window.innerHeight - menuHeight - 8);
+                    ctxMenu.style.left = left + 'px';
+                    ctxMenu.style.top = top + 'px';
+                    ctxMenu.style.display = 'block';
+                });
+
+                document.addEventListener('click', () => { ctxMenu.style.display = 'none'; });
+                document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') ctxMenu.style.display = 'none'; });
+
+                ctxNewTab.onmouseenter = () => { ctxNewTab.style.background = 'var(--group-bg)'; };
+                ctxNewTab.onmouseleave = () => { ctxNewTab.style.background = ''; };
+                ctxNewTab.onclick = () => {
+                    if (ctxTargetHash) {
+                        window.open(window.location.pathname + ctxTargetHash, '_blank');
+                    }
+                    ctxMenu.style.display = 'none';
+                };
+            }
+
             console.log("Listeners bound. Checking cloud storage...");
 
             // Helper function to hydrate gangs and render
@@ -2807,8 +3263,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderTable();
                 recalculateTotals();
 
+                // Apply URL hash for "Open in New Tab" deep linking
+                const hash = window.location.hash.substring(1);
+                if (hash) {
+                    const params = {};
+                    hash.split('&').forEach(p => {
+                        const [k, v] = p.split('=');
+                        if (k && v !== undefined) params[decodeURIComponent(k)] = decodeURIComponent(v);
+                    });
+                    if (params.view) {
+                        if (params.year) state.selectedReportYear = params.year;
+                        if (params.month) state.activePerfMonth = params.month;
+                        state.activeViewType = params.view;
+                        if (params.view === 'gang' && params.gang) state.activeViewValue = params.gang;
+                        else if (params.year) state.activeViewValue = params.year;
+                        renderSidebar();
+                        renderTable();
+                    }
+                }
+
                 loadingEl.classList.add('hidden');
                 tableContainer.classList.remove('hidden');
+
+                // Load user role and apply permissions
+                loadUserRole(auth.currentUser.uid).then(() => {
+                    applyRolePermissions();
+                    checkFirstLogin();
+                });
             };
 
             const loadFreshData = async () => {
