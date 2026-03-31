@@ -198,7 +198,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // =====================================================================
     let currentUserRole = null; // { role, allowedMenus, firstLogin, email, ... }
 
-    const ALL_MENU_KEYS = ['ffbBudget', 'planting', 'gangs', 'performance', 'rainfall', 'dataManagement'];
+    const ALL_MENU_KEYS = ['ffbBudget', 'planting', 'gangs', 'performance', 'rainfall', 'maintenance', 'dataManagement'];
 
     const loadUserRole = async (uid) => {
         try {
@@ -571,6 +571,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const intervalWrapper = document.getElementById('interval-wrapper');
     const ffbWrapper = document.getElementById('ffb-budget-wrapper');
     const rainfallWrapper = document.getElementById('rainfall-wrapper');
+
+    // Expose db and uid for render_spraying.js
+    window._sprayingDb = db;
+    window._sprayingUid = auth.currentUser ? auth.currentUser.uid : null;
+    auth.onAuthStateChanged(u => {
+        window._sprayingUid = u ? u.uid : null;
+    });
 
     // Chart instances keyed by gang name
     const performanceChartInstances = {};
@@ -1598,10 +1605,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const currentPrevWrapper = document.getElementById('current-prev-wrapper');
 
         const userMgmtWrapper = document.getElementById('user-mgmt-wrapper');
+        const sprayingWrapper = document.getElementById('spraying-wrapper');
+        const maintenanceComingSoonWrapper = document.getElementById('maintenance-coming-soon-wrapper');
         if (ffbWrapper) ffbWrapper.innerHTML = ''; // Clear FFB budget widgets
         if (rainfallWrapper) rainfallWrapper.innerHTML = ''; // Clear Rainfall widgets
         if (ytdWrapper) ytdWrapper.innerHTML = '';
         if (currentPrevWrapper) currentPrevWrapper.innerHTML = '';
+        if (sprayingWrapper) sprayingWrapper.innerHTML = '';
+        if (maintenanceComingSoonWrapper) maintenanceComingSoonWrapper.innerHTML = '';
         if (userMgmtWrapper) { userMgmtWrapper.innerHTML = ''; userMgmtWrapper.classList.add('hidden'); }
 
         // Hide special wrappers by default
@@ -1609,6 +1620,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (rainfallWrapper) rainfallWrapper.classList.add('hidden');
         if (ytdWrapper) ytdWrapper.classList.add('hidden');
         if (currentPrevWrapper) currentPrevWrapper.classList.add('hidden');
+        const sprayingWrapperEl = document.getElementById('spraying-wrapper');
+        const maintenanceCSWrapperEl = document.getElementById('maintenance-coming-soon-wrapper');
+        if (sprayingWrapperEl) sprayingWrapperEl.classList.add('hidden');
+        if (maintenanceCSWrapperEl) maintenanceCSWrapperEl.classList.add('hidden');
 
         // User Management view
         if (state.activeViewType === 'user_mgmt') {
@@ -1691,6 +1706,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (typeof renderCurrentPrevReport === 'function') {
                     renderCurrentPrevReport();
                 }
+            }
+        } else if (state.activeViewType === 'spraying') {
+            mainReportWrapper.classList.add('hidden');
+            perfWrapper.classList.add('hidden');
+            intervalWrapper.classList.add('hidden');
+            tableContainer.classList.add('hidden');
+            const sw = document.getElementById('spraying-wrapper');
+            if (sw) {
+                sw.classList.remove('hidden');
+                if (typeof renderSprayingReport === 'function') renderSprayingReport();
+            }
+        } else if (state.activeViewType === 'maintenance_coming_soon') {
+            mainReportWrapper.classList.add('hidden');
+            perfWrapper.classList.add('hidden');
+            intervalWrapper.classList.add('hidden');
+            tableContainer.classList.add('hidden');
+            const csw = document.getElementById('maintenance-coming-soon-wrapper');
+            if (csw) {
+                csw.classList.remove('hidden');
+                const label = state.activeViewValue || 'Feature';
+                csw.innerHTML = `
+                    <div style="padding:3rem 2rem; text-align:center;">
+                        <div style="font-size:4rem; margin-bottom:1rem;">🚧</div>
+                        <h2 style="margin-top:0; color:var(--text-primary);">${label}</h2>
+                        <p style="color:var(--text-secondary); font-size:1rem;">This feature is under development.<br>Please check back later.</p>
+                    </div>
+                `;
             }
         } else {
             perfWrapper.classList.add('hidden');
@@ -3207,6 +3249,49 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
             }
 
+            // ── Maintenance nav handlers ────────────────────────────
+            const sidebarSpraying = document.getElementById('sidebar-spraying');
+            if (sidebarSpraying) {
+                sidebarSpraying.onclick = (e) => {
+                    e.preventDefault();
+                    if (!state.spraying) state.spraying = {};
+                    const availYears = Object.keys(state.spraying).filter(k => /^\d{4}$/.test(k));
+                    if (availYears.length === 0) {
+                        // Initialize with current year if none exists
+                        const y = String(new Date().getFullYear());
+                        state.spraying[y] = typeof getDefaultSprayingData === 'function' ? getDefaultSprayingData() : { phases: [] };
+                        state.sprayingYear = y;
+                    }
+                    state.activeViewType = 'spraying';
+                    state.activeViewValue = 'spraying';
+                    renderSidebar();
+                    renderTable();
+                };
+            }
+
+            const sidebarSlashing = document.getElementById('sidebar-slashing');
+            if (sidebarSlashing) {
+                sidebarSlashing.onclick = (e) => {
+                    e.preventDefault();
+                    state.activeViewType = 'maintenance_coming_soon';
+                    state.activeViewValue = '🔪 Slashing — Coming Soon';
+                    renderSidebar();
+                    renderTable();
+                };
+            }
+
+            const sidebarPruning = document.getElementById('sidebar-pruning');
+            if (sidebarPruning) {
+                sidebarPruning.onclick = (e) => {
+                    e.preventDefault();
+                    state.activeViewType = 'maintenance_coming_soon';
+                    state.activeViewValue = '✂️ Pruning — Coming Soon';
+                    renderSidebar();
+                    renderTable();
+                };
+            }
+            // ── End Maintenance nav handlers ────────────────────────
+
             // Bind Global Save button for Planting Phase Record
             const saveMainBtn = document.getElementById('save-main-btn');
             if (saveMainBtn) {
@@ -3383,6 +3468,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error("Firebase read error:", e);
                 // Fallback completely to local if offline or error
                 await loadLocalOrFresh();
+            }
+
+            // Load Spraying data (stored separately so it does not overwrite main state)
+            try {
+                const spraySnap = await db.ref('users/' + auth.currentUser.uid + '/spraying_data').once('value');
+                const sprayData = spraySnap.val();
+                if (sprayData) {
+                    state.spraying = JSON.parse(sprayData);
+                    console.log("Spraying data loaded from cloud.");
+                } else {
+                    if (!state.spraying) state.spraying = {};
+                }
+            } catch (e) {
+                console.warn("Could not load spraying data:", e.message);
+                if (!state.spraying) state.spraying = {};
             }
 
         } catch (error) {
