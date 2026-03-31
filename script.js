@@ -472,7 +472,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const secondaryAuth = secondaryApp.auth();
 
-        const tempPassword = 'user';
+        const tempPassword = 'user1234';
         secondaryAuth.createUserWithEmailAndPassword(emailVal, tempPassword)
             .then(async (cred) => {
                 const newUid = cred.user.uid;
