@@ -75,16 +75,6 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-    // User Management nav handler
-    const sidebarUserMgmt = document.getElementById('sidebar-user-mgmt');
-    if (sidebarUserMgmt) {
-        sidebarUserMgmt.onclick = (e) => {
-            e.preventDefault();
-            state.activeViewType = 'user_mgmt';
-            renderSidebar();
-            renderTable();
-        };
-    }
 
 
     // --- IDLE TIMEOUT LOGIC ---
@@ -3204,6 +3194,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     importFfbInput.click();
                 });
                 importFfbInput.onchange = handleImportFfbBudget;
+            }
+
+            // User Management nav handler
+            const sidebarUserMgmt = document.getElementById('sidebar-user-mgmt');
+            if (sidebarUserMgmt) {
+                sidebarUserMgmt.onclick = (e) => {
+                    e.preventDefault();
+                    state.activeViewType = 'user_mgmt';
+                    renderSidebar();
+                    renderTable();
+                };
             }
 
             // Bind Global Save button for Planting Phase Record
