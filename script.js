@@ -1969,9 +1969,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="stat-row" style="display: flex; align-items: center; gap: 0.5rem;">
                                 <label>TOTAL MANPOWER:</label>
                                 <input type="number" id="perf-manpower-${safeGangId}" class="edit-input" style="width: 80px; padding: 0.25rem; border: 1px solid var(--border-color);" value="${perfData.manpower || 0}" min="0">
-                                <button class="btn-icon" id="btn-sync-manpower-${safeGangId}" title="Refresh from Interval" style="padding: 2px 6px; font-size: 0.8rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer;">
+                                <button class="btn-icon" id="btn-sync-manpower-${safeGangId}" title="Refresh from Interval data for ${month} ${year}" style="padding: 2px 6px; font-size: 0.8rem; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer;">
                                     🔄 Sync
                                 </button>
+                                <span id="perf-manpower-badge-${safeGangId}" style="font-size: 0.75rem; color: #f59e0b; font-weight: 600; display: ${perfData.isManpowerManual ? 'inline' : 'none'};" title="Manually set — will not be overridden by Sync or re-import">✏ Manual</span>
                             </div>
                             <div class="stat-row">
                                 <label>TOTAL ON LONG LEAVE:</label>
@@ -2048,19 +2049,33 @@ document.addEventListener('DOMContentLoaded', () => {
             const perfTableBody = document.getElementById(`perf-table-body-${safeGangId}`);
             const inputManpower = document.getElementById(`perf-manpower-${safeGangId}`);
             const inputLeave = document.getElementById(`perf-leave-${safeGangId}`);
+            const manpowerBadge = document.getElementById(`perf-manpower-badge-${safeGangId}`);
 
+            let manpowerSaveTimer = null;
             inputManpower.oninput = (e) => {
                 perfData.manpower = parseFloat(e.target.value) || 0;
                 perfData.isManpowerManual = true;
+                if (manpowerBadge) manpowerBadge.style.display = 'inline';
                 calculatePerformanceTotals(perfData, gBlocks, safeGangId);
+                clearTimeout(manpowerSaveTimer);
+                manpowerSaveTimer = setTimeout(() => saveState(true), 800);
             };
-            inputManpower.onchange = () => saveState(true);
+            inputManpower.onchange = () => {
+                clearTimeout(manpowerSaveTimer);
+                saveState(true);
+            };
 
+            let leaveSaveTimer = null;
             inputLeave.oninput = (e) => {
                 perfData.leave = parseFloat(e.target.value) || 0;
                 calculatePerformanceTotals(perfData, gBlocks, safeGangId);
+                clearTimeout(leaveSaveTimer);
+                leaveSaveTimer = setTimeout(() => saveState(true), 800);
             };
-            inputLeave.onchange = () => saveState(true);
+            inputLeave.onchange = () => {
+                clearTimeout(leaveSaveTimer);
+                saveState(true);
+            };
 
             const btnSync = document.getElementById(`btn-sync-manpower-${safeGangId}`);
             if (btnSync) {
@@ -2069,6 +2084,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     perfData.manpower = peak;
                     perfData.isManpowerManual = false;
                     inputManpower.value = peak;
+                    if (manpowerBadge) manpowerBadge.style.display = 'none';
                     calculatePerformanceTotals(perfData, gBlocks, safeGangId);
                     saveState(true);
                 };
