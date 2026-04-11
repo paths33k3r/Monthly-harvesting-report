@@ -551,6 +551,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!silent) alert("Failed to save data completely.");
         }
     };
+    window.saveState = saveState;
 
 
     // DOM Elements

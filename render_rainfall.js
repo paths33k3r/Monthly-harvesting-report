@@ -160,8 +160,24 @@ const renderRainfallTable = () => {
         inputDays.className = 'edit-input text-right';
         inputDays.style.padding = '2px 5px';
         inputDays.value = isPopulated ? currDays : '';
-        inputDays.onchange = (e) => {
-            state.rainfall[yearStr][month].days = parseFloat(e.target.value) || 0;
+        let daysSaveTimer = null;
+        inputDays.oninput = (e) => {
+            const val = parseFloat(e.target.value) || 0;
+            state.rainfall[yearStr][month].days = val;
+            const anyVal = val > 0 || (parseFloat(state.rainfall[yearStr][month].mm) || 0) > 0;
+            if (anyVal) {
+                tdDays.style.background = '';
+                inputDays.style.color = '';
+                inputDays.style.background = '';
+                tdMM.style.background = '';
+                inputMM.style.color = '';
+                inputMM.style.background = '';
+            }
+            clearTimeout(daysSaveTimer);
+            daysSaveTimer = setTimeout(() => saveState(true), 800);
+        };
+        inputDays.onchange = () => {
+            clearTimeout(daysSaveTimer);
             saveState(true);
             renderRainfallTable();
         };
@@ -174,8 +190,24 @@ const renderRainfallTable = () => {
         inputMM.className = 'edit-input text-right';
         inputMM.style.padding = '2px 5px';
         inputMM.value = isPopulated ? currMM : '';
-        inputMM.onchange = (e) => {
-            state.rainfall[yearStr][month].mm = parseFloat(e.target.value) || 0;
+        let mmSaveTimer = null;
+        inputMM.oninput = (e) => {
+            const val = parseFloat(e.target.value) || 0;
+            state.rainfall[yearStr][month].mm = val;
+            const anyVal = val > 0 || (parseFloat(state.rainfall[yearStr][month].days) || 0) > 0;
+            if (anyVal) {
+                tdDays.style.background = '';
+                inputDays.style.color = '';
+                inputDays.style.background = '';
+                tdMM.style.background = '';
+                inputMM.style.color = '';
+                inputMM.style.background = '';
+            }
+            clearTimeout(mmSaveTimer);
+            mmSaveTimer = setTimeout(() => saveState(true), 800);
+        };
+        inputMM.onchange = () => {
+            clearTimeout(mmSaveTimer);
             saveState(true);
             renderRainfallTable();
         };
