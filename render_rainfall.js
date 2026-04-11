@@ -162,6 +162,7 @@ const renderRainfallTable = () => {
         inputDays.value = isPopulated ? currDays : '';
         inputDays.onchange = (e) => {
             state.rainfall[yearStr][month].days = parseFloat(e.target.value) || 0;
+            saveState(true);
             renderRainfallTable();
         };
         tdDays.appendChild(inputDays);
@@ -175,6 +176,7 @@ const renderRainfallTable = () => {
         inputMM.value = isPopulated ? currMM : '';
         inputMM.onchange = (e) => {
             state.rainfall[yearStr][month].mm = parseFloat(e.target.value) || 0;
+            saveState(true);
             renderRainfallTable();
         };
         tdMM.appendChild(inputMM);
