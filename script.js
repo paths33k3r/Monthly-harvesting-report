@@ -1993,10 +1993,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <th>Block</th>
                                 <th>HA per Block</th>
                                 <th>Budget ${year}</th>
-                                <th>1st Round</th>
-                                <th>2nd Round</th>
-                                <th>3rd Round</th>
-                                <th class="col-total">Total</th>
+                                <th>1st Round (MT)</th>
+                                <th>2nd Round (MT)</th>
+                                <th>3rd Round (MT)</th>
+                                <th class="col-total">Total (MT)</th>
                                 <th>Manday</th>
                                 <th>MT / Manday</th>
                                 <th class="col-actions"></th>
