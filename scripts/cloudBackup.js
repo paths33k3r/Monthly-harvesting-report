@@ -93,6 +93,7 @@ async function runBackup() {
     }
 
     console.log("Backup process complete.");
+    process.exit(0);
 }
 
 runBackup().catch(err => {
