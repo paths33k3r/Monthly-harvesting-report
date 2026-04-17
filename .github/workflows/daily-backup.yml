@@ -32,10 +32,3 @@ jobs:
           GDRIVE_REFRESH_TOKEN:     ${{ secrets.GDRIVE_REFRESH_TOKEN }}
           GDRIVE_FOLDER_ID:         ${{ secrets.GDRIVE_FOLDER_ID }}
 
-      - name: Upload Backup as GitHub Artifact (fallback copy)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: firebase-backup-${{ github.run_id }}
-          path: "harvesting_backup_*.json"
-          retention-days: 30
