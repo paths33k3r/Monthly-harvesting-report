@@ -1,0 +1,54 @@
+name: Daily Firebase Backup
+
+on:
+  schedule:
+    - cron: '0 1 * * *' # Every day at 1:00 AM UTC (9:00 AM Malaysia time)
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Required to create GitHub Releases
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: npm install firebase-admin googleapis
+
+      - name: Run Backup Script
+        run: node scripts/cloudBackup.js
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          GDRIVE_CLIENT_ID:         ${{ secrets.GDRIVE_CLIENT_ID }}
+          GDRIVE_CLIENT_SECRET:     ${{ secrets.GDRIVE_CLIENT_SECRET }}
+          GDRIVE_REFRESH_TOKEN:     ${{ secrets.GDRIVE_REFRESH_TOKEN }}
+          GDRIVE_FOLDER_ID:         ${{ secrets.GDRIVE_FOLDER_ID }}
+
+      - name: Publish Backup as GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BACKUP_FILE=$(ls harvesting_backup_*.json | head -1)
+          DATE=$(date +%Y-%m-%d)
+          TAG="backup-${DATE}"
+          gh release delete "$TAG" --yes 2>/dev/null || true
+          gh release create "$TAG" "$BACKUP_FILE" \
+            --title "Daily Backup ${DATE}" \
+            --notes "Automated daily Firebase backup." \
+            --repo ${{ github.repository }}
+
+      - name: Upload Backup as GitHub Artifact (fallback copy)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firebase-backup-${{ github.run_id }}
+          path: "harvesting_backup_*.json"
+          retention-days: 30
