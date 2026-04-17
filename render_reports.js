@@ -1,0 +1,623 @@
+// render_reports.js — Excel report downloads: Harvesting YTD, Rainfall, GLY+ALLY Spraying
+
+(function () {
+    'use strict';
+
+    const MONTHS    = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const MONTHS_UP = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+
+    // ── Lazy-load ExcelJS from CDN ──────────────────────────────────────────
+    async function ensureExcelJS() {
+        if (typeof ExcelJS !== 'undefined') return;
+        await new Promise((res, rej) => {
+            const s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+            s.onload = res;
+            s.onerror = () => rej(new Error('Failed to load ExcelJS library'));
+            document.head.appendChild(s);
+        });
+    }
+
+    async function loadTemplate(filename) {
+        const url = encodeURI('Report samples/' + filename);
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error(`Could not load template "${filename}" (${resp.status}). Make sure the app is served via HTTP, not file://.`);
+        const buf = await resp.arrayBuffer();
+        const wb = new ExcelJS.Workbook();
+        await wb.xlsx.load(buf);
+        return wb;
+    }
+
+    function downloadBuffer(buf, filename) {
+        const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a); URL.revokeObjectURL(url);
+    }
+
+    function setStatus(id, msg, autoClear) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = msg;
+        if (autoClear) setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 3500);
+    }
+
+    // ── Data helpers (mirror render_ytd_report.js logic) ───────────────────
+    function getYtdActual(year, blockId, mIdx) {
+        let sum = 0;
+        const perf = window.state.performance;
+        if (!perf || !perf[year]) return 0;
+        for (let i = 0; i <= mIdx; i++) {
+            const mData = perf[year][MONTHS[i]];
+            if (!mData) continue;
+            const gang = (mData.gangAssignments || {})[String(blockId)];
+            const add = (pd) => { if (!pd) return; sum += (parseFloat(pd.r1)||0)+(parseFloat(pd.r2)||0)+(parseFloat(pd.r3)||0)+(parseFloat(pd.r4)||0); };
+            if (gang && mData[gang] && mData[gang].blocks) {
+                add(mData[gang].blocks[String(blockId)]);
+            } else {
+                Object.keys(mData).forEach(k => { if (k !== 'gangAssignments' && mData[k] && mData[k].blocks) add(mData[k].blocks[String(blockId)]); });
+            }
+        }
+        return sum;
+    }
+
+    function getYtdBudget(year, blockId, mIdx) {
+        const arr = (window.state.ffbBudget && window.state.ffbBudget[year]) || [];
+        const bd  = arr.find(b => String(b.block_id) === String(blockId));
+        if (!bd || !Array.isArray(bd.months)) return 0;
+        let s = 0;
+        for (let i = 0; i <= mIdx; i++) s += parseFloat(bd.months[i] || 0);
+        return s;
+    }
+
+    function getMonthlyBudgets(year, blockId) {
+        const arr = (window.state.ffbBudget && window.state.ffbBudget[year]) || [];
+        const bd  = arr.find(b => String(b.block_id) === String(blockId));
+        if (!bd || !Array.isArray(bd.months)) return Array(12).fill(0);
+        return bd.months.map(v => parseFloat(v) || 0);
+    }
+
+    function getBlockHa(year, blockId) {
+        const blocks = (window.state.reports && window.state.reports[year]) || [];
+        const b = blocks.find(bl => String(bl.block_id) === String(blockId));
+        return b ? (parseFloat(b.ha) || 0) : 0;
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // 1. HARVESTING PERFORMANCE YTD REPORT
+    //    Template: "Havesting Performance Dec 2025.xlsx"
+    //    Sheet:    "OVERALL BY GANG COMPARISON YTD2"
+    // ══════════════════════════════════════════════════════════════════════
+
+    // Fixed row layout matching the template sheet (1-indexed Excel rows)
+    const YTD_PHASES = [
+        { op:"2010", subtotalRow:6,
+          blocks:[{id:"1",r:7},{id:"2",r:8},{id:"3",r:9},{id:"4",r:10},
+                  {id:"5",r:11},{id:"6",r:12},{id:"7",r:13},{id:"8",r:14},
+                  {id:"9",r:15},{id:"11",r:16},{id:"12",r:17},{id:"23",r:18}] },
+        { op:"2011", subtotalRow:20,
+          blocks:[{id:"10",r:21},{id:"13",r:22},{id:"14",r:23},{id:"15",r:24},
+                  {id:"16",r:25},{id:"17",r:26},{id:"18",r:27}] },
+        { op:"2012", subtotalRow:29,
+          blocks:[{id:"19",r:30},{id:"20",r:31},{id:"21",r:32},{id:"22",r:33},{id:"24",r:34}] },
+        { op:"2015", subtotalRow:36,
+          blocks:[{id:"25",r:37},{id:"26A",r:38},{id:"27",r:39},{id:"28",r:40},
+                  {id:"29",r:41},{id:"30",r:42},{id:"31",r:43}] },
+        { op:"2016", subtotalRow:45,
+          blocks:[{id:"33",r:46},{id:"39",r:47}] }
+    ];
+    const YTD_GRAND_ROW = 49;
+
+    window.downloadYtdReport = async (year, month) => {
+        setStatus('rep-ytd-status', 'Generating…');
+        try {
+            await ensureExcelJS();
+            const wb = await loadTemplate('Havesting Performance Dec 2025.xlsx');
+            const ws = wb.getWorksheet('OVERALL BY GANG COMPARISON YTD2');
+            if (!ws) throw new Error('Worksheet "OVERALL BY GANG COMPARISON YTD2" not found');
+
+            const prevYear = String(parseInt(year) - 1);
+            const mIdx    = MONTHS.indexOf(month);
+            const mLabel  = MONTHS_UP[mIdx];
+
+            // Title + year headers
+            ws.getCell('A1').value = `YIELD TO DATE OF CURRENT YEAR VS. PAST YEAR (UP TO ${mLabel} ${year})`;
+            ws.getCell('D5').value = parseInt(year);
+            ws.getCell('F5').value = parseInt(prevYear);
+            ws.getCell('H5').value = `${year} vs ${prevYear}`;
+            ws.getCell('I5').value = parseInt(year);
+            ws.getCell('J5').value = parseInt(prevYear);
+
+            let gHA=0, gCB=0, gCA=0, gPB=0, gPA=0;
+
+            YTD_PHASES.forEach(phase => {
+                let pHA=0, pCB=0, pCA=0, pPB=0, pPA=0;
+
+                phase.blocks.forEach(blk => {
+                    const ha   = getBlockHa(year, blk.id) || getBlockHa(prevYear, blk.id);
+                    const cBud = getYtdBudget(year, blk.id, mIdx);
+                    const cAct = getYtdActual(year, blk.id, mIdx);
+                    const pBud = getYtdBudget(prevYear, blk.id, mIdx);
+                    const pAct = getYtdActual(prevYear, blk.id, mIdx);
+                    const varr = cAct - pAct;
+                    const cMH  = ha > 0 ? cAct / ha : 0;
+                    const pMH  = ha > 0 ? pAct / ha : 0;
+                    const mBud = getMonthlyBudgets(year, blk.id);
+
+                    const row = blk.r;
+                    ws.getCell(row, 3).value  = parseFloat(ha.toFixed(4));
+                    ws.getCell(row, 4).value  = parseFloat(cBud.toFixed(2));
+                    ws.getCell(row, 5).value  = parseFloat(cAct.toFixed(4));
+                    ws.getCell(row, 6).value  = parseFloat(pBud.toFixed(2));
+                    ws.getCell(row, 7).value  = parseFloat(pAct.toFixed(4));
+                    ws.getCell(row, 8).value  = parseFloat(varr.toFixed(4));
+                    ws.getCell(row, 9).value  = parseFloat(cMH.toFixed(9));
+                    ws.getCell(row, 10).value = parseFloat(pMH.toFixed(9));
+                    // Monthly FFB budgets: col Z(26) through AK(37)
+                    mBud.forEach((v, i) => { ws.getCell(row, 26 + i).value = parseFloat(v.toFixed(2)); });
+
+                    pHA += ha; pCB += cBud; pCA += cAct; pPB += pBud; pPA += pAct;
+                });
+
+                // Phase subtotal row
+                const sr  = phase.subtotalRow;
+                const pVar = pCA - pPA;
+                const pCMH = pHA > 0 ? pCA / pHA : 0;
+                const pPMH = pHA > 0 ? pPA / pHA : 0;
+                ws.getCell(sr, 3).value  = parseFloat(pHA.toFixed(4));
+                ws.getCell(sr, 4).value  = parseFloat(pCB.toFixed(2));
+                ws.getCell(sr, 5).value  = parseFloat(pCA.toFixed(4));
+                ws.getCell(sr, 6).value  = parseFloat(pPB.toFixed(2));
+                ws.getCell(sr, 7).value  = parseFloat(pPA.toFixed(4));
+                ws.getCell(sr, 8).value  = parseFloat(pVar.toFixed(4));
+                ws.getCell(sr, 9).value  = parseFloat(pCMH.toFixed(9));
+                ws.getCell(sr, 10).value = parseFloat(pPMH.toFixed(9));
+
+                gHA+=pHA; gCB+=pCB; gCA+=pCA; gPB+=pPB; gPA+=pPA;
+            });
+
+            // Grand total row
+            const gVar = gCA - gPA;
+            const gCMH = gHA > 0 ? gCA / gHA : 0;
+            const gPMH = gHA > 0 ? gPA / gHA : 0;
+            ws.getCell(YTD_GRAND_ROW, 3).value  = parseFloat(gHA.toFixed(4));
+            ws.getCell(YTD_GRAND_ROW, 4).value  = parseFloat(gCB.toFixed(2));
+            ws.getCell(YTD_GRAND_ROW, 5).value  = parseFloat(gCA.toFixed(4));
+            ws.getCell(YTD_GRAND_ROW, 6).value  = parseFloat(gPB.toFixed(2));
+            ws.getCell(YTD_GRAND_ROW, 7).value  = parseFloat(gPA.toFixed(4));
+            ws.getCell(YTD_GRAND_ROW, 8).value  = parseFloat(gVar.toFixed(4));
+            ws.getCell(YTD_GRAND_ROW, 9).value  = parseFloat(gCMH.toFixed(9));
+            ws.getCell(YTD_GRAND_ROW, 10).value = parseFloat(gPMH.toFixed(9));
+
+            const buf = await wb.xlsx.writeBuffer();
+            downloadBuffer(buf, `Harvesting_YTD_${mLabel}_${year}.xlsx`);
+            setStatus('rep-ytd-status', '✅ Downloaded!', true);
+        } catch (e) {
+            console.error('YTD report error:', e);
+            setStatus('rep-ytd-status', `❌ ${e.message}`);
+        }
+    };
+
+    // ══════════════════════════════════════════════════════════════════════
+    // 2. RAINFALL COMPARISON REPORT
+    //    Template: "Rainfall 2024 vs 2025 up to Dec 2025.xlsx"
+    //    Sheet:    "Dec Rainfall 2024 vs 2025"
+    // ══════════════════════════════════════════════════════════════════════
+
+    window.downloadRainfallReport = async (year, month) => {
+        setStatus('rep-rain-status', 'Generating…');
+        try {
+            await ensureExcelJS();
+            const wb = await loadTemplate('Rainfall 2024 vs 2025 up to Dec 2025.xlsx');
+            const ws = wb.getWorksheet('Dec Rainfall 2024 vs 2025');
+            if (!ws) throw new Error('Rainfall worksheet not found');
+
+            const prevYear = String(parseInt(year) - 1);
+            const mIdx    = MONTHS.indexOf(month);
+            const mLabel  = MONTHS_UP[mIdx];
+            const rfCurr  = (window.state.rainfall && window.state.rainfall[year])     || {};
+            const rfPrev  = (window.state.rainfall && window.state.rainfall[prevYear]) || {};
+
+            const BLACK_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } };
+            const CLEAR_FILL = { type: 'pattern', pattern: 'none' };
+
+            // Title and year headers
+            ws.getCell('A1').value = `SUMMARY REPORT FOR RAINFALL RECORD FOR THE YEAR ${prevYear} VS ${year} (Updated as of ${mLabel} ${year})`;
+            ws.getCell('B3').value = parseInt(prevYear);
+            ws.getCell('F3').value = parseInt(year);
+            ws.getCell('J3').value = `${year} vs ${prevYear}`;
+
+            let prevCum=0, currCum=0;
+            let totPrevD=0, totPrevM=0, totCurrD=0, totCurrM=0;
+
+            for (let i = 0; i < 12; i++) {
+                const row  = 6 + i;
+                const mKey = MONTHS_UP[i];
+
+                // Previous year — all months always shown
+                const pd    = rfPrev[mKey] || {};
+                const prevD = parseFloat(pd.days) || 0;
+                const prevM = parseFloat(pd.mm)   || 0;
+                prevCum += prevM;
+                ws.getCell(row, 2).value = prevD || null;    // B: prev days
+                ws.getCell(row, 3).value = prevM || null;    // C: prev mm
+                ws.getCell(row, 4).value = prevCum || null;  // D: prev cumulative mm
+                totPrevD += prevD; totPrevM += prevM;
+
+                if (i <= mIdx) {
+                    // Current year — fill up to selected month
+                    const cd    = rfCurr[mKey] || {};
+                    const currD = parseFloat(cd.days) || 0;
+                    const currM = parseFloat(cd.mm)   || 0;
+                    currCum += currM;
+                    ws.getCell(row, 6).value  = currD || null;           // F: curr days
+                    ws.getCell(row, 7).value  = currM || null;           // G: curr mm
+                    ws.getCell(row, 8).value  = currCum || null;         // H: curr cumulative mm
+                    ws.getCell(row, 10).value = (currD - prevD) || null; // J: diff days
+                    ws.getCell(row, 11).value = (currM - prevM) || null; // K: diff mm
+                    // Remove black fill if previously applied
+                    [6, 7, 8].forEach(c => { const cell = ws.getCell(row, c); if (cell.fill && cell.fill.fgColor && cell.fill.fgColor.argb === 'FF000000') cell.fill = CLEAR_FILL; });
+                    totCurrD += currD; totCurrM += currM;
+                } else {
+                    // Future months — black fill, clear values
+                    ws.getCell(row, 6).value  = null;
+                    ws.getCell(row, 7).value  = null;
+                    ws.getCell(row, 8).value  = null;
+                    ws.getCell(row, 10).value = null;
+                    ws.getCell(row, 11).value = null;
+                    [6, 7, 8].forEach(c => { ws.getCell(row, c).fill = BLACK_FILL; });
+                }
+            }
+
+            // Total row (row 18)
+            ws.getCell(18, 2).value  = totPrevD;
+            ws.getCell(18, 3).value  = totPrevM;
+            ws.getCell(18, 4).value  = prevCum;
+            ws.getCell(18, 6).value  = totCurrD;
+            ws.getCell(18, 7).value  = totCurrM;
+            ws.getCell(18, 8).value  = currCum;
+            ws.getCell(18, 10).value = totCurrD - totPrevD;
+            ws.getCell(18, 11).value = totCurrM - totPrevM;
+
+            // Summary notes (rows 22-27)
+            const diff = Math.round(currCum - prevCum);
+            ws.getCell('A22').value = `MM TO MONTH ${year} vs ${prevYear}`;
+            ws.getCell('A23').value = Math.abs(diff);
+            ws.getCell('A24').value = parseInt(prevYear);
+            ws.getCell('B24').value = diff >= 0 ? '<' : '>';
+            ws.getCell('C24').value = parseInt(year);
+            ws.getCell('A26').value = `*MM TO MONTH as of ${mLabel} for both years`;
+            ws.getCell('A27').value = diff >= 0
+                ? `**${year} MM TO MONTH is more than ${prevYear} by ${Math.abs(diff)}`
+                : `**${year} MM TO MONTH is less than ${prevYear} by ${Math.abs(diff)}`;
+
+            const buf = await wb.xlsx.writeBuffer();
+            downloadBuffer(buf, `Rainfall_${prevYear}_vs_${year}_${mLabel}_${year}.xlsx`);
+            setStatus('rep-rain-status', '✅ Downloaded!', true);
+        } catch (e) {
+            console.error('Rainfall report error:', e);
+            setStatus('rep-rain-status', `❌ ${e.message}`);
+        }
+    };
+
+    // ══════════════════════════════════════════════════════════════════════
+    // 3. SPRAYING GLY+ALLY ANNUAL REPORT
+    //    Template: "Spraying Maintenance 2025.xlsx"
+    //    Sheet:    "GLY + ALLY 20225 (2)"
+    //
+    //    Structure: split into JAN-JUN (rows 1-145) and JUL-DEC (rows 146-285)
+    //    Each phase section: label + header + 2 empty + sub-header + blocks (3 rows each) + totals
+    //    JUL-DEC section has an extra TOTAL column (cols S/T = 19/20) = full-year sum per block
+    // ══════════════════════════════════════════════════════════════════════
+
+    const SPRAY_PHASES = [
+        { op: "OP2010",
+          janjun: { start: 11,  nlg: 47,  ha: 48,  blocks: ["1","2","3","4","5","6","7","8","9","11","12","23"] },
+          juldec: { start: 151, nlg: 187, ha: 188, blocks: ["1","2","3","4","5","6","7","8","9","11","12","23"] } },
+        { op: "OP2011",
+          janjun: { start: 54,  nlg: 75,  ha: 76,  blocks: ["10","13","14","15","16","17","18"] },
+          juldec: { start: 194, nlg: 215, ha: 216, blocks: ["10","13","14","15","16","17","18"] } },
+        { op: "OP2012",
+          janjun: { start: 82,  nlg: 97,  ha: 98,  blocks: ["19","20","21","22","24"] },
+          juldec: { start: 222, nlg: 237, ha: 238, blocks: ["19","20","21","22","24"] } },
+        { op: "OP2015",
+          janjun: { start: 104, nlg: 131, ha: 132, blocks: ["25","26A","26B","27","28","29","30","31","32"] },
+          juldec: { start: 244, nlg: 271, ha: 272, blocks: ["25","26A","26B","27","28","29","30","31","32"] } },
+        { op: "OP2016",
+          janjun: { start: 138, nlg: 144, ha: 145, blocks: ["33","39"] },
+          juldec: { start: 278, nlg: 284, ha: 285, blocks: ["33","39"] } }
+    ];
+
+    // Column numbers (1-indexed) for GLY in each month slot
+    const JJ_COLS = { JAN:7, FEB:9, MAR:11, APR:13, MAY:15, JUN:17 };  // ALY = GLY+1
+    const JD_COLS = { JUL:7, AUG:9, SEP:11, OCT:13, NOV:15, DEC:17 };  // ALY = GLY+1
+    const TOTAL_GLY_COL = 19;  // col S in JUL-DEC section = full-year GLY total
+    const TOTAL_ALY_COL = 20;  // col T in JUL-DEC section = full-year ALY total
+    const JJ_MONTHS = ["JAN","FEB","MAR","APR","MAY","JUN"];
+    const JD_MONTHS = ["JUL","AUG","SEP","OCT","NOV","DEC"];
+
+    function getSprayBlk(year, blockId) {
+        if (!window.state.spraying || !window.state.spraying[year]) return null;
+        for (const ph of (window.state.spraying[year].phases || [])) {
+            const b = (ph.blocks || []).find(b => String(b.blockNo) === String(blockId));
+            if (b) return b;
+        }
+        return null;
+    }
+
+    function fillHalf(ws, section, colMap, halfMonths, year) {
+        const tGly={}, tAly={}, tHGly={}, tHAly={};
+        halfMonths.forEach(m => { tGly[m]=0; tAly[m]=0; tHGly[m]=0; tHAly[m]=0; });
+        let grandGly=0, grandAly=0, grandHGly=0, grandHAly=0;
+        let totalHaPrev=0, totalHaPresent=0;
+        const isJulDec = halfMonths[0] === 'JUL';
+
+        section.blocks.forEach((blockId, bIdx) => {
+            const base = section.start + bIdx * 3;
+            const rRow = base, nRow = base + 1, hRow = base + 2;
+            const blk  = getSprayBlk(year, blockId);
+
+            // Clear all month data columns for this block
+            halfMonths.forEach(m => {
+                const g = colMap[m];
+                ws.getCell(rRow, g).value   = null; ws.getCell(rRow, g+1).value = null;
+                ws.getCell(nRow, g).value   = null; ws.getCell(nRow, g+1).value = null;
+                ws.getCell(hRow, g).value   = null; ws.getCell(hRow, g+1).value = null;
+            });
+            if (isJulDec) {
+                ws.getCell(nRow, TOTAL_GLY_COL).value = null; ws.getCell(nRow, TOTAL_ALY_COL).value = null;
+                ws.getCell(hRow, TOTAL_GLY_COL).value = null; ws.getCell(hRow, TOTAL_ALY_COL).value = null;
+            }
+
+            if (!blk) return;
+
+            // Update Ha Previous / Ha Present on the Round row
+            const haPrev    = parseFloat(blk.haPrevious) || 0;
+            const haPresent = parseFloat(blk.haPresent)  || 0;
+            ws.getCell(rRow, 4).value = haPrev    || null;
+            ws.getCell(rRow, 5).value = haPresent || null;
+            totalHaPrev    += haPrev;
+            totalHaPresent += haPresent;
+
+            halfMonths.forEach(m => {
+                const md  = (blk.months || {})[m] || {};
+                const g   = colMap[m];
+                const rG  = (md.roundGly !== undefined && md.roundGly !== '') ? (parseFloat(md.roundGly) || md.roundGly) : null;
+                const rA  = (md.roundAly !== undefined && md.roundAly !== '') ? (parseFloat(md.roundAly) || md.roundAly) : null;
+                const lG  = parseFloat(md.litresGly) || 0;
+                const gA  = parseFloat(md.gmAly)     || 0;
+                const hG  = parseFloat(md.haGly)     || 0;
+                const hA  = parseFloat(md.haAly)     || 0;
+
+                if (rG !== null) ws.getCell(rRow, g).value   = rG;
+                if (rA !== null) ws.getCell(rRow, g+1).value = rA;
+                if (lG > 0)     ws.getCell(nRow, g).value   = lG;
+                if (gA > 0)     ws.getCell(nRow, g+1).value = gA;
+                if (hG > 0)     ws.getCell(hRow, g).value   = hG;
+                if (hA > 0)     ws.getCell(hRow, g+1).value = hA;
+
+                tGly[m]  += lG; tAly[m]  += gA;
+                tHGly[m] += hG; tHAly[m] += hA;
+            });
+
+            // For JUL-DEC section: TOTAL column = full-year sum (all 12 months)
+            if (isJulDec) {
+                let bGly=0, bAly=0, bHGly=0, bHAly=0;
+                MONTHS_UP.forEach(m => {
+                    const md = (blk.months || {})[m] || {};
+                    bGly  += parseFloat(md.litresGly) || 0;
+                    bAly  += parseFloat(md.gmAly)     || 0;
+                    bHGly += parseFloat(md.haGly)     || 0;
+                    bHAly += parseFloat(md.haAly)     || 0;
+                });
+                ws.getCell(nRow, TOTAL_GLY_COL).value = bGly  || null;
+                ws.getCell(nRow, TOTAL_ALY_COL).value = bAly  || null;
+                ws.getCell(hRow, TOTAL_GLY_COL).value = bHGly || null;
+                ws.getCell(hRow, TOTAL_ALY_COL).value = bHAly || null;
+                grandGly  += bGly;  grandAly  += bAly;
+                grandHGly += bHGly; grandHAly += bHAly;
+            }
+        });
+
+        // Phase total rows
+        halfMonths.forEach(m => {
+            const g = colMap[m];
+            ws.getCell(section.nlg, g).value   = tGly[m]  || 0;
+            ws.getCell(section.nlg, g+1).value = tAly[m]  || 0;
+            ws.getCell(section.ha,  g).value   = tHGly[m] || 0;
+            ws.getCell(section.ha,  g+1).value = tHAly[m] || 0;
+        });
+        // Ha totals in the No.Litre/GM total row (col D/E)
+        ws.getCell(section.nlg, 4).value = parseFloat(totalHaPrev.toFixed(2))    || null;
+        ws.getCell(section.nlg, 5).value = parseFloat(totalHaPresent.toFixed(2)) || null;
+
+        if (isJulDec) {
+            ws.getCell(section.nlg, TOTAL_GLY_COL).value = grandGly  || 0;
+            ws.getCell(section.nlg, TOTAL_ALY_COL).value = grandAly  || 0;
+            ws.getCell(section.ha,  TOTAL_GLY_COL).value = grandHGly || 0;
+            ws.getCell(section.ha,  TOTAL_ALY_COL).value = grandHAly || 0;
+        }
+    }
+
+    window.downloadSprayingReport = async (year) => {
+        setStatus('rep-spray-status', 'Generating…');
+        try {
+            await ensureExcelJS();
+            const wb = await loadTemplate('Spraying Maintenance 2025.xlsx');
+            const ws = wb.getWorksheet('GLY + ALLY 20225 (2)');
+            if (!ws) throw new Error('Worksheet "GLY + ALLY 20225 (2)" not found');
+
+            // Fill all phase sections
+            SPRAY_PHASES.forEach(ph => {
+                fillHalf(ws, ph.janjun, JJ_COLS, JJ_MONTHS, year);
+                fillHalf(ws, ph.juldec, JD_COLS, JD_MONTHS, year);
+            });
+
+            // Row 286: "Ha Total" — grand sum of haPrevious / haPresent across all blocks
+            let grandHaPrev=0, grandHaPresent=0;
+            SPRAY_PHASES.forEach(ph => {
+                ph.janjun.blocks.forEach(id => {
+                    const blk = getSprayBlk(year, id);
+                    if (!blk) return;
+                    grandHaPrev    += parseFloat(blk.haPrevious) || 0;
+                    grandHaPresent += parseFloat(blk.haPresent)  || 0;
+                });
+            });
+            ws.getCell(286, 4).value = parseFloat(grandHaPrev.toFixed(2));
+            ws.getCell(286, 5).value = parseFloat(grandHaPresent.toFixed(2));
+
+            // Rows 292-293: Overall JAN-JUN summary totals (sum across all phases)
+            // Rows 297-298: Overall JUL-DEC summary totals + TOTAL column
+            const sumJJ  = { gly:{}, aly:{}, hGly:{}, hAly:{} };
+            const sumJD  = { gly:{}, aly:{}, hGly:{}, hAly:{} };
+            JJ_MONTHS.forEach(m => { sumJJ.gly[m]=0; sumJJ.aly[m]=0; sumJJ.hGly[m]=0; sumJJ.hAly[m]=0; });
+            JD_MONTHS.forEach(m => { sumJD.gly[m]=0; sumJD.aly[m]=0; sumJD.hGly[m]=0; sumJD.hAly[m]=0; });
+            let grandTotGly=0, grandTotAly=0, grandTotHGly=0, grandTotHAly=0;
+
+            const sprayData = window.state.spraying && window.state.spraying[year];
+            if (sprayData) {
+                (sprayData.phases || []).forEach(ph => {
+                    (ph.blocks || []).forEach(blk => {
+                        JJ_MONTHS.forEach(m => {
+                            const md = (blk.months || {})[m] || {};
+                            sumJJ.gly[m]  += parseFloat(md.litresGly) || 0;
+                            sumJJ.aly[m]  += parseFloat(md.gmAly)     || 0;
+                            sumJJ.hGly[m] += parseFloat(md.haGly)     || 0;
+                            sumJJ.hAly[m] += parseFloat(md.haAly)     || 0;
+                        });
+                        JD_MONTHS.forEach(m => {
+                            const md = (blk.months || {})[m] || {};
+                            sumJD.gly[m]  += parseFloat(md.litresGly) || 0;
+                            sumJD.aly[m]  += parseFloat(md.gmAly)     || 0;
+                            sumJD.hGly[m] += parseFloat(md.haGly)     || 0;
+                            sumJD.hAly[m] += parseFloat(md.haAly)     || 0;
+                        });
+                        MONTHS_UP.forEach(m => {
+                            const md = (blk.months || {})[m] || {};
+                            grandTotGly  += parseFloat(md.litresGly) || 0;
+                            grandTotAly  += parseFloat(md.gmAly)     || 0;
+                            grandTotHGly += parseFloat(md.haGly)     || 0;
+                            grandTotHAly += parseFloat(md.haAly)     || 0;
+                        });
+                    });
+                });
+            }
+
+            JJ_MONTHS.forEach(m => {
+                const g = JJ_COLS[m];
+                ws.getCell(292, g).value   = sumJJ.gly[m]  || 0;
+                ws.getCell(292, g+1).value = sumJJ.aly[m]  || 0;
+                ws.getCell(293, g).value   = sumJJ.hGly[m] || 0;
+                ws.getCell(293, g+1).value = sumJJ.hAly[m] || 0;
+            });
+            JD_MONTHS.forEach(m => {
+                const g = JD_COLS[m];
+                ws.getCell(297, g).value   = sumJD.gly[m]  || 0;
+                ws.getCell(297, g+1).value = sumJD.aly[m]  || 0;
+                ws.getCell(298, g).value   = sumJD.hGly[m] || 0;
+                ws.getCell(298, g+1).value = sumJD.hAly[m] || 0;
+            });
+            ws.getCell(297, TOTAL_GLY_COL).value = grandTotGly  || 0;
+            ws.getCell(297, TOTAL_ALY_COL).value = grandTotAly  || 0;
+            ws.getCell(298, TOTAL_GLY_COL).value = grandTotHGly || 0;
+            ws.getCell(298, TOTAL_ALY_COL).value = grandTotHAly || 0;
+
+            const buf = await wb.xlsx.writeBuffer();
+            downloadBuffer(buf, `Spraying_GLY_ALLY_${year}.xlsx`);
+            setStatus('rep-spray-status', '✅ Downloaded!', true);
+        } catch (e) {
+            console.error('Spraying report error:', e);
+            setStatus('rep-spray-status', `❌ ${e.message}`);
+        }
+    };
+
+    // ══════════════════════════════════════════════════════════════════════
+    // REPORTS PANEL UI
+    // ══════════════════════════════════════════════════════════════════════
+
+    window.renderReportsPanel = () => {
+        const wrapper = document.getElementById('excel-reports-wrapper');
+        if (!wrapper) return;
+
+        const perfYears  = Object.keys(window.state.performance || {}).sort((a, b) => parseInt(b) - parseInt(a));
+        const rainYears  = Object.keys(window.state.rainfall    || {}).filter(k => /^\d{4}$/.test(k)).sort((a, b) => parseInt(b) - parseInt(a));
+        const sprayYears = Object.keys(window.state.spraying    || {}).sort((a, b) => parseInt(b) - parseInt(a));
+
+        const yearOpts  = years => years.map(y => `<option value="${y}">${y}</option>`).join('');
+        const monthOpts = () => MONTHS.map(m => `<option value="${m}">${m}</option>`).join('');
+        const SS = 'padding:0.4rem 0.6rem;border:1px solid var(--border);border-radius:4px;background:var(--bg-input,#fff);font-size:0.88rem;';
+        const CARD = 'border:1px solid var(--border);border-radius:8px;padding:1.25rem;margin-bottom:1rem;background:var(--bg-card,#fff);box-shadow:0 1px 3px rgba(0,0,0,0.05);';
+
+        wrapper.innerHTML = `
+        <div style="padding:1.5rem;max-width:680px;">
+          <h2 style="margin:0 0 0.25rem;color:var(--text-main);">📊 Reports</h2>
+          <p style="color:var(--text-secondary);margin:0 0 1.75rem;font-size:0.85rem;">
+            Download formatted Excel reports matching the official templates.
+          </p>
+
+          <div style="${CARD}">
+            <h3 style="margin:0 0 0.35rem;font-size:0.97rem;">📈 Harvesting Performance — Overall by Gang YTD</h3>
+            <p style="margin:0 0 1rem;color:var(--text-secondary);font-size:0.82rem;">
+              Yield-to-date comparison of current year vs previous year, by block and O/P phase.
+              Select the year and up-to month.
+            </p>
+            <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">
+              <select id="sel-ytd-yr" style="${SS}">${yearOpts(perfYears)}</select>
+              <select id="sel-ytd-mo" style="${SS}">${monthOpts()}</select>
+              <button id="btn-dl-ytd" class="btn-primary" style="padding:0.4rem 1rem;">⬇ Download Excel</button>
+              <span id="rep-ytd-status" style="font-size:0.82rem;color:var(--text-secondary);"></span>
+            </div>
+          </div>
+
+          <div style="${CARD}">
+            <h3 style="margin:0 0 0.35rem;font-size:0.97rem;">🌧 Rainfall — Current Year vs Previous Year</h3>
+            <p style="margin:0 0 1rem;color:var(--text-secondary);font-size:0.82rem;">
+              Previous year shows all 12 months. Current year shows up to the selected month;
+              remaining months are black-filled.
+            </p>
+            <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">
+              <select id="sel-rain-yr" style="${SS}">${yearOpts(rainYears)}</select>
+              <select id="sel-rain-mo" style="${SS}">${monthOpts()}</select>
+              <button id="btn-dl-rain" class="btn-primary" style="padding:0.4rem 1rem;">⬇ Download Excel</button>
+              <span id="rep-rain-status" style="font-size:0.82rem;color:var(--text-secondary);"></span>
+            </div>
+          </div>
+
+          <div style="${CARD}">
+            <h3 style="margin:0 0 0.35rem;font-size:0.97rem;">🌿 Spraying — GLY + ALLY Annual Report</h3>
+            <p style="margin:0 0 1rem;color:var(--text-secondary);font-size:0.82rem;">
+              Full-year Glyphosate and Ally spraying schedule per block and O/P phase
+              (split JAN–JUN and JUL–DEC).
+            </p>
+            <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">
+              <select id="sel-spray-yr" style="${SS}">${yearOpts(sprayYears)}</select>
+              <button id="btn-dl-spray" class="btn-primary" style="padding:0.4rem 1rem;">⬇ Download Excel</button>
+              <span id="rep-spray-status" style="font-size:0.82rem;color:var(--text-secondary);"></span>
+            </div>
+          </div>
+
+          <p style="color:var(--text-secondary);font-size:0.78rem;margin-top:0.5rem;">
+            ℹ️ Reports use the official Excel templates from "Report samples/" as the base.
+            The app must be served via HTTP (not file://) for template loading to work.
+          </p>
+        </div>`;
+
+        document.getElementById('btn-dl-ytd').onclick = () => {
+            const yr = document.getElementById('sel-ytd-yr').value;
+            const mo = document.getElementById('sel-ytd-mo').value;
+            if (yr && mo) window.downloadYtdReport(yr, mo);
+        };
+        document.getElementById('btn-dl-rain').onclick = () => {
+            const yr = document.getElementById('sel-rain-yr').value;
+            const mo = document.getElementById('sel-rain-mo').value;
+            if (yr && mo) window.downloadRainfallReport(yr, mo);
+        };
+        document.getElementById('btn-dl-spray').onclick = () => {
+            const yr = document.getElementById('sel-spray-yr').value;
+            if (yr) window.downloadSprayingReport(yr);
+        };
+    };
+
+})();

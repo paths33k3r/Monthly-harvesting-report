@@ -2035,6 +2035,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const currentPrevWrapper = document.getElementById('current-prev-wrapper');
 
             const userMgmtWrapper = document.getElementById('user-mgmt-wrapper');
+            const excelReportsWrapper = document.getElementById('excel-reports-wrapper');
             const sprayingWrapper = document.getElementById('spraying-wrapper');
             const maintenanceComingSoonWrapper = document.getElementById('maintenance-coming-soon-wrapper');
             if (ffbWrapper) ffbWrapper.innerHTML = ''; // Clear FFB budget widgets
@@ -2044,6 +2045,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (sprayingWrapper) sprayingWrapper.innerHTML = '';
             if (maintenanceComingSoonWrapper) maintenanceComingSoonWrapper.innerHTML = '';
             if (userMgmtWrapper) { userMgmtWrapper.innerHTML = ''; userMgmtWrapper.classList.add('hidden'); }
+            if (excelReportsWrapper) { excelReportsWrapper.innerHTML = ''; excelReportsWrapper.classList.add('hidden'); }
 
             // Hide special wrappers by default
             if (ffbWrapper) ffbWrapper.classList.add('hidden');
@@ -2062,6 +2064,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 intervalWrapper.classList.add('hidden');
                 tableContainer.classList.add('hidden');
                 renderUserManagementPanel();
+                return;
+            }
+
+            // Excel Reports view
+            if (state.activeViewType === 'excel_reports') {
+                mainReportWrapper.classList.add('hidden');
+                perfWrapper.classList.add('hidden');
+                intervalWrapper.classList.add('hidden');
+                tableContainer.classList.add('hidden');
+                if (excelReportsWrapper) {
+                    excelReportsWrapper.classList.remove('hidden');
+                    if (typeof window.renderReportsPanel === 'function') window.renderReportsPanel();
+                }
                 return;
             }
 
@@ -3742,6 +3757,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     sidebarUserMgmt.onclick = (e) => {
                         e.preventDefault();
                         state.activeViewType = 'user_mgmt';
+                        renderSidebar();
+                        renderTable();
+                    };
+                }
+
+                // Excel Reports nav handler
+                const sidebarExcelReports = document.getElementById('sidebar-excel-reports');
+                if (sidebarExcelReports) {
+                    sidebarExcelReports.onclick = () => {
+                        state.activeViewType = 'excel_reports';
                         renderSidebar();
                         renderTable();
                     };

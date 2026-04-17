@@ -205,6 +205,12 @@
                             </li>
                         </ul>
                     </li>
+                    <li class="nav-item" data-menu-key="reports">
+                        <div class="nav-item-header" id="sidebar-excel-reports" style="cursor:pointer;">
+                            <span class="nav-icon">📊</span>
+                            <span class="nav-label">Reports</span>
+                        </div>
+                    </li>
                 <li class="nav-item" data-menu-key="dataManagement">
                     <div class="nav-item-header has-children">
                         <span class="nav-icon">⚙️</span>
@@ -408,6 +414,11 @@
                     style="max-width: 900px;">
                     <!-- JS will generate User Management panel here -->
                 </div>
+
+                <div id="excel-reports-wrapper" class="report-wrapper hidden"
+                    style="max-width: 900px;">
+                    <!-- JS will generate Excel Reports panel here -->
+                </div>
             </main>
         </div>
     </div>
@@ -419,6 +430,7 @@
     <script src="render_ytd_report.js"></script>
     <script src="render_current_vs_prev.js"></script>
     <script src="render_spraying.js?v=2"></script>
+    <script src="render_reports.js"></script>
     <script src="script.js?v=18"></script>
     <script>
         // Use event delegation for topnav toggle interactions to support dynamically added items
