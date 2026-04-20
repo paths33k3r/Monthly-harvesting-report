@@ -467,6 +467,17 @@ document.addEventListener('DOMContentLoaded', () => {
             if (diffDays >= settings.frequencyDays) triggerBackup(true);
         };
 
+        let _activityDebounce = null;
+        let _activityListenerAdded = false;
+        const setupActivityBackupListener = () => {
+            if (_activityListenerAdded || currentUserRole?.role !== 'admin') return;
+            _activityListenerAdded = true;
+            window.addEventListener('harvesting:activity', () => {
+                if (_activityDebounce) clearTimeout(_activityDebounce);
+                _activityDebounce = setTimeout(() => triggerBackup(true), 15000);
+            });
+        };
+
         const renderBackupSettingsPanel = async () => {
             const wrapper = document.getElementById('user-mgmt-wrapper');
             if (!wrapper) return;
@@ -969,6 +980,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 db.ref('users/' + auth.currentUser.uid + '/app_state').set(JSON.stringify(state))
                     .then(() => {
+                        window.dispatchEvent(new CustomEvent('harvesting:activity'));
                         if (!silent) alert("Data saved successfully to cloud!");
                     })
                     .catch(e => {
@@ -3924,6 +3936,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         applyRolePermissions();
                         checkFirstLogin();
                         autoBackupCheck();
+                        setupActivityBackupListener();
                     });
                 };
 
