@@ -474,7 +474,7 @@ document.addEventListener('DOMContentLoaded', () => {
             _activityListenerAdded = true;
             window.addEventListener('harvesting:activity', () => {
                 if (_activityDebounce) clearTimeout(_activityDebounce);
-                _activityDebounce = setTimeout(() => triggerBackup(true), 15000);
+                _activityDebounce = setTimeout(() => autoBackupCheck(), 15000);
             });
         };
 
