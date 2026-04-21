@@ -590,6 +590,11 @@
             ws.getCell(298, TOTAL_GLY_COL).value = grandTotHGly || 0;
             ws.getCell(298, TOTAL_ALY_COL).value = grandTotHAly || 0;
 
+            // Remove auto-filter (dropdown arrows) and keep only the spraying sheet
+            ws.autoFilter = null;
+            wb.worksheets.filter(s => s.name !== 'GLY + ALLY 20225 (2)')
+                         .forEach(s => wb.removeWorksheet(s.id));
+
             const buf = await wb.xlsx.writeBuffer();
             downloadBuffer(buf, `Spraying_GLY_ALLY_${year}.xlsx`);
             setStatus('rep-spray-status', '✅ Downloaded!', true);
