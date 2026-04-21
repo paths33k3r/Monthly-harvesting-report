@@ -52,6 +52,12 @@
             xml = xml.replace(/<f t="shared" si="\d+"\/>/g, '');
             // Strip column-level style attribute so cell-level fills take precedence
             xml = xml.replace(/(<col\b[^>]*?) style="[^"]*"/g, '$1');
+            // Strip style attribute from data cells rows 6-17, cols B-L so ExcelJS fills apply cleanly
+            xml = xml.replace(/<c r="([B-L])(\d+)"([^>]*?)>/g, (match, col, row, rest) => {
+                const r = parseInt(row);
+                if (r >= 6 && r <= 17) return `<c r="${col}${row}"${rest.replace(/ s="\d+"/, '')}>`;
+                return match;
+            });
             zip.file(path, xml);
         }
         return zip.generateAsync({ type: 'arraybuffer' });
