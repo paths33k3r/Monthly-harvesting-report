@@ -18,11 +18,39 @@
         });
     }
 
+    async function ensureJSZip() {
+        if (typeof JSZip !== 'undefined') return;
+        await new Promise((res, rej) => {
+            const s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';
+            s.onload = res;
+            s.onerror = () => rej(new Error('Failed to load JSZip library'));
+            document.head.appendChild(s);
+        });
+    }
+
+    // Strip shared formulas from xlsx buffer to avoid ExcelJS parse errors
+    async function preprocessXlsx(buf) {
+        await ensureJSZip();
+        const zip = await JSZip.loadAsync(buf);
+        const sheetPaths = Object.keys(zip.files).filter(f => /^xl\/worksheets\/sheet\d+\.xml$/.test(f));
+        for (const path of sheetPaths) {
+            let xml = await zip.files[path].async('string');
+            // Master shared formula: keep formula text, remove shared attributes
+            xml = xml.replace(/<f t="shared" ref="[^"]*" si="\d+">/g, '<f>');
+            // Clone shared formula (no formula text): remove the element entirely
+            xml = xml.replace(/<f t="shared" si="\d+"\/>/g, '');
+            zip.file(path, xml);
+        }
+        return zip.generateAsync({ type: 'arraybuffer' });
+    }
+
     async function loadTemplate(filename) {
         const url = encodeURI('Report samples/' + filename);
         const resp = await fetch(url);
         if (!resp.ok) throw new Error(`Could not load template "${filename}" (${resp.status}). Make sure the app is served via HTTP, not file://.`);
-        const buf = await resp.arrayBuffer();
+        const raw = await resp.arrayBuffer();
+        const buf = await preprocessXlsx(raw);
         const wb = new ExcelJS.Workbook();
         await wb.xlsx.load(buf);
         return wb;
