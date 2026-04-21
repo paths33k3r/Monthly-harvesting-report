@@ -33,6 +33,16 @@
     async function preprocessXlsx(buf) {
         await ensureJSZip();
         const zip = await JSZip.loadAsync(buf);
+
+        // Fix styles.xml: cells with applyFill="0" inherit fill from the parent "Normal" style
+        // (which is black). Force applyFill="1" so cells use their own fillId instead.
+        const stylesFile = zip.files['xl/styles.xml'];
+        if (stylesFile) {
+            let stylesXml = await stylesFile.async('string');
+            stylesXml = stylesXml.replace(/ applyFill="0"/g, ' applyFill="1"');
+            zip.file('xl/styles.xml', stylesXml);
+        }
+
         const sheetPaths = Object.keys(zip.files).filter(f => /^xl\/worksheets\/sheet\d+\.xml$/.test(f));
         for (const path of sheetPaths) {
             let xml = await zip.files[path].async('string');
