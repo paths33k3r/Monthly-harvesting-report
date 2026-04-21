@@ -191,6 +191,10 @@
             ws.getCell(YTD_GRAND_ROW, 9).value  = parseFloat(gCMH.toFixed(9));
             ws.getCell(YTD_GRAND_ROW, 10).value = parseFloat(gPMH.toFixed(9));
 
+            // Remove all sheets except the one we need
+            wb.worksheets.filter(s => s.name !== 'OVERALL BY GANG COMPARISON YTD2')
+                         .forEach(s => wb.removeWorksheet(s.id));
+
             const buf = await wb.xlsx.writeBuffer();
             downloadBuffer(buf, `Harvesting_YTD_${mLabel}_${year}.xlsx`);
             setStatus('rep-ytd-status', '✅ Downloaded!', true);
