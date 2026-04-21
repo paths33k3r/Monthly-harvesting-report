@@ -260,6 +260,15 @@
                 [2, 3, 4, 6, 7, 8, 10, 11, 12].forEach(c => { ws.getCell(6 + i, c).fill = CLEAR_FILL; });
             }
 
+            // Clear extra template columns (N onwards) for all rows
+            for (let r = 1; r <= 50; r++) {
+                for (let c = 14; c <= 30; c++) {
+                    const cell = ws.getCell(r, c);
+                    cell.value = null;
+                    cell.fill  = CLEAR_FILL;
+                }
+            }
+
             // Title and year headers
             ws.getCell('A1').value = `SUMMARY REPORT FOR RAINFALL RECORD FOR THE YEAR ${prevYear} VS ${year} (Updated as of ${mLabel} ${year})`;
             ws.getCell('B3').value = parseInt(prevYear);
@@ -296,13 +305,11 @@
                     ws.getCell(row, 11).value = (currM - prevM) || null;
                     totCurrD += currD; totCurrM += currM;
                 } else {
-                    // Future months — black fill, clear values
-                    ws.getCell(row, 6).value  = null;
-                    ws.getCell(row, 7).value  = null;
-                    ws.getCell(row, 8).value  = null;
-                    ws.getCell(row, 10).value = null;
-                    ws.getCell(row, 11).value = null;
-                    [6, 7, 8].forEach(c => { ws.getCell(row, c).fill = BLACK_FILL; });
+                    // Future months — black fill on all columns with no data
+                    [6, 7, 8, 10, 11, 12].forEach(c => {
+                        ws.getCell(row, c).value = null;
+                        ws.getCell(row, c).fill  = BLACK_FILL;
+                    });
                 }
             }
 
