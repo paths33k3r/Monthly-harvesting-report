@@ -260,7 +260,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // You can reuse the InventoryWeb client ID by adding this app's origin
         // (e.g. http://localhost or file://) to its Authorised JavaScript origins
         // at: https://console.cloud.google.com/apis/credentials
-        const GDRIVE_CLIENT_ID = '1073324997940-0p2bc0fluc3caq2de241b5bt9an0g49o.apps.googleusercontent.com';
+        const GDRIVE_CLIENT_ID = '1073324997940-8nocphvtf77673hkb3v0s5v1f1tmbeh9.apps.googleusercontent.com';
         const GDRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.file';
         const GDRIVE_FOLDER_NAME = 'Harvesting Report Backups';
         let gdriveTokenClient = null;
