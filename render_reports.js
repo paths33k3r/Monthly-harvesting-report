@@ -253,19 +253,21 @@
             const rfPrev  = (window.state.rainfall && window.state.rainfall[prevYear]) || {};
 
             const BLACK_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } };
-            const CLEAR_FILL = { type: 'pattern', pattern: 'none' };
+            const WHITE_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+            const NO_BORDER  = { top: {}, left: {}, bottom: {}, right: {} };
 
-            // Clear all existing fills on data rows upfront so template fills don't bleed through
+            // Force white fill on all data rows upfront so template black fills don't bleed through
             for (let i = 0; i < 12; i++) {
-                [2, 3, 4, 6, 7, 8, 10, 11, 12].forEach(c => { ws.getCell(6 + i, c).fill = CLEAR_FILL; });
+                [2, 3, 4, 6, 7, 8, 10, 11, 12].forEach(c => { ws.getCell(6 + i, c).fill = WHITE_FILL; });
             }
 
-            // Clear extra template columns (N onwards) for all rows
+            // Clear extra template columns (N onwards): value, fill, and border
             for (let r = 1; r <= 50; r++) {
                 for (let c = 14; c <= 30; c++) {
                     const cell = ws.getCell(r, c);
-                    cell.value = null;
-                    cell.fill  = CLEAR_FILL;
+                    cell.value  = null;
+                    cell.fill   = WHITE_FILL;
+                    cell.border = NO_BORDER;
                 }
             }
 
