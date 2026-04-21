@@ -592,6 +592,8 @@
 
             // Remove auto-filter (dropdown arrows) and keep only the spraying sheet
             ws.autoFilter = null;
+            // Restore hidden columns that ExcelJS drops on write (col C = Year)
+            ws.getColumn(3).hidden = true;
             wb.worksheets.filter(s => s.name !== 'GLY + ALLY 20225 (2)')
                          .forEach(s => wb.removeWorksheet(s.id));
 
