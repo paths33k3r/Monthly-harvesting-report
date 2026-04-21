@@ -255,6 +255,11 @@
             const BLACK_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } };
             const CLEAR_FILL = { type: 'pattern', pattern: 'none' };
 
+            // Clear all existing fills on data rows upfront so template fills don't bleed through
+            for (let i = 0; i < 12; i++) {
+                [2, 3, 4, 6, 7, 8, 10, 11, 12].forEach(c => { ws.getCell(6 + i, c).fill = CLEAR_FILL; });
+            }
+
             // Title and year headers
             ws.getCell('A1').value = `SUMMARY REPORT FOR RAINFALL RECORD FOR THE YEAR ${prevYear} VS ${year} (Updated as of ${mLabel} ${year})`;
             ws.getCell('B3').value = parseInt(prevYear);
@@ -273,9 +278,9 @@
                 const prevD = parseFloat(pd.days) || 0;
                 const prevM = parseFloat(pd.mm)   || 0;
                 prevCum += prevM;
-                ws.getCell(row, 2).value = prevD || null;    // B: prev days
-                ws.getCell(row, 3).value = prevM || null;    // C: prev mm
-                ws.getCell(row, 4).value = prevCum || null;  // D: prev cumulative mm
+                ws.getCell(row, 2).value = prevD || null;
+                ws.getCell(row, 3).value = prevM || null;
+                ws.getCell(row, 4).value = prevCum || null;
                 totPrevD += prevD; totPrevM += prevM;
 
                 if (i <= mIdx) {
@@ -284,13 +289,11 @@
                     const currD = parseFloat(cd.days) || 0;
                     const currM = parseFloat(cd.mm)   || 0;
                     currCum += currM;
-                    ws.getCell(row, 6).value  = currD || null;           // F: curr days
-                    ws.getCell(row, 7).value  = currM || null;           // G: curr mm
-                    ws.getCell(row, 8).value  = currCum || null;         // H: curr cumulative mm
-                    ws.getCell(row, 10).value = (currD - prevD) || null; // J: diff days
-                    ws.getCell(row, 11).value = (currM - prevM) || null; // K: diff mm
-                    // Remove black fill if previously applied
-                    [6, 7, 8].forEach(c => { const cell = ws.getCell(row, c); if (cell.fill && cell.fill.fgColor && cell.fill.fgColor.argb === 'FF000000') cell.fill = CLEAR_FILL; });
+                    ws.getCell(row, 6).value  = currD || null;
+                    ws.getCell(row, 7).value  = currM || null;
+                    ws.getCell(row, 8).value  = currCum || null;
+                    ws.getCell(row, 10).value = (currD - prevD) || null;
+                    ws.getCell(row, 11).value = (currM - prevM) || null;
                     totCurrD += currD; totCurrM += currM;
                 } else {
                     // Future months — black fill, clear values
@@ -324,6 +327,10 @@
             ws.getCell('A27').value = diff >= 0
                 ? `**${year} MM TO MONTH is more than ${prevYear} by ${Math.abs(diff)}`
                 : `**${year} MM TO MONTH is less than ${prevYear} by ${Math.abs(diff)}`;
+
+            // Keep only the rainfall sheet
+            wb.worksheets.filter(s => s.name !== 'Dec Rainfall 2024 vs 2025')
+                         .forEach(s => wb.removeWorksheet(s.id));
 
             const buf = await wb.xlsx.writeBuffer();
             downloadBuffer(buf, `Rainfall_${prevYear}_vs_${year}_${mLabel}_${year}.xlsx`);
