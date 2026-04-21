@@ -40,6 +40,8 @@
             xml = xml.replace(/<f t="shared" ref="[^"]*" si="\d+">/g, '<f>');
             // Clone shared formula (no formula text): remove the element entirely
             xml = xml.replace(/<f t="shared" si="\d+"\/>/g, '');
+            // Strip column-level style attribute so cell-level fills take precedence
+            xml = xml.replace(/(<col\b[^>]*?) style="[^"]*"/g, '$1');
             zip.file(path, xml);
         }
         return zip.generateAsync({ type: 'arraybuffer' });
