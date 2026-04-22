@@ -510,18 +510,136 @@
     window.downloadSprayingReport = async (year) => {
         setStatus('rep-spray-status', 'Generating…');
         try {
-            await ensureExcelJS();
-            const wb = await loadTemplate('Spraying Maintenance 2025.xlsx');
-            const ws = wb.getWorksheet('GLY + ALLY 20225 (2)');
-            if (!ws) throw new Error('Worksheet "GLY + ALLY 20225 (2)" not found');
+            await ensureJSZip();
 
-            // Fill all phase sections
+            // Bypass ExcelJS entirely — manipulate XML directly to preserve all formatting
+            // (merged cells, borders, col widths, col C hidden) from the template unchanged.
+            const resp = await fetch(encodeURI('Report samples/Spraying Maintenance 2025.xlsx'));
+            if (!resp.ok) throw new Error(`Could not load template (${resp.status})`);
+            const zip = await JSZip.loadAsync(await resp.arrayBuffer());
+            let xml = await zip.files['xl/worksheets/sheet1.xml'].async('string');
+
+            // Convert 1-indexed column number → letter(s)
+            function colLetter(n) {
+                let s = '';
+                while (n > 0) { n--; s = String.fromCharCode(65 + n % 26) + s; n = Math.floor(n / 26); }
+                return s;
+            }
+
+            // Set or clear a numeric cell value directly in the sheet XML.
+            // Skips string cells (t="s"). Strips any formula — we own the value.
+            function setNum(row, col, value) {
+                const ref = colLetter(col) + row;
+                const numStr = (value !== null && value !== undefined) ? String(Math.round(value * 1e9) / 1e9) : null;
+
+                // Self-closing cell <c r="REF" attrs/>
+                xml = xml.replace(new RegExp(`<c r="${ref}"([^>]*)\\/>`), (m, attrs) => {
+                    if (/t="s"/.test(attrs)) return m;
+                    return numStr ? `<c r="${ref}"${attrs}><v>${numStr}</v></c>` : m;
+                });
+                // Cell with content <c r="REF" attrs>...</c>  (value, formula, or both)
+                xml = xml.replace(new RegExp(`<c r="${ref}"([^>]*)>([\\s\\S]*?)<\\/c>`), (m, attrs, _content) => {
+                    if (/t="s"/.test(attrs)) return m;
+                    attrs = attrs.replace(/\s+t="[^"]*"/, '');
+                    return numStr ? `<c r="${ref}"${attrs}><v>${numStr}</v></c>` : `<c r="${ref}"${attrs}/>`;
+                });
+            }
+
+            // Mirror of fillHalf but writing directly to XML
+            function fillHalfXml(section, colMap, halfMonths) {
+                const tGly={}, tAly={}, tHGly={}, tHAly={};
+                halfMonths.forEach(m => { tGly[m]=0; tAly[m]=0; tHGly[m]=0; tHAly[m]=0; });
+                let grandGly=0, grandAly=0, grandHGly=0, grandHAly=0;
+                let totalHaPrev=0, totalHaPresent=0;
+                const isJulDec = halfMonths[0] === 'JUL';
+
+                section.blocks.forEach((blockId, bIdx) => {
+                    const base = section.start + bIdx * 3;
+                    const rRow = base, nRow = base + 1, hRow = base + 2;
+                    const blk  = getSprayBlk(year, blockId);
+
+                    halfMonths.forEach(m => {
+                        const g = colMap[m];
+                        setNum(rRow, g, null); setNum(rRow, g+1, null);
+                        setNum(nRow, g, null); setNum(nRow, g+1, null);
+                        setNum(hRow, g, null); setNum(hRow, g+1, null);
+                    });
+                    if (isJulDec) {
+                        setNum(nRow, TOTAL_GLY_COL, null); setNum(nRow, TOTAL_ALY_COL, null);
+                        setNum(hRow, TOTAL_GLY_COL, null); setNum(hRow, TOTAL_ALY_COL, null);
+                    }
+
+                    if (!blk) return;
+
+                    const haPrev    = parseFloat(blk.haPrevious) || 0;
+                    const haPresent = parseFloat(blk.haPresent)  || 0;
+                    setNum(rRow, 4, haPrev    || null);
+                    setNum(rRow, 5, haPresent || null);
+                    totalHaPrev    += haPrev;
+                    totalHaPresent += haPresent;
+
+                    halfMonths.forEach(m => {
+                        const md = (blk.months || {})[m] || {};
+                        const g  = colMap[m];
+                        const rG = (md.roundGly !== undefined && md.roundGly !== '') ? (parseFloat(md.roundGly) || md.roundGly) : null;
+                        const rA = (md.roundAly !== undefined && md.roundAly !== '') ? (parseFloat(md.roundAly) || md.roundAly) : null;
+                        const lG = parseFloat(md.litresGly) || 0;
+                        const gA = parseFloat(md.gmAly)     || 0;
+                        const hG = parseFloat(md.haGly)     || 0;
+                        const hA = parseFloat(md.haAly)     || 0;
+
+                        if (rG !== null) setNum(rRow, g,   rG);
+                        if (rA !== null) setNum(rRow, g+1, rA);
+                        if (lG > 0)     setNum(nRow, g,   lG);
+                        if (gA > 0)     setNum(nRow, g+1, gA);
+                        if (hG > 0)     setNum(hRow, g,   hG);
+                        if (hA > 0)     setNum(hRow, g+1, hA);
+
+                        tGly[m] += lG; tAly[m] += gA;
+                        tHGly[m] += hG; tHAly[m] += hA;
+                    });
+
+                    if (isJulDec) {
+                        let bGly=0, bAly=0, bHGly=0, bHAly=0;
+                        MONTHS_UP.forEach(m => {
+                            const md = (blk.months || {})[m] || {};
+                            bGly  += parseFloat(md.litresGly) || 0;
+                            bAly  += parseFloat(md.gmAly)     || 0;
+                            bHGly += parseFloat(md.haGly)     || 0;
+                            bHAly += parseFloat(md.haAly)     || 0;
+                        });
+                        setNum(nRow, TOTAL_GLY_COL, bGly  || null);
+                        setNum(nRow, TOTAL_ALY_COL, bAly  || null);
+                        setNum(hRow, TOTAL_GLY_COL, bHGly || null);
+                        setNum(hRow, TOTAL_ALY_COL, bHAly || null);
+                        grandGly += bGly; grandAly += bAly;
+                        grandHGly += bHGly; grandHAly += bHAly;
+                    }
+                });
+
+                halfMonths.forEach(m => {
+                    const g = colMap[m];
+                    setNum(section.nlg, g,   tGly[m]  || 0);
+                    setNum(section.nlg, g+1, tAly[m]  || 0);
+                    setNum(section.ha,  g,   tHGly[m] || 0);
+                    setNum(section.ha,  g+1, tHAly[m] || 0);
+                });
+                setNum(section.nlg, 4, parseFloat(totalHaPrev.toFixed(2))    || null);
+                setNum(section.nlg, 5, parseFloat(totalHaPresent.toFixed(2)) || null);
+                if (isJulDec) {
+                    setNum(section.nlg, TOTAL_GLY_COL, grandGly  || 0);
+                    setNum(section.nlg, TOTAL_ALY_COL, grandAly  || 0);
+                    setNum(section.ha,  TOTAL_GLY_COL, grandHGly || 0);
+                    setNum(section.ha,  TOTAL_ALY_COL, grandHAly || 0);
+                }
+            }
+
             SPRAY_PHASES.forEach(ph => {
-                fillHalf(ws, ph.janjun, JJ_COLS, JJ_MONTHS, year);
-                fillHalf(ws, ph.juldec, JD_COLS, JD_MONTHS, year);
+                fillHalfXml(ph.janjun, JJ_COLS, JJ_MONTHS);
+                fillHalfXml(ph.juldec, JD_COLS, JD_MONTHS);
             });
 
-            // Row 286: "Ha Total" — grand sum of haPrevious / haPresent across all blocks
+            // Row 286: grand Ha totals
             let grandHaPrev=0, grandHaPresent=0;
             SPRAY_PHASES.forEach(ph => {
                 ph.janjun.blocks.forEach(id => {
@@ -531,17 +649,15 @@
                     grandHaPresent += parseFloat(blk.haPresent)  || 0;
                 });
             });
-            ws.getCell(286, 4).value = parseFloat(grandHaPrev.toFixed(2));
-            ws.getCell(286, 5).value = parseFloat(grandHaPresent.toFixed(2));
+            setNum(286, 4, parseFloat(grandHaPrev.toFixed(2)));
+            setNum(286, 5, parseFloat(grandHaPresent.toFixed(2)));
 
-            // Rows 292-293: Overall JAN-JUN summary totals (sum across all phases)
-            // Rows 297-298: Overall JUL-DEC summary totals + TOTAL column
-            const sumJJ  = { gly:{}, aly:{}, hGly:{}, hAly:{} };
-            const sumJD  = { gly:{}, aly:{}, hGly:{}, hAly:{} };
+            // Rows 292-293 (JAN-JUN overall) and 297-298 (JUL-DEC overall + TOTAL)
+            const sumJJ = { gly:{}, aly:{}, hGly:{}, hAly:{} };
+            const sumJD = { gly:{}, aly:{}, hGly:{}, hAly:{} };
             JJ_MONTHS.forEach(m => { sumJJ.gly[m]=0; sumJJ.aly[m]=0; sumJJ.hGly[m]=0; sumJJ.hAly[m]=0; });
             JD_MONTHS.forEach(m => { sumJD.gly[m]=0; sumJD.aly[m]=0; sumJD.hGly[m]=0; sumJD.hAly[m]=0; });
             let grandTotGly=0, grandTotAly=0, grandTotHGly=0, grandTotHAly=0;
-
             const sprayData = window.state.spraying && window.state.spraying[year];
             if (sprayData) {
                 (sprayData.phases || []).forEach(ph => {
@@ -570,54 +686,33 @@
                     });
                 });
             }
-
             JJ_MONTHS.forEach(m => {
                 const g = JJ_COLS[m];
-                ws.getCell(292, g).value   = sumJJ.gly[m]  || 0;
-                ws.getCell(292, g+1).value = sumJJ.aly[m]  || 0;
-                ws.getCell(293, g).value   = sumJJ.hGly[m] || 0;
-                ws.getCell(293, g+1).value = sumJJ.hAly[m] || 0;
+                setNum(292, g,   sumJJ.gly[m]  || 0);
+                setNum(292, g+1, sumJJ.aly[m]  || 0);
+                setNum(293, g,   sumJJ.hGly[m] || 0);
+                setNum(293, g+1, sumJJ.hAly[m] || 0);
             });
             JD_MONTHS.forEach(m => {
                 const g = JD_COLS[m];
-                ws.getCell(297, g).value   = sumJD.gly[m]  || 0;
-                ws.getCell(297, g+1).value = sumJD.aly[m]  || 0;
-                ws.getCell(298, g).value   = sumJD.hGly[m] || 0;
-                ws.getCell(298, g+1).value = sumJD.hAly[m] || 0;
+                setNum(297, g,   sumJD.gly[m]  || 0);
+                setNum(297, g+1, sumJD.aly[m]  || 0);
+                setNum(298, g,   sumJD.hGly[m] || 0);
+                setNum(298, g+1, sumJD.hAly[m] || 0);
             });
-            ws.getCell(297, TOTAL_GLY_COL).value = grandTotGly  || 0;
-            ws.getCell(297, TOTAL_ALY_COL).value = grandTotAly  || 0;
-            ws.getCell(298, TOTAL_GLY_COL).value = grandTotHGly || 0;
-            ws.getCell(298, TOTAL_ALY_COL).value = grandTotHAly || 0;
+            setNum(297, TOTAL_GLY_COL, grandTotGly  || 0);
+            setNum(297, TOTAL_ALY_COL, grandTotAly  || 0);
+            setNum(298, TOTAL_GLY_COL, grandTotHGly || 0);
+            setNum(298, TOTAL_ALY_COL, grandTotHAly || 0);
 
-            // Remove auto-filter and keep only the spraying sheet
-            ws.autoFilter = null;
-            wb.worksheets.filter(s => s.name !== 'GLY + ALLY 20225 (2)')
-                         .forEach(s => wb.removeWorksheet(s.id));
+            // Remove autoFilter (dropdown arrows) from sheet XML
+            xml = xml.replace(/<autoFilter[^>]*\/>/g, '');
+            xml = xml.replace(/<autoFilter[^>]*>[\s\S]*?<\/autoFilter>/g, '');
 
-            // ExcelJS drops hidden="1" on write — post-process the output XML to re-add it
-            await ensureJSZip();
-            const rawBuf = await wb.xlsx.writeBuffer();
-            const outZip = await JSZip.loadAsync(rawBuf);
-            const wsPath = Object.keys(outZip.files).find(f => /^xl\/worksheets\/sheet\d+\.xml$/.test(f));
-            if (wsPath) {
-                let xml = await outZip.files[wsPath].async('string');
-                // Re-hide col 3 (Year): modify existing entry if present, otherwise insert one
-                xml = xml.replace(/(<cols>)([\s\S]*?)(<\/cols>)/, (_, open, inner, close) => {
-                    const hasCol3 = /min="3"/.test(inner);
-                    if (hasCol3) {
-                        // Modify existing col 3 entry to add hidden="1"
-                        inner = inner.replace(/<col ([^/]*min="3"[^/]*)\/>/g, (m) =>
-                            m.includes('hidden="1"') ? m : m.replace('/>', ' hidden="1"/>'));
-                    } else {
-                        // No col 3 entry — prepend one
-                        inner = '<col min="3" max="3" width="9.28515625" hidden="1" customWidth="1"/>' + inner;
-                    }
-                    return open + inner + close;
-                });
-                outZip.file(wsPath, xml);
-            }
-            const finalBuf = await outZip.generateAsync({ type: 'arraybuffer' });
+            // col C (Year) is already hidden="1" in the template cols section — no post-processing needed
+
+            zip.file('xl/worksheets/sheet1.xml', xml);
+            const finalBuf = await zip.generateAsync({ type: 'arraybuffer' });
             downloadBuffer(finalBuf, `Spraying_GLY_ALLY_${year}.xlsx`);
             setStatus('rep-spray-status', '✅ Downloaded!', true);
         } catch (e) {
