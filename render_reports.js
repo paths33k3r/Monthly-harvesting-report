@@ -602,8 +602,19 @@
             const wsPath = Object.keys(outZip.files).find(f => /^xl\/worksheets\/sheet\d+\.xml$/.test(f));
             if (wsPath) {
                 let xml = await outZip.files[wsPath].async('string');
-                // Re-hide col 3 (Year) — match the <col> element covering min=3 max=3
-                xml = xml.replace(/(<col\b[^>]*\bmin="3"\b[^>]*?)(\s*\/>)/g, '$1 hidden="1"$2');
+                // Re-hide col 3 (Year): modify existing entry if present, otherwise insert one
+                xml = xml.replace(/(<cols>)([\s\S]*?)(<\/cols>)/, (_, open, inner, close) => {
+                    const hasCol3 = /min="3"/.test(inner);
+                    if (hasCol3) {
+                        // Modify existing col 3 entry to add hidden="1"
+                        inner = inner.replace(/<col ([^/]*min="3"[^/]*)\/>/g, (m) =>
+                            m.includes('hidden="1"') ? m : m.replace('/>', ' hidden="1"/>'));
+                    } else {
+                        // No col 3 entry — prepend one
+                        inner = '<col min="3" max="3" width="9.28515625" hidden="1" customWidth="1"/>' + inner;
+                    }
+                    return open + inner + close;
+                });
                 outZip.file(wsPath, xml);
             }
             const finalBuf = await outZip.generateAsync({ type: 'arraybuffer' });
