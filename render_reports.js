@@ -590,15 +590,24 @@
             ws.getCell(298, TOTAL_GLY_COL).value = grandTotHGly || 0;
             ws.getCell(298, TOTAL_ALY_COL).value = grandTotHAly || 0;
 
-            // Remove auto-filter (dropdown arrows) and keep only the spraying sheet
+            // Remove auto-filter and keep only the spraying sheet
             ws.autoFilter = null;
-            // Restore hidden columns that ExcelJS drops on write (col C = Year)
-            ws.getColumn(3).hidden = true;
             wb.worksheets.filter(s => s.name !== 'GLY + ALLY 20225 (2)')
                          .forEach(s => wb.removeWorksheet(s.id));
 
-            const buf = await wb.xlsx.writeBuffer();
-            downloadBuffer(buf, `Spraying_GLY_ALLY_${year}.xlsx`);
+            // ExcelJS drops hidden="1" on write — post-process the output XML to re-add it
+            await ensureJSZip();
+            const rawBuf = await wb.xlsx.writeBuffer();
+            const outZip = await JSZip.loadAsync(rawBuf);
+            const wsPath = Object.keys(outZip.files).find(f => /^xl\/worksheets\/sheet\d+\.xml$/.test(f));
+            if (wsPath) {
+                let xml = await outZip.files[wsPath].async('string');
+                // Re-hide col 3 (Year) — match the <col> element covering min=3 max=3
+                xml = xml.replace(/(<col\b[^>]*\bmin="3"\b[^>]*?)(\s*\/>)/g, '$1 hidden="1"$2');
+                outZip.file(wsPath, xml);
+            }
+            const finalBuf = await outZip.generateAsync({ type: 'arraybuffer' });
+            downloadBuffer(finalBuf, `Spraying_GLY_ALLY_${year}.xlsx`);
             setStatus('rep-spray-status', '✅ Downloaded!', true);
         } catch (e) {
             console.error('Spraying report error:', e);
