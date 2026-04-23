@@ -679,7 +679,7 @@ const saveSprayingData = (silent = true) => {
         return;
     }
     const payload = JSON.stringify(window.state.spraying);
-    window._sprayingDb.ref('users/' + window._sprayingUid + '/spraying_data').set(payload)
+    window._sprayingDb.ref('shared/spraying_data').set(payload)
         .then(() => { if (!silent) alert('Spraying data saved successfully!'); })
         .catch(e => { console.error('Spraying save error:', e); if (!silent) alert('Error saving: ' + e.message); });
 };

@@ -978,7 +978,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const saveState = (silent = false) => {
             if (!auth.currentUser) return;
             try {
-                db.ref('users/' + auth.currentUser.uid + '/app_state').set(JSON.stringify(state))
+                db.ref('shared/app_state').set(JSON.stringify(state))
                     .then(() => {
                         window.dispatchEvent(new CustomEvent('harvesting:activity'));
                         if (!silent) alert("Data saved successfully to cloud!");
@@ -3988,13 +3988,23 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 };
 
-                // Main DB Fetch
+                // Main DB Fetch — shared across all users
                 try {
-                    const snapshot = await db.ref('users/' + auth.currentUser.uid + '/app_state').once('value');
-                    const cloudData = snapshot.val();
+                    let snapshot = await db.ref('shared/app_state').once('value');
+                    let cloudData = snapshot.val();
+
+                    if (!cloudData) {
+                        // One-time migration: check old per-user path and promote to shared
+                        const oldSnap = await db.ref('users/' + auth.currentUser.uid + '/app_state').once('value');
+                        cloudData = oldSnap.val();
+                        if (cloudData) {
+                            console.log("Migrating user data to shared path...");
+                            await db.ref('shared/app_state').set(cloudData);
+                        }
+                    }
 
                     if (cloudData) {
-                        console.log("Loading cloud state...");
+                        console.log("Loading shared cloud state...");
                         Object.assign(state, JSON.parse(cloudData));
                         finishInit();
                     } else {
@@ -4007,10 +4017,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     await loadLocalOrFresh();
                 }
 
-                // Load Spraying data (stored separately so it does not overwrite main state)
+                // Load Spraying data (shared across all users)
                 try {
-                    const spraySnap = await db.ref('users/' + auth.currentUser.uid + '/spraying_data').once('value');
-                    const sprayData = spraySnap.val();
+                    let spraySnap = await db.ref('shared/spraying_data').once('value');
+                    let sprayData = spraySnap.val();
+
+                    if (!sprayData) {
+                        // One-time migration: check old per-user path and promote to shared
+                        const oldSpraySnap = await db.ref('users/' + auth.currentUser.uid + '/spraying_data').once('value');
+                        sprayData = oldSpraySnap.val();
+                        if (sprayData) {
+                            console.log("Migrating spraying data to shared path...");
+                            await db.ref('shared/spraying_data').set(sprayData);
+                        }
+                    }
                     if (sprayData) {
                         state.spraying = JSON.parse(sprayData);
                         // Reinitialize any year whose blocks all have empty month data (e.g. first-time load before data was entered)
