@@ -3993,13 +3993,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     let snapshot = await db.ref('shared/app_state').once('value');
                     let cloudData = snapshot.val();
 
-                    if (!cloudData) {
-                        // One-time migration: check old per-user path and promote to shared
+                    // Check if shared state has real data (not just an empty shell written by a new user)
+                    const sharedParsed = cloudData ? (() => { try { return JSON.parse(cloudData); } catch(e) { return null; } })() : null;
+                    const sharedHasData = sharedParsed &&
+                        (Object.keys(sharedParsed.performance || {}).length > 0 ||
+                         Object.keys(sharedParsed.reports    || {}).length > 0 ||
+                         Object.keys(sharedParsed.rainfall   || {}).length > 0);
+
+                    if (!sharedHasData) {
+                        // Migration: pull from old per-user path and promote to shared
                         const oldSnap = await db.ref('users/' + auth.currentUser.uid + '/app_state').once('value');
-                        cloudData = oldSnap.val();
-                        if (cloudData) {
+                        const oldData = oldSnap.val();
+                        if (oldData) {
                             console.log("Migrating user data to shared path...");
-                            await db.ref('shared/app_state').set(cloudData);
+                            await db.ref('shared/app_state').set(oldData);
+                            cloudData = oldData;
                         }
                     }
 
@@ -4022,13 +4030,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     let spraySnap = await db.ref('shared/spraying_data').once('value');
                     let sprayData = spraySnap.val();
 
-                    if (!sprayData) {
-                        // One-time migration: check old per-user path and promote to shared
+                    // Check if shared spraying data has real content
+                    const sharedSprayParsed = sprayData ? (() => { try { return JSON.parse(sprayData); } catch(e) { return null; } })() : null;
+                    const sharedSprayHasData = sharedSprayParsed &&
+                        Object.keys(sharedSprayParsed).some(k => /^\d{4}$/.test(k) &&
+                            (sharedSprayParsed[k].phases || []).some(p => (p.blocks || []).length > 0));
+
+                    if (!sharedSprayHasData) {
+                        // Migration: pull from old per-user path
                         const oldSpraySnap = await db.ref('users/' + auth.currentUser.uid + '/spraying_data').once('value');
-                        sprayData = oldSpraySnap.val();
-                        if (sprayData) {
+                        const oldSprayData = oldSpraySnap.val();
+                        if (oldSprayData) {
                             console.log("Migrating spraying data to shared path...");
-                            await db.ref('shared/spraying_data').set(sprayData);
+                            await db.ref('shared/spraying_data').set(oldSprayData);
+                            sprayData = oldSprayData;
                         }
                     }
                     if (sprayData) {
