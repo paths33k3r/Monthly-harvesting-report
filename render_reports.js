@@ -729,9 +729,11 @@
         const wrapper = document.getElementById('excel-reports-wrapper');
         if (!wrapper) return;
 
-        const perfYears  = Object.keys(window.state.performance || {}).sort((a, b) => parseInt(b) - parseInt(a));
-        const rainYears  = Object.keys(window.state.rainfall    || {}).filter(k => /^\d{4}$/.test(k)).sort((a, b) => parseInt(b) - parseInt(a));
-        const sprayYears = Object.keys(window.state.spraying    || {}).sort((a, b) => parseInt(b) - parseInt(a));
+        const perfYears    = Object.keys(window.state.performance || {}).sort((a, b) => parseInt(b) - parseInt(a));
+        const rainYears    = Object.keys(window.state.rainfall    || {}).filter(k => /^\d{4}$/.test(k)).sort((a, b) => parseInt(b) - parseInt(a));
+        const sprayYears   = Object.keys(window.state.spraying    || {}).sort((a, b) => parseInt(b) - parseInt(a));
+        const manuringYears = Object.keys(window.state.manuring  || {}).filter(k => /^\d{4}$/.test(k)).sort((a, b) => parseInt(b) - parseInt(a));
+        if (!manuringYears.includes('2025')) manuringYears.unshift('2025');
 
         const yearOpts  = years => years.map(y => `<option value="${y}">${y}</option>`).join('');
         const monthOpts = () => MONTHS.map(m => `<option value="${m}">${m}</option>`).join('');
@@ -758,6 +760,10 @@
                <button id="btn-dl-spray" class="btn-primary" style="padding:0.4rem 1rem;">⬇ Download Excel</button>
                <span id="rep-spray-status" style="font-size:0.82rem;color:var(--text-secondary);"></span>`
             : noDataMsg;
+
+        const manuringControls = `<select id="sel-manuring-yr" style="${SS}">${yearOpts(manuringYears)}</select>
+               <button id="btn-dl-manuring" class="btn-primary" style="padding:0.4rem 1rem;">⬇ Download Excel</button>
+               <span id="rep-manuring-status" style="font-size:0.82rem;color:var(--text-secondary);"></span>`;
 
         wrapper.innerHTML = `
         <div style="padding:1.5rem;max-width:680px;">
@@ -799,6 +805,17 @@
             </div>
           </div>
 
+          <div style="${CARD}">
+            <h3 style="margin:0 0 0.35rem;font-size:0.97rem;">🌿 Manuring — Annual Fertilizer Application Report</h3>
+            <p style="margin:0 0 1rem;color:var(--text-secondary);font-size:0.82rem;">
+              Full-year fertilizer application per block and O/P phase across all 5 phases.
+              Color-coded by fertilizer type (MOP, SATO, COM, SPEC).
+            </p>
+            <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">
+              ${manuringControls}
+            </div>
+          </div>
+
           <p style="color:var(--text-secondary);font-size:0.78rem;margin-top:0.5rem;">
             ℹ️ Reports use the official Excel templates from "Report samples/" as the base.
             The app must be served via HTTP (not file://) for template loading to work.
@@ -821,6 +838,25 @@
         if (btnSpray) btnSpray.onclick = () => {
             const yr = document.getElementById('sel-spray-yr').value;
             if (yr) window.downloadSprayingReport(yr);
+        };
+
+        const btnManuring = document.getElementById('btn-dl-manuring');
+        if (btnManuring) btnManuring.onclick = async () => {
+            const yr = document.getElementById('sel-manuring-yr').value;
+            if (!yr) return;
+            const statusEl = document.getElementById('rep-manuring-status');
+            if (statusEl) statusEl.textContent = '';
+            btnManuring.disabled = true;
+            btnManuring.textContent = '⏳ Generating...';
+            try {
+                await window._downloadManuringExcel(yr);
+                if (statusEl) { statusEl.textContent = '✅ Downloaded!'; setTimeout(() => { statusEl.textContent = ''; }, 3000); }
+            } catch (e) {
+                if (statusEl) statusEl.textContent = '❌ ' + e.message;
+            } finally {
+                btnManuring.disabled = false;
+                btnManuring.textContent = '⬇ Download Excel';
+            }
         };
     };
 

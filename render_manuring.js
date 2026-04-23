@@ -726,7 +726,7 @@
     ws.getCell(row,1).alignment.horizontal = 'left';
   }
 
-  window._downloadManuringExcel = async function() {
+  window._downloadManuringExcel = async function(overrideYear) {
     const btn = document.getElementById('manuring-dl-btn');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating...'; }
     try {
@@ -735,7 +735,7 @@
       WB.creator = 'Monthly Harvesting Report';
       WB.created = new Date();
 
-      const year = getCurrentYear();
+      const year = overrideYear || getCurrentYear();
       const data = getManuringData();
       if (!data['2025'] && typeof window._manuringDefault2025 !== 'undefined') {
         data['2025'] = JSON.parse(JSON.stringify(window._manuringDefault2025));
