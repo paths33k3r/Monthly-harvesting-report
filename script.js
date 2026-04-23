@@ -2064,12 +2064,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const userMgmtWrapper = document.getElementById('user-mgmt-wrapper');
             const excelReportsWrapper = document.getElementById('excel-reports-wrapper');
             const sprayingWrapper = document.getElementById('spraying-wrapper');
+            const manuringWrapper = document.getElementById('manuring-wrapper');
             const maintenanceComingSoonWrapper = document.getElementById('maintenance-coming-soon-wrapper');
             if (ffbWrapper) ffbWrapper.innerHTML = ''; // Clear FFB budget widgets
             if (rainfallWrapper) rainfallWrapper.innerHTML = ''; // Clear Rainfall widgets
             if (ytdWrapper) ytdWrapper.innerHTML = '';
             if (currentPrevWrapper) currentPrevWrapper.innerHTML = '';
             if (sprayingWrapper) sprayingWrapper.innerHTML = '';
+            if (manuringWrapper) manuringWrapper.innerHTML = '';
             if (maintenanceComingSoonWrapper) maintenanceComingSoonWrapper.innerHTML = '';
             if (userMgmtWrapper) { userMgmtWrapper.innerHTML = ''; userMgmtWrapper.classList.add('hidden'); }
             if (excelReportsWrapper) { excelReportsWrapper.innerHTML = ''; excelReportsWrapper.classList.add('hidden'); }
@@ -2080,8 +2082,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (ytdWrapper) ytdWrapper.classList.add('hidden');
             if (currentPrevWrapper) currentPrevWrapper.classList.add('hidden');
             const sprayingWrapperEl = document.getElementById('spraying-wrapper');
+            const manuringWrapperEl = document.getElementById('manuring-wrapper');
             const maintenanceCSWrapperEl = document.getElementById('maintenance-coming-soon-wrapper');
             if (sprayingWrapperEl) sprayingWrapperEl.classList.add('hidden');
+            if (manuringWrapperEl) manuringWrapperEl.classList.add('hidden');
             if (maintenanceCSWrapperEl) maintenanceCSWrapperEl.classList.add('hidden');
 
             // User Management view
@@ -2188,6 +2192,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (sw) {
                     sw.classList.remove('hidden');
                     if (typeof renderSprayingReport === 'function') renderSprayingReport();
+                }
+            } else if (state.activeViewType === 'manuring') {
+                mainReportWrapper.classList.add('hidden');
+                perfWrapper.classList.add('hidden');
+                intervalWrapper.classList.add('hidden');
+                tableContainer.classList.add('hidden');
+                const mw = document.getElementById('manuring-wrapper');
+                if (mw) {
+                    mw.classList.remove('hidden');
+                    if (typeof window.renderManuringReport === 'function') window.renderManuringReport();
                 }
             } else if (state.activeViewType === 'maintenance_coming_soon') {
                 mainReportWrapper.classList.add('hidden');
@@ -3819,6 +3833,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     };
                 }
 
+                const sidebarManuring = document.getElementById('sidebar-manuring');
+                if (sidebarManuring) {
+                    sidebarManuring.onclick = (e) => {
+                        e.preventDefault();
+                        if (!state.manuring) state.manuring = {};
+                        if (!state.manuring['2025'] && typeof window._manuringDefault2025 !== 'undefined') {
+                            state.manuring['2025'] = JSON.parse(JSON.stringify(window._manuringDefault2025));
+                        }
+                        if (!state.manuringYear) state.manuringYear = '2025';
+                        state.activeViewType = 'manuring';
+                        state.activeViewValue = 'manuring';
+                        renderSidebar();
+                        renderTable();
+                    };
+                }
+
                 const sidebarSlashing = document.getElementById('sidebar-slashing');
                 if (sidebarSlashing) {
                     sidebarSlashing.onclick = (e) => {
@@ -4083,6 +4113,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (e) {
                     console.warn("Could not load spraying data:", e.message);
                     if (!state.spraying) state.spraying = {};
+                }
+
+                // Load Manuring data (shared across all users)
+                try {
+                    const manuringSnap = await db.ref('shared/manuring_data').once('value');
+                    const manuringData = manuringSnap.val();
+                    if (manuringData) {
+                        state.manuring = JSON.parse(manuringData);
+                        console.log("Manuring data loaded from cloud.");
+                    } else {
+                        if (!state.manuring) state.manuring = {};
+                    }
+                    // Always ensure 2025 default is present
+                    if (!state.manuring['2025'] && typeof window._manuringDefault2025 !== 'undefined') {
+                        state.manuring['2025'] = JSON.parse(JSON.stringify(window._manuringDefault2025));
+                    }
+                    window._manuringDb = db;
+                } catch (e) {
+                    console.warn("Could not load manuring data:", e.message);
+                    if (!state.manuring) state.manuring = {};
                 }
 
             } catch (error) {

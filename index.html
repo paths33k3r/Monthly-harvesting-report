@@ -194,6 +194,11 @@
                                 </a>
                             </li>
                             <li class="nav-item">
+                                <a href="#" id="sidebar-manuring" class="nav-link">
+                                    🌿 Manuring
+                                </a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="#" id="sidebar-slashing" class="nav-link">
                                     🔪 Slashing
                                 </a>
@@ -412,6 +417,11 @@
                     <!-- JS will generate Spraying report here -->
                 </div>
 
+                <div id="manuring-wrapper" class="report-wrapper hidden"
+                    style="max-width: 1500px; padding: 0; background: transparent; border: none; box-shadow: none;">
+                    <!-- JS will generate Manuring report here -->
+                </div>
+
                 <div id="maintenance-coming-soon-wrapper" class="report-wrapper hidden"
                     style="max-width: 600px;">
                     <!-- Coming Soon for Slashing / Pruning -->
@@ -437,8 +447,9 @@
     <script src="render_ytd_report.js"></script>
     <script src="render_current_vs_prev.js"></script>
     <script src="render_spraying.js?v=3"></script>
+    <script src="render_manuring.js?v=1"></script>
     <script src="render_reports.js?v=9"></script>
-    <script src="script.js?v=22"></script>
+    <script src="script.js?v=23"></script>
     <script>
         // Use event delegation for topnav toggle interactions to support dynamically added items
         document.addEventListener('click', (e) => {
