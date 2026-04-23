@@ -215,11 +215,8 @@
     const years = Object.keys(data).filter(k => /^\d{4}$/.test(k)).sort();
     const yearData = data[currentYear] || {};
 
-    const yearBtns = years.map(y =>
-      `<button onclick="window._manuringSetYear('${y}')" style="
-        padding:5px 14px; border:2px solid ${y === currentYear ? '#2c5f2e' : '#ccc'};
-        background:${y === currentYear ? '#2c5f2e' : '#fff'}; color:${y === currentYear ? '#fff' : '#333'};
-        border-radius:4px; cursor:pointer; font-weight:600; font-size:0.88rem">${y}</button>`
+    const yearOptions = years.map(y =>
+      `<option value="${y}"${y === currentYear ? ' selected' : ''}>${y}</option>`
     ).join('');
 
     const phaseSections = PHASE_NAMES.map(p =>
@@ -227,22 +224,22 @@
     ).join('');
 
     wrapper.innerHTML = `
-      <div style="padding:1rem 1rem 0.5rem; border-bottom:1px solid #e0e0e0; display:flex; align-items:center; gap:1rem; flex-wrap:wrap; background:#fff; border-radius:8px 8px 0 0; box-shadow:0 1px 4px rgba(0,0,0,0.08);">
-        <div>
-          <h2 style="margin:0; font-size:1.15rem; color:#1a3d1e; font-weight:700">🌿 Manuring Report</h2>
-          <p style="margin:0.2rem 0 0; font-size:0.8rem; color:#888">Click any cell to edit an application. Color indicates fertilizer type.</p>
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:1.5rem; flex-wrap:wrap;">
+        <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
+          <div style="font-size:1.1rem; font-weight:700; color:var(--text-primary); text-transform:uppercase;">🌿 Manuring Report</div>
+          <div style="display:flex; align-items:center; gap:0.5rem;">
+            <span style="font-size:0.85rem; color:var(--text-secondary);">Year:</span>
+            <select id="manuring-year-select" class="edit-input"
+              style="padding:0.4rem 0.75rem; border:1px solid var(--border-color); border-radius:4px; background:var(--bg-card); font-size:0.9rem; width:auto;">
+              ${yearOptions}
+            </select>
+          </div>
+          <button class="btn-secondary" onclick="window._manuringAddYear()"
+            style="padding:0.35rem 0.85rem; font-size:0.85rem;">➕ Add Year</button>
         </div>
-        <div style="margin-left:auto; display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
-          <span style="font-size:0.82rem; color:#666; font-weight:600">Year:</span>
-          ${yearBtns}
-          <button onclick="window._manuringAddYear()" style="
-            padding:5px 14px; border:2px dashed #aaa; background:#f9f9f9; color:#555;
-            border-radius:4px; cursor:pointer; font-weight:600; font-size:0.88rem">+ Add Year</button>
-          <button id="manuring-dl-btn" onclick="window._downloadManuringExcel()" style="
-            padding:5px 14px; border:none; background:#1a6b1e; color:#fff;
-            border-radius:4px; cursor:pointer; font-weight:700; font-size:0.88rem; margin-left:0.5rem">
-            ⬇ Download Excel</button>
-        </div>
+      </div>
+      <div style="font-size:0.8rem; color:var(--text-secondary); margin:-0.75rem 0 1rem 0.25rem;">
+        Click any cell to edit an application. Color indicates fertilizer type.
       </div>
 
       <div style="padding:1rem; background:#fafafa; min-height:400px;">
@@ -296,6 +293,12 @@
         const ow = document.getElementById('me-other-wrap');
         if (ow) ow.style.display = fertSel.value === 'OTHER' ? 'block' : 'none';
       };
+    }
+
+    // Wire up year selector
+    const yearSel = document.getElementById('manuring-year-select');
+    if (yearSel) {
+      yearSel.onchange = () => window._manuringSetYear(yearSel.value);
     }
   }
 
