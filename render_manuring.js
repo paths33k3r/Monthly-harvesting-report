@@ -238,6 +238,10 @@
           <button onclick="window._manuringAddYear()" style="
             padding:5px 14px; border:2px dashed #aaa; background:#f9f9f9; color:#555;
             border-radius:4px; cursor:pointer; font-weight:600; font-size:0.88rem">+ Add Year</button>
+          <button id="manuring-dl-btn" onclick="window._downloadManuringExcel()" style="
+            padding:5px 14px; border:none; background:#1a6b1e; color:#fff;
+            border-radius:4px; cursor:pointer; font-weight:700; font-size:0.88rem; margin-left:0.5rem">
+            ⬇ Download Excel</button>
         </div>
       </div>
 
@@ -408,6 +412,360 @@
     window.state.manuringYear = y;
     saveManuringToFirebase();
     renderManuring();
+  };
+
+  // ── ExcelJS lazy loader ──────────────────────────────────────────────────
+  async function ensureExcelJS() {
+    if (typeof window.ExcelJS !== 'undefined') return;
+    await new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+      s.onload = res;
+      s.onerror = () => rej(new Error('Failed to load ExcelJS'));
+      document.head.appendChild(s);
+    });
+  }
+
+  // ── Column layout ─────────────────────────────────────────────────────────
+  // A=BK B=Ha C=NPalm D=ACTUAL E=label F=Jan G=Feb H=Mar I=Apr J=May K=Jun
+  // L=Jul M=Aug N=Aug* O=Sep P=Oct Q=Nov R=Dec S=TotBags T=TotMt U=Remark
+  const XL_MONTH_COL = {
+    Jan:6, Feb:7, Mar:8, Apr:9, May:10, Jun:11,
+    Jul:12, Aug:13, Aug2:14, Sep:15, Oct:16, Nov:17, Dec:18
+  };
+  const HEADER_DARK  = { type:'pattern', pattern:'solid', fgColor:{ argb:'FF1A3D1E' } };
+  const HEADER_GREEN = { type:'pattern', pattern:'solid', fgColor:{ argb:'FF2C5F2E' } };
+  const HEADER_GOLD  = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFB8860B' } };
+  const WHITE_FONT   = { color:{ argb:'FFFFFFFF' }, bold:true, size:9 };
+  const THIN  = { style:'thin',   color:{ argb:'FF888888' } };
+  const MED   = { style:'medium', color:{ argb:'FF444444' } };
+
+  function xlBorder(top, bottom) {
+    return { top: top?MED:THIN, bottom: bottom?MED:THIN, left:THIN, right:THIN };
+  }
+
+  function xlFertFill(fert) {
+    const map = { MOP:'FF00B050', SATO:'FF0070C0', COM:'FFFF6600', SPEC:'FFFFFF00', ERP:'FF9B59B6', MIX:'FFE67E22' };
+    const argb = map[fert];
+    return argb ? { type:'pattern', pattern:'solid', fgColor:{ argb } } : null;
+  }
+  function xlFertFont(fert) {
+    const light = fert === 'SPEC';
+    return { color:{ argb: light ? 'FF000000' : 'FFFFFFFF' }, bold:true, size:8 };
+  }
+
+  function applyHeaderCell(cell, fill, value, align='center') {
+    cell.value = value;
+    cell.fill = fill;
+    cell.font = WHITE_FONT;
+    cell.alignment = { horizontal:align, vertical:'middle', wrapText:false };
+  }
+
+  function buildPhaseSheet(ws, phaseName, phaseData, year) {
+    const blocks = (phaseData && phaseData.blocks) ? phaseData.blocks : [];
+    const phaseYear = phaseName.replace('PHASE ','');
+
+    // Column widths
+    ws.getColumn(1).width  = 4.5;   // A BK
+    ws.getColumn(2).width  = 6;     // B Ha
+    ws.getColumn(3).width  = 8;     // C NPalm
+    ws.getColumn(4).width  = 7;     // D ACTUAL
+    ws.getColumn(5).width  = 10;    // E label
+    for (let c = 6; c <= 18; c++) ws.getColumn(c).width = 8.5;  // F-R months
+    ws.getColumn(19).width = 10;    // S TotBags
+    ws.getColumn(20).width = 9;     // T TotMt
+    ws.getColumn(21).width = 12;    // U Remark
+
+    // ── Header rows ──────────────────────────────────────────────────────────
+    ws.getRow(1).height = 6;
+    ws.getRow(2).height = 6;
+
+    // Row 3: company
+    ws.mergeCells('A3:U3');
+    ws.getRow(3).height = 18;
+    const r3c = ws.getCell('A3');
+    r3c.value = 'GLOBAL TAAT SDN BHD';
+    r3c.font = { bold:true, size:12 };
+    r3c.alignment = { horizontal:'center', vertical:'middle' };
+
+    // Row 4: title
+    ws.mergeCells('A4:U4');
+    ws.getRow(4).height = 16;
+    ws.getCell('A4').value = 'ACTUAL FERTILIZER APPLICATION';
+    ws.getCell('A4').font = { bold:true, size:11 };
+    ws.getCell('A4').alignment = { horizontal:'center', vertical:'middle' };
+
+    // Row 5: phase + year
+    ws.mergeCells('A5:U5');
+    ws.getRow(5).height = 16;
+    ws.getCell('A5').value = `${phaseName}  —  ${year}`;
+    ws.getCell('A5').font = { bold:true, size:11 };
+    ws.getCell('A5').alignment = { horizontal:'center', vertical:'middle' };
+
+    ws.getRow(6).height = 6;
+    ws.getRow(7).height = 6;
+
+    // Row 8: phase identifier
+    ws.mergeCells('A8:U8');
+    ws.getRow(8).height = 16;
+    ws.getCell('A8').value = `PHASE : ${phaseYear}`;
+    ws.getCell('A8').font = { bold:true, size:10 };
+
+    // Row 9: main column headers
+    ws.getRow(9).height = 22;
+    const hdr9cells = [
+      [1,'BK'],[2,'HA'],[3,'NO. PALM'],[4,'PARTICULAR'],[5,'']
+    ];
+    for (const [c,v] of hdr9cells) applyHeaderCell(ws.getRow(9).getCell(c), HEADER_DARK, v);
+    ws.mergeCells('F9:R9');
+    applyHeaderCell(ws.getCell('F9'), HEADER_DARK, 'MONTH');
+    applyHeaderCell(ws.getRow(9).getCell(19), HEADER_DARK, 'TOTAL');
+    applyHeaderCell(ws.getRow(9).getCell(20), HEADER_DARK, 'MT.');
+    applyHeaderCell(ws.getRow(9).getCell(21), HEADER_DARK, 'REMARK');
+
+    // Row 10: spacer
+    ws.getRow(10).height = 6;
+
+    // Row 11: month names
+    ws.getRow(11).height = 18;
+    const monthHdrs = [
+      [6,'JAN'],[7,'FEB'],[8,'MAR'],[9,'APR'],[10,'MAY'],[11,'JUN'],
+      [12,'JUL'],[15,'SEP'],[16,'OCT'],[17,'NOV'],[18,'DEC']
+    ];
+    ws.mergeCells('M11:N11');
+    applyHeaderCell(ws.getCell('M11'), HEADER_GREEN, 'AUG');
+    for (const [c,v] of monthHdrs) applyHeaderCell(ws.getRow(11).getCell(c), HEADER_GREEN, v);
+    applyHeaderCell(ws.getRow(11).getCell(19), HEADER_GOLD, 'TOTAL');
+    applyHeaderCell(ws.getRow(11).getCell(20), HEADER_GOLD, 'MT.');
+
+    // ── Block data rows ───────────────────────────────────────────────────────
+    let rowIdx = 12;
+
+    for (const block of blocks) {
+      const apps = block.apps || {};
+      const r0 = rowIdx;
+
+      let totBags = 0, totMt = 0, totRounds = 0;
+      for (const v of Object.values(apps)) {
+        totBags   += v.bags  || 0;
+        totMt     += v.mt    || 0;
+        totRounds += v.round || 0;
+      }
+      totMt = Math.round(totMt * 1000) / 1000;
+
+      // Set row heights
+      for (let r = r0; r <= r0+3; r++) ws.getRow(r).height = 18;
+
+      // Merge static columns across 4 rows
+      ws.mergeCells(r0,1, r0+3,1);   // A: BK
+      ws.mergeCells(r0,2, r0+3,2);   // B: Ha
+      ws.mergeCells(r0,3, r0+3,3);   // C: NPalm
+      ws.mergeCells(r0,4, r0+3,4);   // D: ACTUAL
+
+      // BK, Ha, NPalm, ACTUAL (set on first merged cell)
+      const cBK   = ws.getCell(r0, 1);
+      const cHa   = ws.getCell(r0, 2);
+      const cNP   = ws.getCell(r0, 3);
+      const cAct  = ws.getCell(r0, 4);
+
+      cBK.value = block.bk;
+      cBK.font = { bold:true, size:9 };
+      cBK.alignment = { horizontal:'center', vertical:'middle' };
+      cBK.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFF5F5F5' } };
+
+      cHa.value = block.ha;
+      cHa.alignment = { horizontal:'right', vertical:'middle' };
+      cHa.numFmt = '0.00';
+
+      cNP.value = block.npalm || 0;
+      cNP.alignment = { horizontal:'right', vertical:'middle' };
+      cNP.numFmt = '#,##0';
+
+      cAct.value = 'ACTUAL';
+      cAct.alignment = { horizontal:'center', vertical:'middle' };
+      cAct.font = { size:8 };
+
+      // Row labels in col E
+      const rowLabels = ['Kg/pokok','No. Beg','Mt','Fert.Type'];
+      for (let i = 0; i < 4; i++) {
+        const c = ws.getCell(r0+i, 5);
+        c.value = rowLabels[i];
+        c.font = { size:8, italic: i === 3 };
+        c.alignment = { horizontal:'left', vertical:'middle' };
+      }
+
+      // Totals in col S (bags), T (mt)
+      if (totRounds > 0) { const c = ws.getCell(r0, 19); c.value = totRounds; c.numFmt = '0.0#'; c.alignment={horizontal:'center',vertical:'middle'}; c.fill=HEADER_GOLD; c.font={bold:true,size:9,color:{argb:'FFFFFFFF'}}; }
+      if (totBags   > 0) { const c = ws.getCell(r0+1,19); c.value = totBags;  c.numFmt = '#,##0'; c.alignment={horizontal:'center',vertical:'middle'}; c.fill=HEADER_GOLD; c.font={bold:true,size:9,color:{argb:'FFFFFFFF'}}; }
+      if (totMt     > 0) { const c = ws.getCell(r0+2,20); c.value = totMt;    c.numFmt = '0.000'; c.alignment={horizontal:'center',vertical:'middle'}; c.fill=HEADER_GOLD; c.font={bold:true,size:9,color:{argb:'FFFFFFFF'}}; }
+
+      // Month data
+      const hasAug  = apps['Aug']  && apps['Aug'].bags  > 0;
+      const hasAug2 = apps['Aug2'] && apps['Aug2'].bags > 0;
+
+      // Merge Aug+Aug2 cols when only one is used
+      if (!hasAug && !hasAug2) {
+        for (let i = 0; i < 4; i++) ws.mergeCells(r0+i, 13, r0+i, 14);
+      } else if (hasAug && !hasAug2) {
+        for (let i = 0; i < 4; i++) ws.mergeCells(r0+i, 13, r0+i, 14);
+      }
+
+      for (const [month, colNum] of Object.entries(XL_MONTH_COL)) {
+        const app = apps[month];
+        if (!app || !app.bags) continue;
+
+        if (app.round) {
+          const c = ws.getCell(r0, colNum);
+          c.value = app.round; c.numFmt = '0.0#';
+          c.alignment = { horizontal:'center', vertical:'middle' }; c.font = { size:9 };
+        }
+        if (app.bags) {
+          const c = ws.getCell(r0+1, colNum);
+          c.value = app.bags; c.numFmt = '#,##0';
+          c.alignment = { horizontal:'center', vertical:'middle' }; c.font = { size:9 };
+        }
+        if (app.mt) {
+          const c = ws.getCell(r0+2, colNum);
+          c.value = app.mt; c.numFmt = '0.000';
+          c.alignment = { horizontal:'center', vertical:'middle' }; c.font = { size:9 };
+        }
+        // Fert type cell with color
+        const fc = ws.getCell(r0+3, colNum);
+        fc.value = app.fert || '';
+        fc.alignment = { horizontal:'center', vertical:'middle' };
+        const fill = xlFertFill(app.fert);
+        if (fill) { fc.fill = fill; fc.font = xlFertFont(app.fert); }
+        else fc.font = { size:8 };
+      }
+
+      // Borders for all 4 rows, all 21 cols
+      for (let r = r0; r <= r0+3; r++) {
+        for (let c = 1; c <= 21; c++) {
+          const cell = ws.getCell(r, c);
+          cell.border = xlBorder(r === r0, r === r0+3);
+        }
+      }
+
+      rowIdx += 4;
+    }
+
+    // "Application Round" summary row at end
+    if (blocks.length > 0) {
+      ws.mergeCells(`A${rowIdx}:R${rowIdx}`);
+      ws.getCell(rowIdx, 1).value = 'Application Round';
+      ws.getCell(rowIdx, 1).alignment = { horizontal:'right' };
+      ws.getCell(rowIdx, 1).font = { italic:true, size:9, color:{ argb:'FF666666' } };
+      ws.getRow(rowIdx).height = 16;
+    }
+  }
+
+  function buildSummarySheet(ws, allYearData, year) {
+    ws.getColumn(1).width = 12;
+    ws.getColumn(2).width = 30;
+    for (let c = 3; c <= 7; c++) ws.getColumn(c).width = 14;
+
+    ws.mergeCells('A1:G1');
+    ws.getCell('A1').value = `MANURING SUMMARY — ${year}`;
+    ws.getCell('A1').font = { bold:true, size:13 };
+    ws.getCell('A1').alignment = { horizontal:'center' };
+    ws.getRow(1).height = 24;
+
+    ws.getRow(3).height = 18;
+    const hdrs = ['Phase','','Blocks','Total Ha','Total Bags','Total Mt'];
+    for (let i = 0; i < hdrs.length; i++) {
+      const c = ws.getCell(3, i+1);
+      c.value = hdrs[i];
+      c.fill = HEADER_DARK; c.font = WHITE_FONT;
+      c.alignment = { horizontal:'center', vertical:'middle' };
+    }
+
+    let row = 4;
+    let grandBags = 0, grandMt = 0, grandHa = 0;
+
+    for (const phaseName of PHASE_NAMES) {
+      const pd = allYearData[phaseName] || { blocks:[] };
+      const blocks = pd.blocks || [];
+      let phBags = 0, phMt = 0, phHa = 0;
+      for (const b of blocks) {
+        phHa += b.ha || 0;
+        for (const v of Object.values(b.apps || {})) { phBags += v.bags||0; phMt += v.mt||0; }
+      }
+      phMt = Math.round(phMt*1000)/1000;
+      phHa = Math.round(phHa*100)/100;
+
+      ws.getRow(row).height = 18;
+      ws.getCell(row,1).value = phaseName;
+      ws.getCell(row,1).font = { bold:true, size:9 };
+      ws.getCell(row,3).value = blocks.length;
+      ws.getCell(row,4).value = phHa;     ws.getCell(row,4).numFmt = '0.00';
+      ws.getCell(row,5).value = phBags;   ws.getCell(row,5).numFmt = '#,##0';
+      ws.getCell(row,6).value = phMt;     ws.getCell(row,6).numFmt = '0.000';
+      for (let c=1;c<=6;c++) {
+        ws.getCell(row,c).border = { top:THIN, bottom:THIN, left:THIN, right:THIN };
+        ws.getCell(row,c).alignment = { horizontal:'center', vertical:'middle' };
+      }
+      ws.getCell(row,1).alignment.horizontal = 'left';
+
+      grandBags += phBags; grandMt += phMt; grandHa += phHa;
+      row++;
+    }
+
+    // Grand total
+    ws.getRow(row).height = 20;
+    ws.getCell(row,1).value = 'GRAND TOTAL';
+    ws.getCell(row,1).font = { bold:true, size:9 };
+    ws.getCell(row,4).value = Math.round(grandHa*100)/100; ws.getCell(row,4).numFmt='0.00';
+    ws.getCell(row,5).value = grandBags; ws.getCell(row,5).numFmt='#,##0';
+    ws.getCell(row,6).value = Math.round(grandMt*1000)/1000; ws.getCell(row,6).numFmt='0.000';
+    for (let c=1;c<=6;c++) {
+      ws.getCell(row,c).fill = HEADER_GOLD;
+      ws.getCell(row,c).font = { bold:true, size:9, color:{ argb:'FFFFFFFF' } };
+      ws.getCell(row,c).border = { top:MED, bottom:MED, left:THIN, right:THIN };
+      ws.getCell(row,c).alignment = { horizontal:'center', vertical:'middle' };
+    }
+    ws.getCell(row,1).alignment.horizontal = 'left';
+  }
+
+  window._downloadManuringExcel = async function() {
+    const btn = document.getElementById('manuring-dl-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating...'; }
+    try {
+      await ensureExcelJS();
+      const WB = new window.ExcelJS.Workbook();
+      WB.creator = 'Monthly Harvesting Report';
+      WB.created = new Date();
+
+      const year = getCurrentYear();
+      const data = getManuringData();
+      if (!data['2025'] && typeof window._manuringDefault2025 !== 'undefined') {
+        data['2025'] = JSON.parse(JSON.stringify(window._manuringDefault2025));
+      }
+      const yearData = data[year] || {};
+
+      // Summary sheet first
+      const summaryWs = WB.addWorksheet('Summary');
+      buildSummarySheet(summaryWs, yearData, year);
+
+      // Phase sheets
+      for (const phaseName of PHASE_NAMES) {
+        const ws = WB.addWorksheet(phaseName);
+        buildPhaseSheet(ws, phaseName, yearData[phaseName] || { blocks:[] }, year);
+      }
+
+      const buf = await WB.xlsx.writeBuffer();
+      const blob = new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `Manuring Report ${year}.xlsx`;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch(e) {
+      alert('Failed to generate Excel: ' + e.message);
+      console.error(e);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '⬇ Download Excel'; }
+    }
   };
 
   window.renderManuringReport = renderManuring;
