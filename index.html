@@ -314,6 +314,13 @@
                         <p class="subtitle">Interactive Grouped Blocks Report</p>
                     </div>
                     <div class="header-right">
+                        <div id="header-user-info" style="display:none;align-items:center;gap:0.5rem;padding:0.35rem 0.75rem;border-radius:8px;background:var(--bg-card,#fff);border:1px solid var(--border-color);font-size:0.8rem;">
+                            <span style="font-size:1rem;">👤</span>
+                            <div style="display:flex;flex-direction:column;line-height:1.3;">
+                                <span id="header-user-email" style="font-weight:600;color:var(--text-primary);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+                                <span id="header-user-role" style="color:var(--text-secondary);font-size:0.73rem;text-transform:uppercase;letter-spacing:0.04em;"></span>
+                            </div>
+                        </div>
                         <div class="stat-badge">
                             <span class="stat-label">Total Selected</span>
                             <span class="stat-value" id="header-grand-total">0.00 HA</span>
@@ -431,7 +438,7 @@
     <script src="render_current_vs_prev.js"></script>
     <script src="render_spraying.js?v=3"></script>
     <script src="render_reports.js?v=9"></script>
-    <script src="script.js?v=21"></script>
+    <script src="script.js?v=22"></script>
     <script>
         // Use event delegation for topnav toggle interactions to support dynamically added items
         document.addEventListener('click', (e) => {

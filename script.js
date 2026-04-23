@@ -220,6 +220,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const applyRolePermissions = () => {
             if (!currentUserRole) return;
             const isAdmin = currentUserRole.role === 'admin';
+
+            // Show current user in header
+            const userInfo = document.getElementById('header-user-info');
+            const userEmail = document.getElementById('header-user-email');
+            const userRole = document.getElementById('header-user-role');
+            if (userInfo && userEmail && userRole) {
+                const email = (auth.currentUser && auth.currentUser.email) || currentUserRole.email || '';
+                const role = currentUserRole.role || 'user';
+                userEmail.textContent = email;
+                userRole.textContent = role === 'admin' ? '⭐ Admin' : '👤 User';
+                userInfo.style.display = 'flex';
+            }
+
             const userMgmtItem = document.getElementById('nav-user-mgmt-item');
             if (userMgmtItem) userMgmtItem.style.display = isAdmin ? '' : 'none';
 
