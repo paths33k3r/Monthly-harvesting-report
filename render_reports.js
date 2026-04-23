@@ -737,6 +737,27 @@
         const monthOpts = () => MONTHS.map(m => `<option value="${m}">${m}</option>`).join('');
         const SS = 'padding:0.4rem 0.6rem;border:1px solid var(--border);border-radius:4px;background:var(--bg-input,#fff);font-size:0.88rem;';
         const CARD = 'border:1px solid var(--border);border-radius:8px;padding:1.25rem;margin-bottom:1rem;background:var(--bg-card,#fff);box-shadow:0 1px 3px rgba(0,0,0,0.05);';
+        const noDataMsg = '<span style="font-size:0.82rem;color:#e67e22;">⚠ No data available. Please add data first.</span>';
+
+        const ytdControls = perfYears.length
+            ? `<select id="sel-ytd-yr" style="${SS}">${yearOpts(perfYears)}</select>
+               <select id="sel-ytd-mo" style="${SS}">${monthOpts()}</select>
+               <button id="btn-dl-ytd" class="btn-primary" style="padding:0.4rem 1rem;">⬇ Download Excel</button>
+               <span id="rep-ytd-status" style="font-size:0.82rem;color:var(--text-secondary);"></span>`
+            : noDataMsg;
+
+        const rainControls = rainYears.length
+            ? `<select id="sel-rain-yr" style="${SS}">${yearOpts(rainYears)}</select>
+               <select id="sel-rain-mo" style="${SS}">${monthOpts()}</select>
+               <button id="btn-dl-rain" class="btn-primary" style="padding:0.4rem 1rem;">⬇ Download Excel</button>
+               <span id="rep-rain-status" style="font-size:0.82rem;color:var(--text-secondary);"></span>`
+            : noDataMsg;
+
+        const sprayControls = sprayYears.length
+            ? `<select id="sel-spray-yr" style="${SS}">${yearOpts(sprayYears)}</select>
+               <button id="btn-dl-spray" class="btn-primary" style="padding:0.4rem 1rem;">⬇ Download Excel</button>
+               <span id="rep-spray-status" style="font-size:0.82rem;color:var(--text-secondary);"></span>`
+            : noDataMsg;
 
         wrapper.innerHTML = `
         <div style="padding:1.5rem;max-width:680px;">
@@ -752,10 +773,7 @@
               Select the year and up-to month.
             </p>
             <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">
-              <select id="sel-ytd-yr" style="${SS}">${yearOpts(perfYears)}</select>
-              <select id="sel-ytd-mo" style="${SS}">${monthOpts()}</select>
-              <button id="btn-dl-ytd" class="btn-primary" style="padding:0.4rem 1rem;">⬇ Download Excel</button>
-              <span id="rep-ytd-status" style="font-size:0.82rem;color:var(--text-secondary);"></span>
+              ${ytdControls}
             </div>
           </div>
 
@@ -766,10 +784,7 @@
               remaining months are black-filled.
             </p>
             <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">
-              <select id="sel-rain-yr" style="${SS}">${yearOpts(rainYears)}</select>
-              <select id="sel-rain-mo" style="${SS}">${monthOpts()}</select>
-              <button id="btn-dl-rain" class="btn-primary" style="padding:0.4rem 1rem;">⬇ Download Excel</button>
-              <span id="rep-rain-status" style="font-size:0.82rem;color:var(--text-secondary);"></span>
+              ${rainControls}
             </div>
           </div>
 
@@ -780,9 +795,7 @@
               (split JAN–JUN and JUL–DEC).
             </p>
             <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">
-              <select id="sel-spray-yr" style="${SS}">${yearOpts(sprayYears)}</select>
-              <button id="btn-dl-spray" class="btn-primary" style="padding:0.4rem 1rem;">⬇ Download Excel</button>
-              <span id="rep-spray-status" style="font-size:0.82rem;color:var(--text-secondary);"></span>
+              ${sprayControls}
             </div>
           </div>
 
@@ -792,17 +805,20 @@
           </p>
         </div>`;
 
-        document.getElementById('btn-dl-ytd').onclick = () => {
+        const btnYtd = document.getElementById('btn-dl-ytd');
+        if (btnYtd) btnYtd.onclick = () => {
             const yr = document.getElementById('sel-ytd-yr').value;
             const mo = document.getElementById('sel-ytd-mo').value;
             if (yr && mo) window.downloadYtdReport(yr, mo);
         };
-        document.getElementById('btn-dl-rain').onclick = () => {
+        const btnRain = document.getElementById('btn-dl-rain');
+        if (btnRain) btnRain.onclick = () => {
             const yr = document.getElementById('sel-rain-yr').value;
             const mo = document.getElementById('sel-rain-mo').value;
             if (yr && mo) window.downloadRainfallReport(yr, mo);
         };
-        document.getElementById('btn-dl-spray').onclick = () => {
+        const btnSpray = document.getElementById('btn-dl-spray');
+        if (btnSpray) btnSpray.onclick = () => {
             const yr = document.getElementById('sel-spray-yr').value;
             if (yr) window.downloadSprayingReport(yr);
         };
