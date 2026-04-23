@@ -639,7 +639,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         btn.disabled = true; btn.textContent = 'Restoring…';
                         try {
                             const data = await gdriveDownload(btn.getAttribute('data-id'));
-                            window.state = data;
+                            Object.keys(state).forEach(k => delete state[k]);
+                            Object.assign(state, data);
+                            window.state = state;
                             await saveState(false);
                             alert('Backup restored! The page will now reload.');
                             location.reload();
