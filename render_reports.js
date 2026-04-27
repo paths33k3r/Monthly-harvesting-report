@@ -266,7 +266,7 @@
         setStatus('rep-rain-status', 'Generating…');
         try {
             await ensureExcelJS();
-            const wb = await loadTemplate('Rainfall 2024 vs 2025 up to Dec 2025.xlsx', { stripCellStyles: true });
+            const wb = await loadTemplate('Rainfall 2024 vs 2025 up to Dec 2025.xlsx', { stripCellStyles: false });
             const ws = wb.getWorksheet('Dec Rainfall 2024 vs 2025');
             if (!ws) throw new Error('Rainfall worksheet not found');
 
@@ -277,21 +277,11 @@
             const rfPrev  = (window.state.rainfall && window.state.rainfall[prevYear]) || {};
 
             const BLACK_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } };
-            const WHITE_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
-            const NO_BORDER  = { top: {}, left: {}, bottom: {}, right: {} };
 
-            // Force white fill on all data rows upfront so template black fills don't bleed through
-            for (let i = 0; i < 12; i++) {
-                [2, 3, 4, 6, 7, 8, 10, 11, 12].forEach(c => { ws.getCell(6 + i, c).fill = WHITE_FILL; });
-            }
-
-            // Clear extra template columns (N onwards): value, fill, and border
+            // Clear extra template columns (N onwards — values only, leave borders intact)
             for (let r = 1; r <= 50; r++) {
                 for (let c = 14; c <= 30; c++) {
-                    const cell = ws.getCell(r, c);
-                    cell.value  = null;
-                    cell.fill   = WHITE_FILL;
-                    cell.border = NO_BORDER;
+                    ws.getCell(r, c).value = null;
                 }
             }
 
@@ -523,7 +513,7 @@
             const resp = await fetch(encodeURI('Report samples/Spraying Maintenance 2025.xlsx'));
             if (!resp.ok) throw new Error(`Could not load template (${resp.status})`);
             const zip = await JSZip.loadAsync(await resp.arrayBuffer());
-            let xml = await zip.files['xl/worksheets/sheet1.xml'].async('string');
+            let xml = await zip.files['xl/worksheets/sheet4.xml'].async('string');
 
             // Convert 1-indexed column number → letter(s)
             function colLetter(n) {
@@ -715,35 +705,35 @@
             xml = xml.replace(/<autoFilter[^>]*\/>/g, '');
             xml = xml.replace(/<autoFilter[^>]*>[\s\S]*?<\/autoFilter>/g, '');
 
-            zip.file('xl/worksheets/sheet1.xml', xml);
+            zip.file('xl/worksheets/sheet4.xml', xml);
 
             // ── Strip extra worksheets so only one sheet is in the output ──
-            // 1. Find the rId that maps to sheet1.xml in the workbook relationships
+            // 1. Find the rId that maps to sheet4.xml in the workbook relationships
             let relsXml = await zip.files['xl/_rels/workbook.xml.rels'].async('string');
-            const sheet1RIdMatch = relsXml.match(/Id="([^"]+)"[^>]*Target="worksheets\/sheet1\.xml"/);
-            const sheet1RId = sheet1RIdMatch ? sheet1RIdMatch[1] : null;
+            const sheet4RIdMatch = relsXml.match(/Id="([^"]+)"[^>]*Target="worksheets\/sheet4\.xml"/);
+            const sheet4RId = sheet4RIdMatch ? sheet4RIdMatch[1] : null;
 
-            // 2. Remove every worksheet relationship except the one for sheet1.xml
+            // 2. Remove every worksheet relationship except the one for sheet4.xml
             relsXml = relsXml.replace(/<Relationship\s[^>]*Target="worksheets\/sheet(\d+)\.xml"[^>]*\/>/g,
-                (m, num) => num === '1' ? m : '');
+                (m, num) => num === '4' ? m : '');
             zip.file('xl/_rels/workbook.xml.rels', relsXml);
 
-            // 3. Keep only sheet1 entry in workbook.xml <sheets> and rename it to match the year
+            // 3. Keep only sheet4 entry in workbook.xml <sheets> and rename it to match the year
             let wbXml = await zip.files['xl/workbook.xml'].async('string');
             wbXml = wbXml.replace(/<sheet\s[^>]*\/>/g,
-                m => (sheet1RId && m.includes(`r:id="${sheet1RId}"`)) ? m : (!sheet1RId && m.includes('r:id="rId1"')) ? m : '');
+                m => (sheet4RId && m.includes(`r:id="${sheet4RId}"`)) ? m : (!sheet4RId && m.includes('r:id="rId4"')) ? m : '');
             wbXml = wbXml.replace(/name="GLY \+ ALLY [^"]*"/, `name="GLY + ALLY ${year}"`);
             zip.file('xl/workbook.xml', wbXml);
 
             // 4. Remove extra sheet files from the zip
             Object.keys(zip.files)
-                .filter(f => /^xl\/worksheets\/sheet\d+\.xml$/.test(f) && f !== 'xl/worksheets/sheet1.xml')
+                .filter(f => /^xl\/worksheets\/sheet\d+\.xml$/.test(f) && f !== 'xl/worksheets/sheet4.xml')
                 .forEach(f => zip.remove(f));
 
             // 5. Remove extra Override entries from [Content_Types].xml
             let ctXml = await zip.files['[Content_Types].xml'].async('string');
             ctXml = ctXml.replace(/<Override\s[^>]*PartName="\/xl\/worksheets\/sheet(\d+)\.xml"[^>]*\/>/g,
-                (m, num) => num === '1' ? m : '');
+                (m, num) => num === '4' ? m : '');
             zip.file('[Content_Types].xml', ctXml);
 
             const finalBuf = await zip.generateAsync({ type: 'arraybuffer' });
