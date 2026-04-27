@@ -136,9 +136,8 @@
   function renderPhaseSection(phaseName, phaseData, year) {
     const blocks = (phaseData && phaseData.blocks) ? phaseData.blocks : [];
 
-    // Determine which month slots to show (all slots that have any data in this phase, or all 13 if no data)
-    const usedSlots = MONTH_SLOTS.filter(m => blocks.some(b => b.apps && b.apps[m] && b.apps[m].bags > 0));
-    const slotsToShow = usedSlots.length > 0 ? usedSlots : MONTH_SLOTS;
+    // Always show all month slots so each year maintains a consistent full-width table
+    const slotsToShow = MONTH_SLOTS;
 
     const tot = phaseTotal(blocks);
 
@@ -236,6 +235,8 @@
           </div>
           <button class="btn-secondary" onclick="window._manuringAddYear()"
             style="padding:0.35rem 0.85rem; font-size:0.85rem;">➕ Add Year</button>
+          <button class="btn-secondary" onclick="window._manuringClearYear()"
+            style="padding:0.35rem 0.85rem; font-size:0.85rem; background:#dc2626; border-color:#dc2626; color:#fff;">🗑 Clear Year</button>
         </div>
       </div>
       <div style="font-size:0.8rem; color:var(--text-secondary); margin:-0.75rem 0 1rem 0.25rem;">
@@ -413,6 +414,20 @@
     }
     window.state.manuring[y] = createBlankYear();
     window.state.manuringYear = y;
+    saveManuringToFirebase();
+    renderManuring();
+  };
+
+  window._manuringClearYear = function() {
+    const currentYear = getCurrentYear();
+    if (!confirm(`Clear ALL manuring application data for year ${currentYear}?\n\nThis will erase every fertilizer entry for every block, but keep the block structure (Ha, No.Palm).\n\nThis cannot be undone.`)) return;
+    if (!window.state || !window.state.manuring || !window.state.manuring[currentYear]) return;
+    const yearData = window.state.manuring[currentYear];
+    for (const phase of PHASE_NAMES) {
+      if (yearData[phase] && yearData[phase].blocks) {
+        yearData[phase].blocks.forEach(b => { b.apps = {}; });
+      }
+    }
     saveManuringToFirebase();
     renderManuring();
   };

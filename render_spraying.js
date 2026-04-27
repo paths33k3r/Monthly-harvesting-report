@@ -92,6 +92,27 @@ const renderSprayingReport = () => {
     btnAddPhase.onclick = () => addNewPhase(yearStr);
     btnGroup.appendChild(btnAddPhase);
 
+    const btnClear = document.createElement('button');
+    btnClear.className = 'btn-secondary';
+    btnClear.style.cssText = 'padding:0.4rem 1rem; font-size:0.85rem; background:#dc2626; border-color:#dc2626; color:#fff;';
+    btnClear.innerHTML = '🗑 Clear Year';
+    btnClear.onclick = () => {
+        if (!confirm(`Clear ALL spraying application data for year ${yearStr}?\n\nThis will erase all Round, Litre/GM and Ha entries for every block, but keep the block structure.\n\nThis cannot be undone.`)) return;
+        const yd = window.state.spraying[yearStr];
+        if (!yd) return;
+        const MONTHS_CLR = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+        yd.phases.forEach(phase => {
+            phase.blocks.forEach(block => {
+                MONTHS_CLR.forEach(m => {
+                    block.months[m] = { roundGly: '', roundAly: '', litresGly: '', gmAly: '', haGly: '', haAly: '' };
+                });
+            });
+        });
+        saveSprayingData(false);
+        renderSprayingReport();
+    };
+    btnGroup.appendChild(btnClear);
+
     const btnSave = document.createElement('button');
     btnSave.className = 'btn-primary';
     btnSave.style.cssText = 'background-color:#10b981; border-color:#10b981; padding:0.4rem 1rem; font-size:0.85rem;';
