@@ -164,6 +164,31 @@
             const mIdx    = MONTHS.indexOf(month);
             const mLabel  = MONTHS_UP[mIdx];
 
+            const FMT  = '#,##0.00';
+            const THIN = { style: 'thin',   color: { argb: 'FF000000' } };
+            const MED  = { style: 'medium', color: { argb: 'FF000000' } };
+
+            // Write a numeric value and explicitly enforce the number format
+            const setN = (r, c, v) => {
+                const cell = ws.getCell(r, c);
+                cell.value  = parseFloat(v.toFixed(2));
+                cell.numFmt = FMT;
+            };
+
+            // Apply border while preserving each cell's existing numFmt
+            const applyRowBorder = (r, top, bottom) => {
+                for (let c = 1; c <= 10; c++) {
+                    const cell = ws.getCell(r, c);
+                    const fmt  = cell.numFmt;
+                    cell.border = {
+                        top, bottom,
+                        left:  c === 1  ? MED : THIN,
+                        right: c === 10 ? MED : THIN
+                    };
+                    if (fmt) cell.numFmt = fmt;
+                }
+            };
+
             // Title + year headers
             ws.getCell('A1').value = `YIELD TO DATE OF CURRENT YEAR VS. PAST YEAR (UP TO ${mLabel} ${year})`;
             ws.getCell('D5').value = parseInt(year);
@@ -173,19 +198,6 @@
             ws.getCell('J5').value = parseInt(prevYear);
 
             let gHA=0, gCB=0, gCA=0, gPB=0, gPA=0;
-
-            // Border helpers — medium outer edge, thin internal lines
-            const THIN = { style: 'thin',   color: { argb: 'FF000000' } };
-            const MED  = { style: 'medium', color: { argb: 'FF000000' } };
-            const applyRowBorder = (r, top, bottom) => {
-                for (let c = 1; c <= 10; c++) {
-                    ws.getCell(r, c).border = {
-                        top, bottom,
-                        left:  c === 1  ? MED : THIN,
-                        right: c === 10 ? MED : THIN
-                    };
-                }
-            };
 
             YTD_PHASES.forEach(phase => {
                 let pHA=0, pCB=0, pCA=0, pPB=0, pPA=0;
@@ -199,68 +211,59 @@
                     const varr = cAct - pAct;
                     const cMH  = ha > 0 ? cAct / ha : 0;
                     const pMH  = ha > 0 ? pAct / ha : 0;
-
-                    const row    = blk.r;
+                    const row  = blk.r;
                     const isLast = bIdx === phase.blocks.length - 1;
 
-                    // Overwrite any #N/A formula residue in the label columns
                     ws.getCell(row, 1).value = parseInt(blk.id) || blk.id;
                     ws.getCell(row, 2).value = parseInt(phase.op);
+                    setN(row, 3, ha);
+                    setN(row, 4, cBud);
+                    setN(row, 5, cAct);
+                    setN(row, 6, pBud);
+                    setN(row, 7, pAct);
+                    setN(row, 8, varr);
+                    setN(row, 9, cMH);
+                    setN(row, 10, pMH);
 
-                    ws.getCell(row, 3).value  = parseFloat(ha.toFixed(4));
-                    ws.getCell(row, 4).value  = parseFloat(cBud.toFixed(2));
-                    ws.getCell(row, 5).value  = parseFloat(cAct.toFixed(4));
-                    ws.getCell(row, 6).value  = parseFloat(pBud.toFixed(2));
-                    ws.getCell(row, 7).value  = parseFloat(pAct.toFixed(4));
-                    ws.getCell(row, 8).value  = parseFloat(varr.toFixed(4));
-                    ws.getCell(row, 9).value  = parseFloat(cMH.toFixed(2));
-                    ws.getCell(row, 10).value = parseFloat(pMH.toFixed(2));
-
-                    // Borders: thin between block rows, medium bottom on last block
                     applyRowBorder(row, THIN, isLast ? MED : THIN);
 
                     pHA += ha; pCB += cBud; pCA += cAct; pPB += pBud; pPA += pAct;
                 });
 
-                // Phase subtotal row (sits ABOVE the block rows in the sheet)
-                const sr  = phase.subtotalRow;
+                const sr   = phase.subtotalRow;
                 const pVar = pCA - pPA;
                 const pCMH = pHA > 0 ? pCA / pHA : 0;
                 const pPMH = pHA > 0 ? pPA / pHA : 0;
 
-                // Overwrite any #N/A formula residue in the label columns
                 ws.getCell(sr, 1).value = null;
                 ws.getCell(sr, 2).value = parseInt(phase.op);
+                setN(sr, 3, pHA);
+                setN(sr, 4, pCB);
+                setN(sr, 5, pCA);
+                setN(sr, 6, pPB);
+                setN(sr, 7, pPA);
+                setN(sr, 8, pVar);
+                setN(sr, 9, pCMH);
+                setN(sr, 10, pPMH);
 
-                ws.getCell(sr, 3).value  = parseFloat(pHA.toFixed(4));
-                ws.getCell(sr, 4).value  = parseFloat(pCB.toFixed(2));
-                ws.getCell(sr, 5).value  = parseFloat(pCA.toFixed(4));
-                ws.getCell(sr, 6).value  = parseFloat(pPB.toFixed(2));
-                ws.getCell(sr, 7).value  = parseFloat(pPA.toFixed(4));
-                ws.getCell(sr, 8).value  = parseFloat(pVar.toFixed(4));
-                ws.getCell(sr, 9).value  = parseFloat(pCMH.toFixed(2));
-                ws.getCell(sr, 10).value = parseFloat(pPMH.toFixed(2));
-
-                // Medium top border on subtotal row (top edge of the phase box)
                 applyRowBorder(sr, MED, THIN);
 
                 gHA+=pHA; gCB+=pCB; gCA+=pCA; gPB+=pPB; gPA+=pPA;
             });
 
-            // Grand total row
             const gVar = gCA - gPA;
             const gCMH = gHA > 0 ? gCA / gHA : 0;
             const gPMH = gHA > 0 ? gPA / gHA : 0;
-            ws.getCell(YTD_GRAND_ROW, 3).value  = parseFloat(gHA.toFixed(4));
-            ws.getCell(YTD_GRAND_ROW, 4).value  = parseFloat(gCB.toFixed(2));
-            ws.getCell(YTD_GRAND_ROW, 5).value  = parseFloat(gCA.toFixed(4));
-            ws.getCell(YTD_GRAND_ROW, 6).value  = parseFloat(gPB.toFixed(2));
-            ws.getCell(YTD_GRAND_ROW, 7).value  = parseFloat(gPA.toFixed(4));
-            ws.getCell(YTD_GRAND_ROW, 8).value  = parseFloat(gVar.toFixed(4));
-            ws.getCell(YTD_GRAND_ROW, 9).value  = parseFloat(gCMH.toFixed(2));
-            ws.getCell(YTD_GRAND_ROW, 10).value = parseFloat(gPMH.toFixed(2));
+            setN(YTD_GRAND_ROW, 3, gHA);
+            setN(YTD_GRAND_ROW, 4, gCB);
+            setN(YTD_GRAND_ROW, 5, gCA);
+            setN(YTD_GRAND_ROW, 6, gPB);
+            setN(YTD_GRAND_ROW, 7, gPA);
+            setN(YTD_GRAND_ROW, 8, gVar);
+            setN(YTD_GRAND_ROW, 9, gCMH);
+            setN(YTD_GRAND_ROW, 10, gPMH);
 
-            // Clear template footer notes (block exclusion references no longer needed)
+            // Clear template footer notes
             for (let r = 52; r <= 55; r++) {
                 for (let c = 1; c <= 10; c++) ws.getCell(r, c).value = null;
             }
