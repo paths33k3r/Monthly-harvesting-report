@@ -118,13 +118,6 @@
         return s;
     }
 
-    function getMonthlyBudgets(year, blockId) {
-        const arr = (window.state.ffbBudget && window.state.ffbBudget[year]) || [];
-        const bd  = arr.find(b => String(b.block_id) === String(blockId));
-        if (!bd || !Array.isArray(bd.months)) return Array(12).fill(0);
-        return bd.months.map(v => parseFloat(v) || 0);
-    }
-
     function getBlockHa(year, blockId) {
         const blocks = (window.state.reports && window.state.reports[year]) || [];
         const b = blocks.find(bl => String(bl.block_id) === String(blockId));
@@ -203,7 +196,6 @@
                     const varr = cAct - pAct;
                     const cMH  = ha > 0 ? cAct / ha : 0;
                     const pMH  = ha > 0 ? pAct / ha : 0;
-                    const mBud = getMonthlyBudgets(year, blk.id);
 
                     const row    = blk.r;
                     const isLast = bIdx === phase.blocks.length - 1;
@@ -220,8 +212,6 @@
                     ws.getCell(row, 8).value  = parseFloat(varr.toFixed(4));
                     ws.getCell(row, 9).value  = parseFloat(cMH.toFixed(9));
                     ws.getCell(row, 10).value = parseFloat(pMH.toFixed(9));
-                    // Monthly FFB budgets: col Z(26) through AK(37)
-                    mBud.forEach((v, i) => { ws.getCell(row, 26 + i).value = parseFloat(v.toFixed(2)); });
 
                     // Borders: thin between block rows, medium bottom on last block
                     applyRowBorder(row, THIN, isLast ? MED : THIN);
@@ -266,6 +256,11 @@
             ws.getCell(YTD_GRAND_ROW, 8).value  = parseFloat(gVar.toFixed(4));
             ws.getCell(YTD_GRAND_ROW, 9).value  = parseFloat(gCMH.toFixed(9));
             ws.getCell(YTD_GRAND_ROW, 10).value = parseFloat(gPMH.toFixed(9));
+
+            // Clear template footer notes (block exclusion references no longer needed)
+            for (let r = 52; r <= 55; r++) {
+                for (let c = 1; c <= 10; c++) ws.getCell(r, c).value = null;
+            }
 
             // Remove all sheets except the one we need
             wb.worksheets.filter(s => s.name !== 'OVERALL BY GANG COMPARISON YTD2')
@@ -752,10 +747,11 @@
                 (m, num) => num === '1' ? m : '');
             zip.file('xl/_rels/workbook.xml.rels', relsXml);
 
-            // 3. Keep only sheet1 entry in workbook.xml <sheets>
+            // 3. Keep only sheet1 entry in workbook.xml <sheets> and rename it to match the year
             let wbXml = await zip.files['xl/workbook.xml'].async('string');
             wbXml = wbXml.replace(/<sheet\s[^>]*\/>/g,
                 m => (sheet1RId && m.includes(`r:id="${sheet1RId}"`)) ? m : (!sheet1RId && m.includes('r:id="rId1"')) ? m : '');
+            wbXml = wbXml.replace(/name="GLY \+ ALLY [^"]*"/, `name="GLY + ALLY ${year}"`);
             zip.file('xl/workbook.xml', wbXml);
 
             // 4. Remove extra sheet files from the zip
