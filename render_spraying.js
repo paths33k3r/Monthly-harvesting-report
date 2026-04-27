@@ -692,12 +692,12 @@ const getDefaultSprayingData = () => {
 };
 
 // ─────────────────────────────────────────────────────────────────────
-// Blank year — same block/phase structure as default but all months empty
-// Used by "Add Year" so new years never inherit previous-year readings
+// Blank year — same block/phase structure but all months empty
+// Used by "Add Year" so new years never inherit the previous-year schedule
 // ─────────────────────────────────────────────────────────────────────
 const getBlankSprayingYear = () => {
-    const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    const emptyMonth = () => ({ roundGly: '', roundAly: '', litresGly: '', gmAly: '', haGly: '', haAly: '' });
+    const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+    const emptyMonth = () => ({ roundGly:'', roundAly:'', litresGly:'', gmAly:'', haGly:'', haAly:'' });
     const defaults = getDefaultSprayingData();
     return {
         phases: defaults.phases.map(ph => ({
