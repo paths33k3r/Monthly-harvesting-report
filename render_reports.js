@@ -178,10 +178,23 @@
 
             let gHA=0, gCB=0, gCA=0, gPB=0, gPA=0;
 
+            // Border helpers — medium outer edge, thin internal lines
+            const THIN = { style: 'thin',   color: { argb: 'FF000000' } };
+            const MED  = { style: 'medium', color: { argb: 'FF000000' } };
+            const applyRowBorder = (r, top, bottom) => {
+                for (let c = 1; c <= 10; c++) {
+                    ws.getCell(r, c).border = {
+                        top, bottom,
+                        left:  c === 1  ? MED : THIN,
+                        right: c === 10 ? MED : THIN
+                    };
+                }
+            };
+
             YTD_PHASES.forEach(phase => {
                 let pHA=0, pCB=0, pCA=0, pPB=0, pPA=0;
 
-                phase.blocks.forEach(blk => {
+                phase.blocks.forEach((blk, bIdx) => {
                     const ha   = getBlockHa(year, blk.id) || getBlockHa(prevYear, blk.id);
                     const cBud = getYtdBudget(year, blk.id, mIdx);
                     const cAct = getYtdActual(year, blk.id, mIdx);
@@ -192,7 +205,13 @@
                     const pMH  = ha > 0 ? pAct / ha : 0;
                     const mBud = getMonthlyBudgets(year, blk.id);
 
-                    const row = blk.r;
+                    const row    = blk.r;
+                    const isLast = bIdx === phase.blocks.length - 1;
+
+                    // Overwrite any #N/A formula residue in the label columns
+                    ws.getCell(row, 1).value = parseInt(blk.id) || blk.id;
+                    ws.getCell(row, 2).value = parseInt(phase.op);
+
                     ws.getCell(row, 3).value  = parseFloat(ha.toFixed(4));
                     ws.getCell(row, 4).value  = parseFloat(cBud.toFixed(2));
                     ws.getCell(row, 5).value  = parseFloat(cAct.toFixed(4));
@@ -204,14 +223,22 @@
                     // Monthly FFB budgets: col Z(26) through AK(37)
                     mBud.forEach((v, i) => { ws.getCell(row, 26 + i).value = parseFloat(v.toFixed(2)); });
 
+                    // Borders: thin between block rows, medium bottom on last block
+                    applyRowBorder(row, THIN, isLast ? MED : THIN);
+
                     pHA += ha; pCB += cBud; pCA += cAct; pPB += pBud; pPA += pAct;
                 });
 
-                // Phase subtotal row
+                // Phase subtotal row (sits ABOVE the block rows in the sheet)
                 const sr  = phase.subtotalRow;
                 const pVar = pCA - pPA;
                 const pCMH = pHA > 0 ? pCA / pHA : 0;
                 const pPMH = pHA > 0 ? pPA / pHA : 0;
+
+                // Overwrite any #N/A formula residue in the label columns
+                ws.getCell(sr, 1).value = null;
+                ws.getCell(sr, 2).value = parseInt(phase.op);
+
                 ws.getCell(sr, 3).value  = parseFloat(pHA.toFixed(4));
                 ws.getCell(sr, 4).value  = parseFloat(pCB.toFixed(2));
                 ws.getCell(sr, 5).value  = parseFloat(pCA.toFixed(4));
@@ -220,6 +247,9 @@
                 ws.getCell(sr, 8).value  = parseFloat(pVar.toFixed(4));
                 ws.getCell(sr, 9).value  = parseFloat(pCMH.toFixed(9));
                 ws.getCell(sr, 10).value = parseFloat(pPMH.toFixed(9));
+
+                // Medium top border on subtotal row (top edge of the phase box)
+                applyRowBorder(sr, MED, THIN);
 
                 gHA+=pHA; gCB+=pCB; gCA+=pCA; gPB+=pPB; gPA+=pPA;
             });
@@ -709,9 +739,36 @@
             xml = xml.replace(/<autoFilter[^>]*\/>/g, '');
             xml = xml.replace(/<autoFilter[^>]*>[\s\S]*?<\/autoFilter>/g, '');
 
-            // col C (Year) is already hidden="1" in the template cols section — no post-processing needed
-
             zip.file('xl/worksheets/sheet1.xml', xml);
+
+            // ── Strip extra worksheets so only one sheet is in the output ──
+            // 1. Find the rId that maps to sheet1.xml in the workbook relationships
+            let relsXml = await zip.files['xl/_rels/workbook.xml.rels'].async('string');
+            const sheet1RIdMatch = relsXml.match(/Id="([^"]+)"[^>]*Target="worksheets\/sheet1\.xml"/);
+            const sheet1RId = sheet1RIdMatch ? sheet1RIdMatch[1] : null;
+
+            // 2. Remove every worksheet relationship except the one for sheet1.xml
+            relsXml = relsXml.replace(/<Relationship\s[^>]*Target="worksheets\/sheet(\d+)\.xml"[^>]*\/>/g,
+                (m, num) => num === '1' ? m : '');
+            zip.file('xl/_rels/workbook.xml.rels', relsXml);
+
+            // 3. Keep only sheet1 entry in workbook.xml <sheets>
+            let wbXml = await zip.files['xl/workbook.xml'].async('string');
+            wbXml = wbXml.replace(/<sheet\s[^>]*\/>/g,
+                m => (sheet1RId && m.includes(`r:id="${sheet1RId}"`)) ? m : (!sheet1RId && m.includes('r:id="rId1"')) ? m : '');
+            zip.file('xl/workbook.xml', wbXml);
+
+            // 4. Remove extra sheet files from the zip
+            Object.keys(zip.files)
+                .filter(f => /^xl\/worksheets\/sheet\d+\.xml$/.test(f) && f !== 'xl/worksheets/sheet1.xml')
+                .forEach(f => zip.remove(f));
+
+            // 5. Remove extra Override entries from [Content_Types].xml
+            let ctXml = await zip.files['[Content_Types].xml'].async('string');
+            ctXml = ctXml.replace(/<Override\s[^>]*PartName="\/xl\/worksheets\/sheet(\d+)\.xml"[^>]*\/>/g,
+                (m, num) => num === '1' ? m : '');
+            zip.file('[Content_Types].xml', ctXml);
+
             const finalBuf = await zip.generateAsync({ type: 'arraybuffer' });
             downloadBuffer(finalBuf, `Spraying_GLY_ALLY_${year}.xlsx`);
             setStatus('rep-spray-status', '✅ Downloaded!', true);

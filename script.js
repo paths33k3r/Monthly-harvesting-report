@@ -4093,17 +4093,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     if (sprayData) {
                         state.spraying = JSON.parse(sprayData);
-                        // Reinitialize any year whose blocks all have empty month data (e.g. first-time load before data was entered)
+                        // Reinitialize only if the year truly has no block/phase structure
                         if (typeof getDefaultSprayingData === 'function') {
                             Object.keys(state.spraying).filter(k => /^\d{4}$/.test(k)).forEach(yr => {
                                 const yd = state.spraying[yr];
-                                if (!yd || !yd.phases) return;
-                                const hasData = yd.phases.some(p => (p.blocks || []).some(b =>
-                                    Object.values(b.months || {}).some(mv =>
-                                        mv.roundGly || mv.roundAly || mv.litresGly || mv.gmAly || mv.haGly || mv.haAly
-                                    )
-                                ));
-                                if (!hasData) state.spraying[yr] = getDefaultSprayingData();
+                                const hasStructure = yd && yd.phases && yd.phases.length > 0 &&
+                                    yd.phases.some(p => (p.blocks || []).length > 0);
+                                if (!hasStructure) state.spraying[yr] = getDefaultSprayingData();
                             });
                         }
                         console.log("Spraying data loaded from cloud.");
