@@ -739,9 +739,36 @@
             xml = xml.replace(/<autoFilter[^>]*\/>/g, '');
             xml = xml.replace(/<autoFilter[^>]*>[\s\S]*?<\/autoFilter>/g, '');
 
-            // col C (Year) is already hidden="1" in the template cols section — no post-processing needed
-
             zip.file('xl/worksheets/sheet1.xml', xml);
+
+            // ── Strip extra worksheets so only one sheet is in the output ──
+            // 1. Find the rId that maps to sheet1.xml in the workbook relationships
+            let relsXml = await zip.files['xl/_rels/workbook.xml.rels'].async('string');
+            const sheet1RIdMatch = relsXml.match(/Id="([^"]+)"[^>]*Target="worksheets\/sheet1\.xml"/);
+            const sheet1RId = sheet1RIdMatch ? sheet1RIdMatch[1] : null;
+
+            // 2. Remove every worksheet relationship except the one for sheet1.xml
+            relsXml = relsXml.replace(/<Relationship\s[^>]*Target="worksheets\/sheet(\d+)\.xml"[^>]*\/>/g,
+                (m, num) => num === '1' ? m : '');
+            zip.file('xl/_rels/workbook.xml.rels', relsXml);
+
+            // 3. Keep only sheet1 entry in workbook.xml <sheets>
+            let wbXml = await zip.files['xl/workbook.xml'].async('string');
+            wbXml = wbXml.replace(/<sheet\s[^>]*\/>/g,
+                m => (sheet1RId && m.includes(`r:id="${sheet1RId}"`)) ? m : (!sheet1RId && m.includes('r:id="rId1"')) ? m : '');
+            zip.file('xl/workbook.xml', wbXml);
+
+            // 4. Remove extra sheet files from the zip
+            Object.keys(zip.files)
+                .filter(f => /^xl\/worksheets\/sheet\d+\.xml$/.test(f) && f !== 'xl/worksheets/sheet1.xml')
+                .forEach(f => zip.remove(f));
+
+            // 5. Remove extra Override entries from [Content_Types].xml
+            let ctXml = await zip.files['[Content_Types].xml'].async('string');
+            ctXml = ctXml.replace(/<Override\s[^>]*PartName="\/xl\/worksheets\/sheet(\d+)\.xml"[^>]*\/>/g,
+                (m, num) => num === '1' ? m : '');
+            zip.file('[Content_Types].xml', ctXml);
+
             const finalBuf = await zip.generateAsync({ type: 'arraybuffer' });
             downloadBuffer(finalBuf, `Spraying_GLY_ALLY_${year}.xlsx`);
             setStatus('rep-spray-status', '✅ Downloaded!', true);

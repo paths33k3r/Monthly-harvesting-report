@@ -72,7 +72,7 @@ const renderSprayingReport = () => {
         if (!newY || newY.trim() === '') return;
         const ny = newY.trim();
         if (window.state.spraying[ny]) { alert(`Year ${ny} already exists.`); return; }
-        window.state.spraying[ny] = getDefaultSprayingData();
+        window.state.spraying[ny] = getBlankSprayingYear();
         window.state.sprayingYear = ny;
         saveSprayingData();
         renderSprayingReport();
@@ -688,6 +688,28 @@ const getDefaultSprayingData = () => {
                 ]
             }
         ]
+    };
+};
+
+// ─────────────────────────────────────────────────────────────────────
+// Blank year — same block/phase structure as default but all months empty
+// Used by "Add Year" so new years never inherit previous-year readings
+// ─────────────────────────────────────────────────────────────────────
+const getBlankSprayingYear = () => {
+    const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    const emptyMonth = () => ({ roundGly: '', roundAly: '', litresGly: '', gmAly: '', haGly: '', haAly: '' });
+    const defaults = getDefaultSprayingData();
+    return {
+        phases: defaults.phases.map(ph => ({
+            phaseName: ph.phaseName,
+            blocks: ph.blocks.map(b => ({
+                blockNo:    b.blockNo,
+                plantYear:  b.plantYear,
+                haPrevious: b.haPrevious,
+                haPresent:  b.haPresent,
+                months: Object.fromEntries(MONTHS.map(m => [m, emptyMonth()]))
+            }))
+        }))
     };
 };
 
