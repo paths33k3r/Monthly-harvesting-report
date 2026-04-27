@@ -292,24 +292,23 @@
                         </li>
                     </ul>
                 </li>
-                        <li class="nav-item nav-spacer" style="flex: 1 1 auto; min-width: 0;" aria-hidden="true"></li>
-                        <li class="nav-item" id="nav-user-mgmt-item" style="display:none; border-left: 1px solid var(--border-color); padding-left: 1rem;">
-                            <a href="#" id="sidebar-user-mgmt" class="nav-link" style="display:flex;align-items:center;">
-                                <span class="nav-icon">👤</span>
-                                <span class="nav-label">User Management</span>
-                            </a>
-                        </li>
-                        <li class="nav-item logout-nav-item" style="border-left: 1px solid var(--border-color); padding-left: 1rem;">
-                            <a href="#" id="sidebar-logout" class="nav-link" style="color: var(--danger); font-weight: 600; display: flex; align-items: center;">
-                                <span class="nav-icon">🚪</span>
-                                <span class="nav-label">Logout</span>
-                            </a>
-                        </li>
-                        <li class="nav-item version-nav-item" style="padding-right: 1rem; color: var(--text-secondary); font-size: 0.8rem; opacity: 0.7; align-self: center; border-left: 1px solid var(--border-color); padding-left: 1rem;">
-                            v1.7.2
-                        </li>
                     </ul>
                 </nav>
+                <div class="sidebar-right">
+                    <div id="nav-user-mgmt-item" class="sidebar-right-item" style="display:none;">
+                        <a href="#" id="sidebar-user-mgmt" class="nav-link sidebar-right-link">
+                            <span class="nav-icon">👤</span>
+                            <span class="nav-label">User Management</span>
+                        </a>
+                    </div>
+                    <div class="sidebar-right-item">
+                        <a href="#" id="sidebar-logout" class="nav-link sidebar-right-link" style="color: var(--danger); font-weight: 600;">
+                            <span class="nav-icon">🚪</span>
+                            <span class="nav-label">Logout</span>
+                        </a>
+                    </div>
+                    <div class="sidebar-right-version">v1.7.2</div>
+                </div>
             </aside>
 
         <div class="app-container">
