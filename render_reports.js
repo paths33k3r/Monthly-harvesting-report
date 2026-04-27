@@ -30,7 +30,8 @@
     }
 
     // Strip shared formulas from xlsx buffer to avoid ExcelJS parse errors
-    async function preprocessXlsx(buf) {
+    // opts.stripCellStyles: also strip s="" from cells B-L rows 6-17 (needed for rainfall fill overrides)
+    async function preprocessXlsx(buf, opts = {}) {
         await ensureJSZip();
         const zip = await JSZip.loadAsync(buf);
 
@@ -52,23 +53,25 @@
             xml = xml.replace(/<f t="shared" si="\d+"\/>/g, '');
             // Strip column-level style attribute so cell-level fills take precedence
             xml = xml.replace(/(<col\b[^>]*?) style="[^"]*"/g, '$1');
-            // Strip style attribute from data cells rows 6-17, cols B-L so ExcelJS fills apply cleanly
-            xml = xml.replace(/<c r="([B-L])(\d+)"([^>]*?)>/g, (match, col, row, rest) => {
-                const r = parseInt(row);
-                if (r >= 6 && r <= 17) return `<c r="${col}${row}"${rest.replace(/ s="\d+"/, '')}>`;
-                return match;
-            });
+            // Strip cell-level style only for templates that need fill overrides (e.g. rainfall)
+            if (opts.stripCellStyles) {
+                xml = xml.replace(/<c r="([B-L])(\d+)"([^>]*?)>/g, (match, col, row, rest) => {
+                    const r = parseInt(row);
+                    if (r >= 6 && r <= 17) return `<c r="${col}${row}"${rest.replace(/ s="\d+"/, '')}>`;
+                    return match;
+                });
+            }
             zip.file(path, xml);
         }
         return zip.generateAsync({ type: 'arraybuffer' });
     }
 
-    async function loadTemplate(filename) {
+    async function loadTemplate(filename, opts = {}) {
         const url = encodeURI('Report samples/' + filename);
         const resp = await fetch(url);
         if (!resp.ok) throw new Error(`Could not load template "${filename}" (${resp.status}). Make sure the app is served via HTTP, not file://.`);
         const raw = await resp.arrayBuffer();
-        const buf = await preprocessXlsx(raw);
+        const buf = await preprocessXlsx(raw, opts);
         const wb = new ExcelJS.Workbook();
         await wb.xlsx.load(buf);
         return wb;
@@ -153,7 +156,7 @@
         setStatus('rep-ytd-status', 'Generating…');
         try {
             await ensureExcelJS();
-            const wb = await loadTemplate('Havesting Performance Dec 2025.xlsx');
+            const wb = await loadTemplate('Havesting Performance Dec 2025.xlsx', { stripCellStyles: false });
             const ws = wb.getWorksheet('OVERALL BY GANG COMPARISON YTD2');
             if (!ws) throw new Error('Worksheet "OVERALL BY GANG COMPARISON YTD2" not found');
 
@@ -210,8 +213,8 @@
                     ws.getCell(row, 6).value  = parseFloat(pBud.toFixed(2));
                     ws.getCell(row, 7).value  = parseFloat(pAct.toFixed(4));
                     ws.getCell(row, 8).value  = parseFloat(varr.toFixed(4));
-                    ws.getCell(row, 9).value  = parseFloat(cMH.toFixed(9));
-                    ws.getCell(row, 10).value = parseFloat(pMH.toFixed(9));
+                    ws.getCell(row, 9).value  = parseFloat(cMH.toFixed(2));
+                    ws.getCell(row, 10).value = parseFloat(pMH.toFixed(2));
 
                     // Borders: thin between block rows, medium bottom on last block
                     applyRowBorder(row, THIN, isLast ? MED : THIN);
@@ -235,8 +238,8 @@
                 ws.getCell(sr, 6).value  = parseFloat(pPB.toFixed(2));
                 ws.getCell(sr, 7).value  = parseFloat(pPA.toFixed(4));
                 ws.getCell(sr, 8).value  = parseFloat(pVar.toFixed(4));
-                ws.getCell(sr, 9).value  = parseFloat(pCMH.toFixed(9));
-                ws.getCell(sr, 10).value = parseFloat(pPMH.toFixed(9));
+                ws.getCell(sr, 9).value  = parseFloat(pCMH.toFixed(2));
+                ws.getCell(sr, 10).value = parseFloat(pPMH.toFixed(2));
 
                 // Medium top border on subtotal row (top edge of the phase box)
                 applyRowBorder(sr, MED, THIN);
@@ -254,8 +257,8 @@
             ws.getCell(YTD_GRAND_ROW, 6).value  = parseFloat(gPB.toFixed(2));
             ws.getCell(YTD_GRAND_ROW, 7).value  = parseFloat(gPA.toFixed(4));
             ws.getCell(YTD_GRAND_ROW, 8).value  = parseFloat(gVar.toFixed(4));
-            ws.getCell(YTD_GRAND_ROW, 9).value  = parseFloat(gCMH.toFixed(9));
-            ws.getCell(YTD_GRAND_ROW, 10).value = parseFloat(gPMH.toFixed(9));
+            ws.getCell(YTD_GRAND_ROW, 9).value  = parseFloat(gCMH.toFixed(2));
+            ws.getCell(YTD_GRAND_ROW, 10).value = parseFloat(gPMH.toFixed(2));
 
             // Clear template footer notes (block exclusion references no longer needed)
             for (let r = 52; r <= 55; r++) {
@@ -285,7 +288,7 @@
         setStatus('rep-rain-status', 'Generating…');
         try {
             await ensureExcelJS();
-            const wb = await loadTemplate('Rainfall 2024 vs 2025 up to Dec 2025.xlsx');
+            const wb = await loadTemplate('Rainfall 2024 vs 2025 up to Dec 2025.xlsx', { stripCellStyles: true });
             const ws = wb.getWorksheet('Dec Rainfall 2024 vs 2025');
             if (!ws) throw new Error('Rainfall worksheet not found');
 
