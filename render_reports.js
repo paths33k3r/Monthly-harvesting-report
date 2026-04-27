@@ -164,29 +164,9 @@
             const mIdx    = MONTHS.indexOf(month);
             const mLabel  = MONTHS_UP[mIdx];
 
-            const FMT  = '#,##0.00';
-            const THIN = { style: 'thin',   color: { argb: 'FF000000' } };
-            const MED  = { style: 'medium', color: { argb: 'FF000000' } };
-
-            // Write a numeric value and explicitly enforce the number format
+            // Write value only — leave template numFmt and borders intact
             const setN = (r, c, v) => {
-                const cell = ws.getCell(r, c);
-                cell.value  = parseFloat(v.toFixed(2));
-                cell.numFmt = FMT;
-            };
-
-            // Apply border while preserving each cell's existing numFmt
-            const applyRowBorder = (r, top, bottom) => {
-                for (let c = 1; c <= 10; c++) {
-                    const cell = ws.getCell(r, c);
-                    const fmt  = cell.numFmt;
-                    cell.border = {
-                        top, bottom,
-                        left:  c === 1  ? MED : THIN,
-                        right: c === 10 ? MED : THIN
-                    };
-                    if (fmt) cell.numFmt = fmt;
-                }
+                ws.getCell(r, c).value = parseFloat(v.toFixed(2));
             };
 
             // Title + year headers
@@ -212,7 +192,6 @@
                     const cMH  = ha > 0 ? cAct / ha : 0;
                     const pMH  = ha > 0 ? pAct / ha : 0;
                     const row  = blk.r;
-                    const isLast = bIdx === phase.blocks.length - 1;
 
                     ws.getCell(row, 1).value = parseInt(blk.id) || blk.id;
                     ws.getCell(row, 2).value = parseInt(phase.op);
@@ -224,8 +203,6 @@
                     setN(row, 8, varr);
                     setN(row, 9, cMH);
                     setN(row, 10, pMH);
-
-                    applyRowBorder(row, THIN, isLast ? MED : THIN);
 
                     pHA += ha; pCB += cBud; pCA += cAct; pPB += pBud; pPA += pAct;
                 });
@@ -245,8 +222,6 @@
                 setN(sr, 8, pVar);
                 setN(sr, 9, pCMH);
                 setN(sr, 10, pPMH);
-
-                applyRowBorder(sr, MED, THIN);
 
                 gHA+=pHA; gCB+=pCB; gCA+=pCA; gPB+=pPB; gPA+=pPA;
             });
