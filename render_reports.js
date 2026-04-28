@@ -733,6 +733,8 @@
             let relsXml = await zip.files['xl/_rels/workbook.xml.rels'].async('string');
             const sheet4RIdMatch = relsXml.match(/Id="([^"]+)"[^>]*Target="worksheets\/sheet4\.xml"/);
             const sheet4RId = sheet4RIdMatch ? sheet4RIdMatch[1] : null;
+            console.log('[Spraying v13] sheet4RId:', sheet4RId);
+            console.log('[Spraying v13] relsXml snippet:', relsXml.substring(0, 500));
 
             // 2. Remove every worksheet relationship except the one for sheet4.xml
             relsXml = relsXml.replace(/<Relationship\s[^>]*Target="worksheets\/sheet(\d+)\.xml"[^>]*\/>/g,
@@ -741,8 +743,12 @@
 
             // 3. Keep only sheet4 entry in workbook.xml <sheets> and rename it to match the year
             let wbXml = await zip.files['xl/workbook.xml'].async('string');
+            const sheetsBeforeCount = (wbXml.match(/<sheet\s/g) || []).length;
             wbXml = wbXml.replace(/<sheet\s[^>]*\/>/g,
                 m => (sheet4RId && m.includes(`r:id="${sheet4RId}"`)) ? m : (!sheet4RId && m.includes('r:id="rId4"')) ? m : '');
+            const sheetsAfterCount = (wbXml.match(/<sheet\s/g) || []).length;
+            console.log('[Spraying v13] sheets before/after strip:', sheetsBeforeCount, '/', sheetsAfterCount);
+            console.log('[Spraying v13] wbXml sheets section:', wbXml.match(/<sheets>[\s\S]*?<\/sheets>/)?.[0] || 'NOT FOUND');
             wbXml = wbXml.replace(/name="GLY \+ ALLY [^"]*"/, `name="GLY + ALLY ${year}"`);
             zip.file('xl/workbook.xml', wbXml);
 
@@ -758,6 +764,7 @@
             zip.file('[Content_Types].xml', ctXml);
 
             const finalBuf = await zip.generateAsync({ type: 'arraybuffer' });
+            console.log('[Spraying v13] final buffer size:', finalBuf.byteLength);
             downloadBuffer(finalBuf, `Spraying_GLY_ALLY_${year}.xlsx`);
             setStatus('rep-spray-status', '✅ Downloaded!', true);
         } catch (e) {
