@@ -754,15 +754,31 @@
 
             zip.file('xl/worksheets/sheet4.xml', xml);
 
-            // Find sheet4's tab index in workbook.xml so Excel opens to it directly
+            // Keep only the GLY+ALLY sheet — strip all other sheets from zip
+            let relsXml = await zip.files['xl/_rels/workbook.xml.rels'].async('string');
+            // Find sheet4's actual file target from its relationship
+            const sheet4TargetMatch = relsXml.match(/Id="rId4"[^>]*Target="([^"]+)"/);
+            const sheet4File = sheet4TargetMatch ? sheet4TargetMatch[1].split('/').pop() : 'sheet4.xml';
+            // Remove all worksheet relationships except rId4
+            relsXml = relsXml.replace(/<Relationship\b[^>]*\bType="[^"]*worksheet[^"]*"[^>]*\/>/g, m =>
+                /Id="rId4"/.test(m) ? m : '');
+            zip.file('xl/_rels/workbook.xml.rels', relsXml);
+            // Update workbook.xml: keep only sheet4 entry, rename tab, reset activeTab
             let wbXml = await zip.files['xl/workbook.xml'].async('string');
-            const sheetEntries = [...wbXml.matchAll(/<sheet\s[^>]*\/>/g)].map(m => m[0]);
-            const sheet4TabIdx = sheetEntries.findIndex(s => s.includes('r:id="rId4"'));
-            console.log('[Spraying v14] sheet4 tab index:', sheet4TabIdx, 'of', sheetEntries.length, 'sheets');
-            // Rename the sheet tab and force Excel to open directly to it
+            wbXml = wbXml.replace(/<sheet\s[^>]*\/>/g, m => /r:id="rId4"/.test(m) ? m : '');
             wbXml = wbXml.replace(/name="GLY \+ ALLY [^"]*"/, `name="GLY + ALLY ${year}"`);
-            wbXml = wbXml.replace(/\bactiveTab="\d+"/g, `activeTab="${Math.max(0, sheet4TabIdx)}"`);
+            wbXml = wbXml.replace(/\bactiveTab="\d+"/g, 'activeTab="0"');
             zip.file('xl/workbook.xml', wbXml);
+            // Remove other worksheet XML files and their rels
+            Object.keys(zip.files).forEach(f => {
+                if (/^xl\/worksheets\/sheet\d+\.xml$/.test(f) && !f.endsWith(sheet4File)) zip.remove(f);
+                if (/^xl\/worksheets\/_rels\/sheet\d+\.xml\.rels$/.test(f) && !f.endsWith(sheet4File + '.rels')) zip.remove(f);
+            });
+            // Strip other sheets from Content_Types.xml
+            let ctXml = await zip.files['[Content_Types].xml'].async('string');
+            ctXml = ctXml.replace(/<Override\b[^>]*PartName="\/xl\/worksheets\/sheet\d+\.xml"[^>]*\/>/g, m =>
+                m.includes(sheet4File) ? m : '');
+            zip.file('[Content_Types].xml', ctXml);
 
             const finalBuf = await zip.generateAsync({ type: 'arraybuffer' });
             console.log('[Spraying v14] final buffer size:', finalBuf.byteLength);
