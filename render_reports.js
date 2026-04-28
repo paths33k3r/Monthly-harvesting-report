@@ -516,10 +516,13 @@
 
             // Bypass ExcelJS entirely — manipulate XML directly to preserve all formatting
             // (merged cells, borders, col widths, col C hidden) from the template unchanged.
+            console.log('[Spraying v13] fetching template for year', year);
             const resp = await fetch(encodeURI('Report samples/Spraying Maintenance 2025.xlsx'));
             if (!resp.ok) throw new Error(`Could not load template (${resp.status})`);
             const zip = await JSZip.loadAsync(await resp.arrayBuffer());
+            console.log('[Spraying v13] zip files:', Object.keys(zip.files).filter(f => f.startsWith('xl/worksheets')));
             let xml = await zip.files['xl/worksheets/sheet4.xml'].async('string');
+            console.log('[Spraying v13] sheet4.xml length:', xml.length);
 
             // Strip shared formulas so Excel won't recalculate over our written values
             xml = xml.replace(/<f t="shared" ref="[^"]*" si="\d+">[^<]*<\/f>/g, '');
