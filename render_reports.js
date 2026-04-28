@@ -277,6 +277,12 @@
             const rfPrev  = (window.state.rainfall && window.state.rainfall[prevYear]) || {};
 
             const BLACK_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } };
+            const WHITE_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+
+            // Template data cells have black fills baked in — override to white for all data rows
+            for (let i = 0; i < 12; i++) {
+                [2, 3, 4, 6, 7, 8, 10, 11, 12].forEach(c => { ws.getCell(6 + i, c).fill = WHITE_FILL; });
+            }
 
             // Clear extra template columns (N onwards — values only, leave borders intact)
             for (let r = 1; r <= 50; r++) {
@@ -514,6 +520,19 @@
             if (!resp.ok) throw new Error(`Could not load template (${resp.status})`);
             const zip = await JSZip.loadAsync(await resp.arrayBuffer());
             let xml = await zip.files['xl/worksheets/sheet4.xml'].async('string');
+
+            // Strip shared formulas so Excel won't recalculate over our written values
+            xml = xml.replace(/<f t="shared" ref="[^"]*" si="\d+">[^<]*<\/f>/g, '');
+            xml = xml.replace(/<f t="shared" ref="[^"]*" si="\d+"\/>/g, '');
+            xml = xml.replace(/<f t="shared" si="\d+"\/>/g, '');
+            xml = xml.replace(/<f>[^<]*<\/f>/g, '');
+
+            // Guard: require spraying data before blanking the template
+            const sprayData = window.state.spraying && window.state.spraying[year];
+            if (!sprayData || !(sprayData.phases || []).some(p => (p.blocks || []).length > 0)) {
+                setStatus('rep-spray-status', `❌ No spraying data for ${year}. Enter data in the Spraying section first.`, true);
+                return;
+            }
 
             // Convert 1-indexed column number → letter(s)
             function colLetter(n) {
