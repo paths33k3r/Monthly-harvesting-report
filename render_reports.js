@@ -652,10 +652,15 @@
                 }
             }
 
+            let cellsWritten = 0;
+            const _origSetNum = setNum;
+            // patch setNum to count writes
+            const _patchedSetNum = setNum;
             SPRAY_PHASES.forEach(ph => {
                 fillHalfXml(ph.janjun, JJ_COLS, JJ_MONTHS);
                 fillHalfXml(ph.juldec, JD_COLS, JD_MONTHS);
             });
+            console.log('[Spraying v14] xml length after writes:', xml.length);
 
             // Row 286: grand Ha totals
             let grandHaPrev=0, grandHaPresent=0;
@@ -728,43 +733,18 @@
 
             zip.file('xl/worksheets/sheet4.xml', xml);
 
-            // ── Strip extra worksheets so only one sheet is in the output ──
-            // 1. Find the rId that maps to sheet4.xml in the workbook relationships
-            let relsXml = await zip.files['xl/_rels/workbook.xml.rels'].async('string');
-            const sheet4RIdMatch = relsXml.match(/Id="([^"]+)"[^>]*Target="worksheets\/sheet4\.xml"/);
-            const sheet4RId = sheet4RIdMatch ? sheet4RIdMatch[1] : null;
-            console.log('[Spraying v13] sheet4RId:', sheet4RId);
-            console.log('[Spraying v13] relsXml snippet:', relsXml.substring(0, 500));
-
-            // 2. Remove every worksheet relationship except the one for sheet4.xml
-            relsXml = relsXml.replace(/<Relationship\s[^>]*Target="worksheets\/sheet(\d+)\.xml"[^>]*\/>/g,
-                (m, num) => num === '4' ? m : '');
-            zip.file('xl/_rels/workbook.xml.rels', relsXml);
-
-            // 3. Keep only sheet4 entry in workbook.xml <sheets> and rename it to match the year
+            // Find sheet4's tab index in workbook.xml so Excel opens to it directly
             let wbXml = await zip.files['xl/workbook.xml'].async('string');
-            const sheetsBeforeCount = (wbXml.match(/<sheet\s/g) || []).length;
-            wbXml = wbXml.replace(/<sheet\s[^>]*\/>/g,
-                m => (sheet4RId && m.includes(`r:id="${sheet4RId}"`)) ? m : (!sheet4RId && m.includes('r:id="rId4"')) ? m : '');
-            const sheetsAfterCount = (wbXml.match(/<sheet\s/g) || []).length;
-            console.log('[Spraying v13] sheets before/after strip:', sheetsBeforeCount, '/', sheetsAfterCount);
-            console.log('[Spraying v13] wbXml sheets section:', wbXml.match(/<sheets>[\s\S]*?<\/sheets>/)?.[0] || 'NOT FOUND');
+            const sheetEntries = [...wbXml.matchAll(/<sheet\s[^>]*\/>/g)].map(m => m[0]);
+            const sheet4TabIdx = sheetEntries.findIndex(s => s.includes('r:id="rId4"'));
+            console.log('[Spraying v14] sheet4 tab index:', sheet4TabIdx, 'of', sheetEntries.length, 'sheets');
+            // Rename the sheet tab and force Excel to open directly to it
             wbXml = wbXml.replace(/name="GLY \+ ALLY [^"]*"/, `name="GLY + ALLY ${year}"`);
+            wbXml = wbXml.replace(/\bactiveTab="\d+"/g, `activeTab="${Math.max(0, sheet4TabIdx)}"`);
             zip.file('xl/workbook.xml', wbXml);
 
-            // 4. Remove extra sheet files from the zip
-            Object.keys(zip.files)
-                .filter(f => /^xl\/worksheets\/sheet\d+\.xml$/.test(f) && f !== 'xl/worksheets/sheet4.xml')
-                .forEach(f => zip.remove(f));
-
-            // 5. Remove extra Override entries from [Content_Types].xml
-            let ctXml = await zip.files['[Content_Types].xml'].async('string');
-            ctXml = ctXml.replace(/<Override\s[^>]*PartName="\/xl\/worksheets\/sheet(\d+)\.xml"[^>]*\/>/g,
-                (m, num) => num === '4' ? m : '');
-            zip.file('[Content_Types].xml', ctXml);
-
             const finalBuf = await zip.generateAsync({ type: 'arraybuffer' });
-            console.log('[Spraying v13] final buffer size:', finalBuf.byteLength);
+            console.log('[Spraying v14] final buffer size:', finalBuf.byteLength);
             downloadBuffer(finalBuf, `Spraying_GLY_ALLY_${year}.xlsx`);
             setStatus('rep-spray-status', '✅ Downloaded!', true);
         } catch (e) {
