@@ -549,18 +549,39 @@
             function setNum(row, col, value) {
                 const ref = colLetter(col) + row;
                 const numStr = (value !== null && value !== undefined) ? String(Math.round(value * 1e9) / 1e9) : null;
+                let matched = false;
 
                 // Self-closing cell <c r="REF" attrs/>
                 xml = xml.replace(new RegExp(`<c r="${ref}"([^>]*)\\/>`), (m, attrs) => {
+                    matched = true;
                     if (/t="s"/.test(attrs)) return m;
                     return numStr ? `<c r="${ref}"${attrs}><v>${numStr}</v></c>` : m;
                 });
-                // Cell with content <c r="REF" attrs>...</c>  (value, formula, or both)
-                xml = xml.replace(new RegExp(`<c r="${ref}"([^>]*)>([\\s\\S]*?)<\\/c>`), (m, attrs, _content) => {
-                    if (/t="s"/.test(attrs)) return m;
-                    attrs = attrs.replace(/\s+t="[^"]*"/, '');
-                    return numStr ? `<c r="${ref}"${attrs}><v>${numStr}</v></c>` : `<c r="${ref}"${attrs}/>`;
-                });
+
+                if (!matched) {
+                    // Cell with content <c r="REF" attrs>...</c>  (value, formula, or both)
+                    xml = xml.replace(new RegExp(`<c r="${ref}"([^>]*)>([\\s\\S]*?)<\\/c>`), (m, attrs, _content) => {
+                        matched = true;
+                        if (/t="s"/.test(attrs)) return m;
+                        attrs = attrs.replace(/\s+t="[^"]*"/, '');
+                        return numStr ? `<c r="${ref}"${attrs}><v>${numStr}</v></c>` : `<c r="${ref}"${attrs}/>`;
+                    });
+                }
+
+                // Cell absent from XML entirely (empty template cell) — insert into the row
+                if (!matched && numStr) {
+                    xml = xml.replace(new RegExp(`(<row\\b[^>]* r="${row}"[^>]*>)([\\s\\S]*?)(<\\/row>)`), (m, open, content, close) => {
+                        const newCell = `<c r="${ref}"><v>${numStr}</v></c>`;
+                        let placed = false;
+                        const updated = content.replace(/<c r="([A-Z]+)\d+"/g, (cm, cRef) => {
+                            if (placed) return cm;
+                            const cCol = cRef.split('').reduce((acc, ch) => acc * 26 + ch.charCodeAt(0) - 64, 0);
+                            if (cCol > col) { placed = true; return newCell + cm; }
+                            return cm;
+                        });
+                        return open + (placed ? updated : content + newCell) + close;
+                    });
+                }
             }
 
             // Mirror of fillHalf but writing directly to XML
