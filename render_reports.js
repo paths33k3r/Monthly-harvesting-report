@@ -673,7 +673,6 @@
             JJ_MONTHS.forEach(m => { sumJJ.gly[m]=0; sumJJ.aly[m]=0; sumJJ.hGly[m]=0; sumJJ.hAly[m]=0; });
             JD_MONTHS.forEach(m => { sumJD.gly[m]=0; sumJD.aly[m]=0; sumJD.hGly[m]=0; sumJD.hAly[m]=0; });
             let grandTotGly=0, grandTotAly=0, grandTotHGly=0, grandTotHAly=0;
-            const sprayData = window.state.spraying && window.state.spraying[year];
             if (sprayData) {
                 (sprayData.phases || []).forEach(ph => {
                     (ph.blocks || []).forEach(blk => {
