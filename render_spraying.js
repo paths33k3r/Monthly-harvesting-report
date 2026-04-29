@@ -19,6 +19,8 @@ const renderSprayingReport = () => {
     }
 
     const data = window.state.spraying[yearStr];
+    if (!data.extraChemicals) data.extraChemicals = [];
+    const extraChemicals = data.extraChemicals;
 
     // ── MONTHS ──────────────────────────────────────────────────────
     const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -104,7 +106,7 @@ const renderSprayingReport = () => {
         yd.phases.forEach(phase => {
             phase.blocks.forEach(block => {
                 MONTHS_CLR.forEach(m => {
-                    block.months[m] = { roundGly: '', roundAly: '', litresGly: '', gmAly: '', haGly: '', haAly: '' };
+                    block.months[m] = { roundGly: '', roundAly: '', litresGly: '', gmAly: '', haGly: '', haAly: '', extras: {} };
                 });
             });
         });
@@ -135,21 +137,24 @@ const renderSprayingReport = () => {
 
     // ── TABLE PER PHASE ──────────────────────────────────────────────
     data.phases.forEach((phase, phaseIdx) => {
-        renderPhaseTable(wrapper, phase, phaseIdx, yearStr, MONTHS);
+        renderPhaseTable(wrapper, phase, phaseIdx, yearStr, MONTHS, extraChemicals);
     });
 
     // ── GRAND TOTAL SUMMARY ──────────────────────────────────────────
-    renderGrandTotal(wrapper, data, MONTHS, yearStr);
+    renderGrandTotal(wrapper, data, MONTHS, yearStr, extraChemicals);
 };
 
 // ─────────────────────────────────────────────────────────────────────
 // Render a single Phase table (e.g. OP2010)
 // ─────────────────────────────────────────────────────────────────────
-const renderPhaseTable = (wrapper, phase, phaseIdx, yearStr, MONTHS) => {
+const renderPhaseTable = (wrapper, phase, phaseIdx, yearStr, MONTHS, extraChemicals) => {
+    const nExtra = extraChemicals.length;
+    const colsPerMonth = 2 + nExtra;
+
     const section = document.createElement('div');
     section.style.cssText = 'background:var(--bg-card); border:1px solid var(--border-color); border-radius:8px; margin-bottom:1.5rem; overflow:hidden;';
 
-    // Phase header bar
+    // ── Phase header bar ────────────────────────────────────────────
     const phaseBar = document.createElement('div');
     phaseBar.style.cssText = 'background:var(--bg-main); border-bottom:2px solid var(--border-color); padding:0.6rem 1rem; display:flex; align-items:center; justify-content:space-between;';
 
@@ -159,7 +164,7 @@ const renderPhaseTable = (wrapper, phase, phaseIdx, yearStr, MONTHS) => {
     phaseBar.appendChild(phaseNameEl);
 
     const phaseActions = document.createElement('div');
-    phaseActions.style.cssText = 'display:flex; gap:0.5rem;';
+    phaseActions.style.cssText = 'display:flex; gap:0.5rem; flex-wrap:wrap;';
 
     const btnAddBlock = document.createElement('button');
     btnAddBlock.className = 'btn-secondary';
@@ -168,10 +173,57 @@ const renderPhaseTable = (wrapper, phase, phaseIdx, yearStr, MONTHS) => {
     btnAddBlock.onclick = () => addNewBlock(yearStr, phaseIdx);
     phaseActions.appendChild(btnAddBlock);
 
+    // ── Add Chemical button (year-wide) ─────────────────────────────
+    const btnAddChem = document.createElement('button');
+    btnAddChem.className = 'btn-secondary';
+    btnAddChem.style.cssText = 'padding:0.25rem 0.65rem; font-size:0.8rem; background:#1d4ed8; border-color:#1d4ed8; color:#fff;';
+    btnAddChem.innerHTML = '⚗ Add Chemical';
+    btnAddChem.onclick = () => {
+        const name = prompt('Chemical name (e.g., METSULFURON):');
+        if (!name || !name.trim()) return;
+        const uom = prompt(`Unit of Measure for "${name.trim()}" (e.g., GM, LITRE, KG):`);
+        if (!uom || !uom.trim()) return;
+        const n = name.trim().toUpperCase();
+        const u = uom.trim().toUpperCase();
+        const yd = window.state.spraying[yearStr];
+        if (!yd.extraChemicals) yd.extraChemicals = [];
+        if (yd.extraChemicals.some(c => c.name === n)) { alert(`"${n}" already exists for ${yearStr}.`); return; }
+        yd.extraChemicals.push({ name: n, uom: u });
+        saveSprayingData();
+        renderSprayingReport();
+    };
+    phaseActions.appendChild(btnAddChem);
+
+    // ── Remove Chemical button (year-wide, only if chemicals exist) ─
+    if (nExtra > 0) {
+        const btnRemChem = document.createElement('button');
+        btnRemChem.className = 'btn-secondary';
+        btnRemChem.style.cssText = 'padding:0.25rem 0.65rem; font-size:0.8rem; background:#dc2626; border-color:#dc2626; color:#fff;';
+        btnRemChem.innerHTML = '✕ Remove Chemical';
+        btnRemChem.onclick = () => {
+            const list = extraChemicals.map((c, i) => `${i + 1}. ${c.name} (${c.uom})`).join('\n');
+            const choice = prompt(`Which chemical to remove from ${yearStr}?\n\n${list}\n\nEnter number:`);
+            if (!choice) return;
+            const idx = parseInt(choice) - 1;
+            if (isNaN(idx) || idx < 0 || idx >= extraChemicals.length) { alert('Invalid selection.'); return; }
+            const removed = extraChemicals[idx];
+            if (!confirm(`Remove "${removed.name} (${removed.uom})" from year ${yearStr}?\nAll data for this chemical will be deleted.`)) return;
+            const yd = window.state.spraying[yearStr];
+            yd.extraChemicals.splice(idx, 1);
+            const MONTHS_ALL = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+            yd.phases.forEach(ph => ph.blocks.forEach(blk => {
+                MONTHS_ALL.forEach(m => { if (blk.months[m]?.extras) delete blk.months[m].extras[removed.name]; });
+            }));
+            saveSprayingData();
+            renderSprayingReport();
+        };
+        phaseActions.appendChild(btnRemChem);
+    }
+
     phaseBar.appendChild(phaseActions);
     section.appendChild(phaseBar);
 
-    // Scrollable table
+    // ── Scrollable table ────────────────────────────────────────────
     const tableWrap = document.createElement('div');
     tableWrap.style.cssText = 'overflow-x:auto;';
 
@@ -180,20 +232,16 @@ const renderPhaseTable = (wrapper, phase, phaseIdx, yearStr, MONTHS) => {
 
     // ── THEAD ────────────────────────────────────────────────────────
     const thead = document.createElement('thead');
-
-    // Row 1: Phase | Block | Year | Ha Prev | Ha Present | Particular | JAN(span2) | FEB(span2) ... DEC(span2) | TOTAL(span2)
     const tr1 = document.createElement('tr');
     const headerStyle = 'background:#1e293b; color:#f8fafc; padding:6px 8px; text-align:center; border:1px solid #334155; font-weight:600; font-size:0.75rem; text-transform:uppercase; white-space:nowrap;';
 
-    const fixedHeaders = [
-        { text: 'Block No', rowspan: 3, style: 'min-width:60px;' },
-        { text: 'Year', rowspan: 3, style: 'min-width:50px;' },
+    [
+        { text: 'Block No',    rowspan: 3, style: 'min-width:60px;' },
+        { text: 'Year',        rowspan: 3, style: 'min-width:50px;' },
         { text: 'Ha Previous', rowspan: 3, style: 'min-width:70px;' },
-        { text: 'Ha Present', rowspan: 3, style: 'min-width:70px;' },
-        { text: 'Particular', rowspan: 3, style: 'min-width:100px; text-align:left;' },
-    ];
-
-    fixedHeaders.forEach(h => {
+        { text: 'Ha Present',  rowspan: 3, style: 'min-width:70px;' },
+        { text: 'Particular',  rowspan: 3, style: 'min-width:100px; text-align:left;' },
+    ].forEach(h => {
         const th = document.createElement('th');
         th.rowSpan = h.rowspan;
         th.style.cssText = headerStyle + h.style;
@@ -201,224 +249,172 @@ const renderPhaseTable = (wrapper, phase, phaseIdx, yearStr, MONTHS) => {
         tr1.appendChild(th);
     });
 
-    // Month columns (each spans 2: GLY, ALY)
     MONTHS.forEach(m => {
         const th = document.createElement('th');
-        th.colSpan = 2;
+        th.colSpan = colsPerMonth;
         th.style.cssText = headerStyle;
         th.textContent = m;
         tr1.appendChild(th);
     });
 
-    // TOTAL column (spans 2)
     const thTotal = document.createElement('th');
-    thTotal.colSpan = 2;
+    thTotal.colSpan = colsPerMonth;
     thTotal.style.cssText = headerStyle + 'background:#166534; color:#dcfce7;';
     thTotal.textContent = 'TOTAL';
     tr1.appendChild(thTotal);
-
     thead.appendChild(tr1);
 
-    // Row 2: GLY / ALY sub-headers for each month
+    // Row 2: sub-headers
     const tr2 = document.createElement('tr');
     const subHeaderStyle = 'background:#334155; color:#94a3b8; padding:4px 6px; text-align:center; border:1px solid #475569; font-size:0.7rem; font-weight:500;';
+    const extraSubStyle   = 'background:#1e3a5f; color:#93c5fd; padding:4px 6px; text-align:center; border:1px solid #2d4f7c; font-size:0.7rem; font-weight:500;';
 
+    const monthSubHeaders = ['GLY\n(LITRE)', 'ALY\n(GM)', ...extraChemicals.map(c => `${c.name}\n(${c.uom})`)];
     MONTHS.forEach(() => {
-        ['GLY\n(LITRE)', 'ALY\n(GM)'].forEach(sub => {
+        monthSubHeaders.forEach((sub, si) => {
             const th = document.createElement('th');
-            th.style.cssText = subHeaderStyle;
+            th.style.cssText = si < 2 ? subHeaderStyle : extraSubStyle;
             th.style.whiteSpace = 'pre-line';
             th.textContent = sub;
             tr2.appendChild(th);
         });
     });
-
-    // TOTAL sub-headers
-    ['GLY\n(LITRE)', 'ALY\n(GM)'].forEach(sub => {
+    monthSubHeaders.forEach((sub, si) => {
         const th = document.createElement('th');
-        th.style.cssText = subHeaderStyle + 'background:#14532d; color:#bbf7d0;';
+        th.style.cssText = si < 2
+            ? subHeaderStyle + 'background:#14532d; color:#bbf7d0;'
+            : extraSubStyle  + 'background:#1e3a5f; color:#93c5fd;';
         th.style.whiteSpace = 'pre-line';
         th.textContent = sub;
         tr2.appendChild(th);
     });
-
     thead.appendChild(tr2);
     table.appendChild(thead);
 
     // ── TBODY ────────────────────────────────────────────────────────
     const tbody = document.createElement('tbody');
-
     const SUB_ROWS = ['Round', 'No.Litre / GM', 'Ha'];
     const cellStyle = 'border:1px solid var(--border-color); padding:2px 4px; text-align:center; vertical-align:middle;';
-    const phaseLabel = phase.phaseName || '';
 
     phase.blocks.forEach((block, blockIdx) => {
-        // Initialize month data if missing
         if (!block.months) block.months = {};
         MONTHS.forEach(m => {
-            if (!block.months[m]) block.months[m] = { roundGly: '', roundAly: '', litresGly: '', gmAly: '', haGly: '', haAly: '' };
+            if (!block.months[m]) block.months[m] = { roundGly:'', roundAly:'', litresGly:'', gmAly:'', haGly:'', haAly:'', extras:{} };
+            if (!block.months[m].extras) block.months[m].extras = {};
         });
+
+        // Per-block totals across all months
+        const totalExtras = {};
+        extraChemicals.forEach(c => { totalExtras[c.name] = 0; });
+        let totalGly = 0, totalAly = 0;
 
         SUB_ROWS.forEach((subRow, subIdx) => {
             const tr = document.createElement('tr');
             tr.style.background = subIdx === 0 ? '#fff' : subIdx === 1 ? '#f8fafc' : '#f1f5f9';
 
-            // Block No (only first sub-row)
             if (subIdx === 0) {
                 const tdBlock = document.createElement('td');
-                tdBlock.rowSpan = 3;
-                tdBlock.style.cssText = cellStyle + 'font-weight:600; min-width:60px;';
-                const blockInput = document.createElement('input');
-                blockInput.type = 'text';
-                blockInput.className = 'edit-input text-center';
-                blockInput.style.cssText = 'width:100%; min-width:50px; text-align:center;';
-                blockInput.value = block.blockNo || '';
-                blockInput.onchange = e => { block.blockNo = e.target.value; };
-                tdBlock.appendChild(blockInput);
-                tr.appendChild(tdBlock);
+                tdBlock.rowSpan = 3; tdBlock.style.cssText = cellStyle + 'font-weight:600; min-width:60px;';
+                const bi = document.createElement('input'); bi.type='text'; bi.className='edit-input text-center';
+                bi.style.cssText='width:100%; min-width:50px; text-align:center;'; bi.value=block.blockNo||'';
+                bi.onchange=e=>{block.blockNo=e.target.value;}; tdBlock.appendChild(bi); tr.appendChild(tdBlock);
 
-                // Year
                 const tdYear = document.createElement('td');
-                tdYear.rowSpan = 3;
-                tdYear.style.cssText = cellStyle + 'min-width:50px;';
-                const yearInput = document.createElement('input');
-                yearInput.type = 'text';
-                yearInput.className = 'edit-input text-center';
-                yearInput.style.cssText = 'width:100%; min-width:40px; text-align:center;';
-                yearInput.value = block.plantYear || '';
-                yearInput.onchange = e => { block.plantYear = e.target.value; };
-                tdYear.appendChild(yearInput);
-                tr.appendChild(tdYear);
+                tdYear.rowSpan = 3; tdYear.style.cssText = cellStyle + 'min-width:50px;';
+                const yi = document.createElement('input'); yi.type='text'; yi.className='edit-input text-center';
+                yi.style.cssText='width:100%; min-width:40px; text-align:center;'; yi.value=block.plantYear||'';
+                yi.onchange=e=>{block.plantYear=e.target.value;}; tdYear.appendChild(yi); tr.appendChild(tdYear);
 
-                // Ha Previous
                 const tdHaPrev = document.createElement('td');
-                tdHaPrev.rowSpan = 3;
-                tdHaPrev.style.cssText = cellStyle + 'min-width:70px;';
-                const haPrevInput = document.createElement('input');
-                haPrevInput.type = 'number';
-                haPrevInput.className = 'edit-input text-right';
-                haPrevInput.style.cssText = 'width:100%; min-width:55px; text-align:right;';
-                haPrevInput.value = block.haPrevious != null ? block.haPrevious : '';
-                haPrevInput.onchange = e => { block.haPrevious = parseFloat(e.target.value) || 0; };
-                tdHaPrev.appendChild(haPrevInput);
-                tr.appendChild(tdHaPrev);
+                tdHaPrev.rowSpan = 3; tdHaPrev.style.cssText = cellStyle + 'min-width:70px;';
+                const hpi = document.createElement('input'); hpi.type='number'; hpi.className='edit-input text-right';
+                hpi.style.cssText='width:100%; min-width:55px; text-align:right;'; hpi.value=block.haPrevious!=null?block.haPrevious:'';
+                hpi.onchange=e=>{block.haPrevious=parseFloat(e.target.value)||0;}; tdHaPrev.appendChild(hpi); tr.appendChild(tdHaPrev);
 
-                // Ha Present
                 const tdHaPres = document.createElement('td');
-                tdHaPres.rowSpan = 3;
-                tdHaPres.style.cssText = cellStyle + 'min-width:70px;';
-                const haPresInput = document.createElement('input');
-                haPresInput.type = 'number';
-                haPresInput.className = 'edit-input text-right';
-                haPresInput.style.cssText = 'width:100%; min-width:55px; text-align:right;';
-                haPresInput.value = block.haPresent != null ? block.haPresent : '';
-                haPresInput.onchange = e => { block.haPresent = parseFloat(e.target.value) || 0; };
-                tdHaPres.appendChild(haPresInput);
-                tr.appendChild(tdHaPres);
+                tdHaPres.rowSpan = 3; tdHaPres.style.cssText = cellStyle + 'min-width:70px;';
+                const hsi = document.createElement('input'); hsi.type='number'; hsi.className='edit-input text-right';
+                hsi.style.cssText='width:100%; min-width:55px; text-align:right;'; hsi.value=block.haPresent!=null?block.haPresent:'';
+                hsi.onchange=e=>{block.haPresent=parseFloat(e.target.value)||0;}; tdHaPres.appendChild(hsi); tr.appendChild(tdHaPres);
             }
 
-            // Particular label
             const tdPart = document.createElement('td');
             tdPart.style.cssText = cellStyle + 'text-align:left; font-size:0.78rem; color:var(--text-secondary); padding-left:8px; white-space:nowrap;';
             tdPart.textContent = subRow;
             tr.appendChild(tdPart);
 
-            // Month data cells
-            let totalGly = 0;
-            let totalAly = 0;
-
             MONTHS.forEach(m => {
                 const mData = block.months[m];
 
                 if (subRow === 'Round') {
-                    // GLY Round
-                    const tdGly = document.createElement('td');
-                    tdGly.style.cssText = cellStyle;
-                    const inGly = createSprayInput('number', mData.roundGly, val => { mData.roundGly = val; });
-                    tdGly.appendChild(inGly);
-                    tr.appendChild(tdGly);
-
-                    // ALY Round
-                    const tdAly = document.createElement('td');
-                    tdAly.style.cssText = cellStyle;
-                    const inAly = createSprayInput('number', mData.roundAly, val => { mData.roundAly = val; });
-                    tdAly.appendChild(inAly);
-                    tr.appendChild(tdAly);
+                    const tdG = document.createElement('td'); tdG.style.cssText = cellStyle;
+                    tdG.appendChild(createSprayInput('number', mData.roundGly, v=>{mData.roundGly=v;})); tr.appendChild(tdG);
+                    const tdA = document.createElement('td'); tdA.style.cssText = cellStyle;
+                    tdA.appendChild(createSprayInput('number', mData.roundAly, v=>{mData.roundAly=v;})); tr.appendChild(tdA);
+                    extraChemicals.forEach(() => { const td=document.createElement('td'); td.style.cssText=cellStyle; tr.appendChild(td); });
 
                 } else if (subRow === 'No.Litre / GM') {
-                    // GLY Litres
-                    const tdGly = document.createElement('td');
-                    tdGly.style.cssText = cellStyle + 'background:#fefce8;';
-                    const inGly = createSprayInput('number', mData.litresGly, val => { mData.litresGly = val; }, true);
-                    tdGly.appendChild(inGly);
-                    tr.appendChild(tdGly);
+                    const tdG = document.createElement('td'); tdG.style.cssText = cellStyle + 'background:#fefce8;';
+                    tdG.appendChild(createSprayInput('number', mData.litresGly, v=>{mData.litresGly=v;}, true)); tr.appendChild(tdG);
                     totalGly += parseFloat(mData.litresGly) || 0;
-
-                    // ALY GM
-                    const tdAly = document.createElement('td');
-                    tdAly.style.cssText = cellStyle + 'background:#fef9c3;';
-                    const inAly = createSprayInput('number', mData.gmAly, val => { mData.gmAly = val; }, true);
-                    tdAly.appendChild(inAly);
-                    tr.appendChild(tdAly);
+                    const tdA = document.createElement('td'); tdA.style.cssText = cellStyle + 'background:#fef9c3;';
+                    tdA.appendChild(createSprayInput('number', mData.gmAly, v=>{mData.gmAly=v;}, true)); tr.appendChild(tdA);
                     totalAly += parseFloat(mData.gmAly) || 0;
+                    extraChemicals.forEach(c => {
+                        const tdX = document.createElement('td'); tdX.style.cssText = cellStyle + 'background:#eff6ff;';
+                        const curVal = mData.extras[c.name] ?? '';
+                        tdX.appendChild(createSprayInput('number', curVal, v => {
+                            if (!mData.extras) mData.extras = {};
+                            mData.extras[c.name] = v;
+                        }, true));
+                        tr.appendChild(tdX);
+                        totalExtras[c.name] += parseFloat(curVal) || 0;
+                    });
 
                 } else { // Ha
-                    // GLY Ha
-                    const tdGly = document.createElement('td');
-                    tdGly.style.cssText = cellStyle + 'background:#f0fdf4;';
-                    const inGly = createSprayInput('number', mData.haGly, val => { mData.haGly = val; });
-                    tdGly.appendChild(inGly);
-                    tr.appendChild(tdGly);
-
-                    // ALY Ha
-                    const tdAly = document.createElement('td');
-                    tdAly.style.cssText = cellStyle + 'background:#dcfce7;';
-                    const inAly = createSprayInput('number', mData.haAly, val => { mData.haAly = val; });
-                    tdAly.appendChild(inAly);
-                    tr.appendChild(tdAly);
+                    const tdG = document.createElement('td'); tdG.style.cssText = cellStyle + 'background:#f0fdf4;';
+                    tdG.appendChild(createSprayInput('number', mData.haGly, v=>{mData.haGly=v;})); tr.appendChild(tdG);
+                    const tdA = document.createElement('td'); tdA.style.cssText = cellStyle + 'background:#dcfce7;';
+                    tdA.appendChild(createSprayInput('number', mData.haAly, v=>{mData.haAly=v;})); tr.appendChild(tdA);
+                    extraChemicals.forEach(() => { const td=document.createElement('td'); td.style.cssText=cellStyle+'background:#f0f9ff;'; tr.appendChild(td); });
                 }
             });
 
             // TOTAL columns
             if (subRow === 'No.Litre / GM') {
-                const tdTGly = document.createElement('td');
-                tdTGly.style.cssText = cellStyle + 'background:#dcfce7; font-weight:700; color:#166534;';
-                tdTGly.textContent = totalGly > 0 ? totalGly.toLocaleString() : '';
-
-                const tdTAly = document.createElement('td');
-                tdTAly.style.cssText = cellStyle + 'background:#bbf7d0; font-weight:700; color:#14532d;';
-                tdTAly.textContent = totalAly > 0 ? totalAly.toLocaleString() : '';
-
-                tr.appendChild(tdTGly);
-                tr.appendChild(tdTAly);
+                const tdTG = document.createElement('td');
+                tdTG.style.cssText = cellStyle + 'background:#dcfce7; font-weight:700; color:#166534;';
+                tdTG.textContent = totalGly > 0 ? totalGly.toLocaleString() : '';
+                tr.appendChild(tdTG);
+                const tdTA = document.createElement('td');
+                tdTA.style.cssText = cellStyle + 'background:#bbf7d0; font-weight:700; color:#14532d;';
+                tdTA.textContent = totalAly > 0 ? totalAly.toLocaleString() : '';
+                tr.appendChild(tdTA);
+                extraChemicals.forEach(c => {
+                    const tdTX = document.createElement('td');
+                    tdTX.style.cssText = cellStyle + 'background:#dbeafe; font-weight:700; color:#1d4ed8;';
+                    tdTX.textContent = totalExtras[c.name] > 0 ? totalExtras[c.name].toLocaleString() : '';
+                    tr.appendChild(tdTX);
+                });
             } else {
-                // Empty total cells for Round and Ha rows
-                const tdT1 = document.createElement('td');
-                tdT1.style.cssText = cellStyle + 'background:#f0fdf4;';
-                const tdT2 = document.createElement('td');
-                tdT2.style.cssText = cellStyle + 'background:#dcfce7;';
-                tr.appendChild(tdT1);
-                tr.appendChild(tdT2);
+                const tdT1 = document.createElement('td'); tdT1.style.cssText = cellStyle + 'background:#f0fdf4;'; tr.appendChild(tdT1);
+                const tdT2 = document.createElement('td'); tdT2.style.cssText = cellStyle + 'background:#dcfce7;'; tr.appendChild(tdT2);
+                extraChemicals.forEach(() => { const td=document.createElement('td'); td.style.cssText=cellStyle+'background:#eff6ff;'; tr.appendChild(td); });
             }
 
             // Delete block button (only on Round row)
             if (subIdx === 0) {
                 const tdDel = document.createElement('td');
-                tdDel.rowSpan = 3;
-                tdDel.style.cssText = cellStyle + 'width:32px; padding:2px;';
+                tdDel.rowSpan = 3; tdDel.style.cssText = cellStyle + 'width:32px; padding:2px;';
                 const btnDel = document.createElement('button');
-                btnDel.className = 'btn-icon delete';
-                btnDel.title = 'Delete Block';
-                btnDel.innerHTML = '🗑';
+                btnDel.className = 'btn-icon delete'; btnDel.title = 'Delete Block'; btnDel.innerHTML = '🗑';
                 btnDel.onclick = () => {
                     if (confirm(`Delete Block ${block.blockNo || blockIdx + 1}?`)) {
-                        const yd = window.state.spraying[yearStr];
-                        yd.phases[phaseIdx].blocks.splice(blockIdx, 1);
+                        window.state.spraying[yearStr].phases[phaseIdx].blocks.splice(blockIdx, 1);
                         renderSprayingReport();
                     }
                 };
-                tdDel.appendChild(btnDel);
-                tr.appendChild(tdDel);
+                tdDel.appendChild(btnDel); tr.appendChild(tdDel);
             }
 
             tbody.appendChild(tr);
@@ -428,7 +424,7 @@ const renderPhaseTable = (wrapper, phase, phaseIdx, yearStr, MONTHS) => {
         if (blockIdx < phase.blocks.length - 1) {
             const spacer = document.createElement('tr');
             const td = document.createElement('td');
-            td.colSpan = 6 + MONTHS.length * 2 + 2 + 1;
+            td.colSpan = 6 + MONTHS.length * colsPerMonth + colsPerMonth + 1;
             td.style.cssText = 'height:4px; background:var(--bg-main); border:none;';
             spacer.appendChild(td);
             tbody.appendChild(spacer);
@@ -436,57 +432,67 @@ const renderPhaseTable = (wrapper, phase, phaseIdx, yearStr, MONTHS) => {
     });
 
     // ── PHASE TOTALS ROW ─────────────────────────────────────────────
-    const trTotalLabel = document.createElement('tr');
-    trTotalLabel.style.cssText = 'background:#1e293b; color:#f8fafc;';
+    const trTot = document.createElement('tr');
+    trTot.style.cssText = 'background:#1e293b; color:#f8fafc;';
 
-    const tdTotalFixed = document.createElement('td');
-    tdTotalFixed.colSpan = 6;
-    tdTotalFixed.style.cssText = 'border:1px solid #334155; padding:6px 10px; font-weight:700; text-align:right; font-size:0.8rem; letter-spacing:0.05em;';
-    tdTotalFixed.textContent = `SUBTOTAL — ${phase.phaseName}`;
-    trTotalLabel.appendChild(tdTotalFixed);
+    const tdTotFixed = document.createElement('td');
+    tdTotFixed.colSpan = 6;
+    tdTotFixed.style.cssText = 'border:1px solid #334155; padding:6px 10px; font-weight:700; text-align:right; font-size:0.8rem; letter-spacing:0.05em;';
+    tdTotFixed.textContent = `SUBTOTAL — ${phase.phaseName}`;
+    trTot.appendChild(tdTotFixed);
 
-    // Compute phase totals per month
-    let grandGly = 0;
-    let grandAly = 0;
+    let grandGly = 0, grandAly = 0;
+    const grandExtras = {};
+    extraChemicals.forEach(c => { grandExtras[c.name] = 0; });
 
     MONTHS.forEach(m => {
-        let mGly = 0;
-        let mAly = 0;
+        let mGly = 0, mAly = 0;
+        const mExtras = {};
+        extraChemicals.forEach(c => { mExtras[c.name] = 0; });
         phase.blocks.forEach(b => {
             mGly += parseFloat(b.months?.[m]?.litresGly) || 0;
             mAly += parseFloat(b.months?.[m]?.gmAly) || 0;
+            extraChemicals.forEach(c => { mExtras[c.name] += parseFloat(b.months?.[m]?.extras?.[c.name]) || 0; });
         });
-        grandGly += mGly;
-        grandAly += mAly;
+        grandGly += mGly; grandAly += mAly;
+        extraChemicals.forEach(c => { grandExtras[c.name] += mExtras[c.name]; });
 
-        const tdGly = document.createElement('td');
-        tdGly.style.cssText = 'border:1px solid #334155; padding:5px 6px; text-align:center; font-weight:600; font-size:0.78rem; color:#86efac;';
-        tdGly.textContent = mGly > 0 ? mGly.toLocaleString() : '—';
-        trTotalLabel.appendChild(tdGly);
-
-        const tdAly = document.createElement('td');
-        tdAly.style.cssText = 'border:1px solid #334155; padding:5px 6px; text-align:center; font-weight:600; font-size:0.78rem; color:#6ee7b7;';
-        tdAly.textContent = mAly > 0 ? mAly.toLocaleString() : '—';
-        trTotalLabel.appendChild(tdAly);
+        const tdG = document.createElement('td');
+        tdG.style.cssText = 'border:1px solid #334155; padding:5px 6px; text-align:center; font-weight:600; font-size:0.78rem; color:#86efac;';
+        tdG.textContent = mGly > 0 ? mGly.toLocaleString() : '—';
+        trTot.appendChild(tdG);
+        const tdA = document.createElement('td');
+        tdA.style.cssText = 'border:1px solid #334155; padding:5px 6px; text-align:center; font-weight:600; font-size:0.78rem; color:#6ee7b7;';
+        tdA.textContent = mAly > 0 ? mAly.toLocaleString() : '—';
+        trTot.appendChild(tdA);
+        extraChemicals.forEach(c => {
+            const tdX = document.createElement('td');
+            tdX.style.cssText = 'border:1px solid #334155; padding:5px 6px; text-align:center; font-weight:600; font-size:0.78rem; color:#93c5fd;';
+            tdX.textContent = mExtras[c.name] > 0 ? mExtras[c.name].toLocaleString() : '—';
+            trTot.appendChild(tdX);
+        });
     });
 
-    // Grand totals
     const tdGGly = document.createElement('td');
     tdGGly.style.cssText = 'border:1px solid #334155; padding:5px 8px; text-align:center; font-weight:700; font-size:0.8rem; color:#4ade80; background:#14532d;';
     tdGGly.textContent = grandGly > 0 ? grandGly.toLocaleString() : '—';
-    trTotalLabel.appendChild(tdGGly);
-
+    trTot.appendChild(tdGGly);
     const tdGAly = document.createElement('td');
     tdGAly.style.cssText = 'border:1px solid #334155; padding:5px 8px; text-align:center; font-weight:700; font-size:0.8rem; color:#34d399; background:#064e3b;';
     tdGAly.textContent = grandAly > 0 ? grandAly.toLocaleString() : '—';
-    trTotalLabel.appendChild(tdGAly);
+    trTot.appendChild(tdGAly);
+    extraChemicals.forEach(c => {
+        const tdX = document.createElement('td');
+        tdX.style.cssText = 'border:1px solid #334155; padding:5px 8px; text-align:center; font-weight:700; font-size:0.8rem; color:#60a5fa; background:#1e3a5f;';
+        tdX.textContent = grandExtras[c.name] > 0 ? grandExtras[c.name].toLocaleString() : '—';
+        trTot.appendChild(tdX);
+    });
 
-    // Delete col placeholder
     const tdDelPlaceholder = document.createElement('td');
     tdDelPlaceholder.style.cssText = 'border:1px solid #334155;';
-    trTotalLabel.appendChild(tdDelPlaceholder);
+    trTot.appendChild(tdDelPlaceholder);
 
-    tbody.appendChild(trTotalLabel);
+    tbody.appendChild(trTot);
     table.appendChild(tbody);
     tableWrap.appendChild(table);
     section.appendChild(tableWrap);
@@ -496,7 +502,7 @@ const renderPhaseTable = (wrapper, phase, phaseIdx, yearStr, MONTHS) => {
 // ─────────────────────────────────────────────────────────────────────
 // Grand Total Summary across all phases
 // ─────────────────────────────────────────────────────────────────────
-const renderGrandTotal = (wrapper, data, MONTHS, yearStr) => {
+const renderGrandTotal = (wrapper, data, MONTHS, yearStr, extraChemicals) => {
     if (!data.phases || data.phases.length === 0) return;
 
     const div = document.createElement('div');
@@ -513,58 +519,78 @@ const renderGrandTotal = (wrapper, data, MONTHS, yearStr) => {
     const table = document.createElement('table');
     table.style.cssText = 'width:100%; border-collapse:collapse; font-size:0.82rem; min-width:1200px;';
 
-    // Header
-    let headerHtml = `<thead><tr><th style="background:#334155;color:#94a3b8;padding:6px 10px;border:1px solid #475569;text-align:left;min-width:150px;">Phase</th>`;
+    // Build header
+    const colsPerMonth = 2 + extraChemicals.length;
+    let headerHtml = `<thead><tr>
+        <th style="background:#334155;color:#94a3b8;padding:6px 10px;border:1px solid #475569;text-align:left;min-width:150px;">Phase</th>`;
     MONTHS.forEach(m => {
-        headerHtml += `<th colspan="2" style="background:#334155;color:#94a3b8;padding:6px;border:1px solid #475569;text-align:center;">${m}</th>`;
+        headerHtml += `<th colspan="${colsPerMonth}" style="background:#334155;color:#94a3b8;padding:6px;border:1px solid #475569;text-align:center;">${m}</th>`;
     });
-    headerHtml += `<th colspan="2" style="background:#14532d;color:#bbf7d0;padding:6px;border:1px solid #1a6b3c;text-align:center;">TOTAL</th></tr>`;
+    headerHtml += `<th colspan="${colsPerMonth}" style="background:#14532d;color:#bbf7d0;padding:6px;border:1px solid #1a6b3c;text-align:center;">TOTAL</th></tr>`;
+
     headerHtml += `<tr><th style="background:#1e293b;color:#64748b;padding:4px 10px;border:1px solid #334155;font-size:0.7rem;"></th>`;
     MONTHS.forEach(() => {
         headerHtml += `<th style="background:#1e293b;color:#64748b;padding:4px;border:1px solid #334155;font-size:0.7rem;text-align:center;">GLY</th>`;
         headerHtml += `<th style="background:#1e293b;color:#64748b;padding:4px;border:1px solid #334155;font-size:0.7rem;text-align:center;">ALY</th>`;
+        extraChemicals.forEach(c => {
+            headerHtml += `<th style="background:#1e3a5f;color:#93c5fd;padding:4px;border:1px solid #2d4f7c;font-size:0.7rem;text-align:center;">${c.name}</th>`;
+        });
     });
     headerHtml += `<th style="background:#0f3820;color:#6ee7b7;padding:4px;border:1px solid #14532d;font-size:0.7rem;text-align:center;">GLY</th>`;
     headerHtml += `<th style="background:#0f3820;color:#34d399;padding:4px;border:1px solid #14532d;font-size:0.7rem;text-align:center;">ALY</th>`;
+    extraChemicals.forEach(c => {
+        headerHtml += `<th style="background:#1e3a5f;color:#93c5fd;padding:4px;border:1px solid #2d4f7c;font-size:0.7rem;text-align:center;">${c.name}</th>`;
+    });
     headerHtml += `</tr></thead>`;
-
     table.innerHTML = headerHtml;
 
     const tbody = document.createElement('tbody');
 
-    let grandTotalGly = 0;
-    let grandTotalAly = 0;
+    let grandTotalGly = 0, grandTotalAly = 0;
+    const grandTotalExtras = {};
+    extraChemicals.forEach(c => { grandTotalExtras[c.name] = 0; });
     const grandByMonth = {};
-    MONTHS.forEach(m => { grandByMonth[m] = { gly: 0, aly: 0 }; });
+    MONTHS.forEach(m => {
+        grandByMonth[m] = { gly: 0, aly: 0, extras: {} };
+        extraChemicals.forEach(c => { grandByMonth[m].extras[c.name] = 0; });
+    });
 
     data.phases.forEach(phase => {
         const tr = document.createElement('tr');
-        let phaseGly = 0;
-        let phaseAly = 0;
+        let phaseGly = 0, phaseAly = 0;
+        const phaseExtras = {};
+        extraChemicals.forEach(c => { phaseExtras[c.name] = 0; });
 
         let rowHtml = `<td style="border:1px solid var(--border-color);padding:5px 10px;font-weight:600;color:var(--accent);">${phase.phaseName}</td>`;
 
         MONTHS.forEach(m => {
-            let mGly = 0;
-            let mAly = 0;
+            let mGly = 0, mAly = 0;
+            const mExtras = {};
+            extraChemicals.forEach(c => { mExtras[c.name] = 0; });
             phase.blocks.forEach(b => {
                 mGly += parseFloat(b.months?.[m]?.litresGly) || 0;
                 mAly += parseFloat(b.months?.[m]?.gmAly) || 0;
+                extraChemicals.forEach(c => { mExtras[c.name] += parseFloat(b.months?.[m]?.extras?.[c.name]) || 0; });
             });
-            phaseGly += mGly;
-            phaseAly += mAly;
-            grandByMonth[m].gly += mGly;
-            grandByMonth[m].aly += mAly;
+            phaseGly += mGly; phaseAly += mAly;
+            grandByMonth[m].gly += mGly; grandByMonth[m].aly += mAly;
+            extraChemicals.forEach(c => { phaseExtras[c.name] += mExtras[c.name]; grandByMonth[m].extras[c.name] += mExtras[c.name]; });
 
             rowHtml += `<td style="border:1px solid var(--border-color);padding:5px 6px;text-align:center;background:#fefce8;color:#854d0e;">${mGly > 0 ? mGly.toLocaleString() : '—'}</td>`;
             rowHtml += `<td style="border:1px solid var(--border-color);padding:5px 6px;text-align:center;background:#fef9c3;color:#713f12;">${mAly > 0 ? mAly.toLocaleString() : '—'}</td>`;
+            extraChemicals.forEach(c => {
+                rowHtml += `<td style="border:1px solid var(--border-color);padding:5px 6px;text-align:center;background:#eff6ff;color:#1d4ed8;">${mExtras[c.name] > 0 ? mExtras[c.name].toLocaleString() : '—'}</td>`;
+            });
         });
 
-        grandTotalGly += phaseGly;
-        grandTotalAly += phaseAly;
+        grandTotalGly += phaseGly; grandTotalAly += phaseAly;
+        extraChemicals.forEach(c => { grandTotalExtras[c.name] += phaseExtras[c.name]; });
 
         rowHtml += `<td style="border:1px solid var(--border-color);padding:5px 8px;text-align:center;background:#dcfce7;font-weight:700;color:#166534;">${phaseGly > 0 ? phaseGly.toLocaleString() : '—'}</td>`;
         rowHtml += `<td style="border:1px solid var(--border-color);padding:5px 8px;text-align:center;background:#bbf7d0;font-weight:700;color:#14532d;">${phaseAly > 0 ? phaseAly.toLocaleString() : '—'}</td>`;
+        extraChemicals.forEach(c => {
+            rowHtml += `<td style="border:1px solid var(--border-color);padding:5px 8px;text-align:center;background:#dbeafe;font-weight:700;color:#1d4ed8;">${phaseExtras[c.name] > 0 ? phaseExtras[c.name].toLocaleString() : '—'}</td>`;
+        });
 
         tr.innerHTML = rowHtml;
         tbody.appendChild(tr);
@@ -572,14 +598,19 @@ const renderGrandTotal = (wrapper, data, MONTHS, yearStr) => {
 
     // Grand total row
     const trGrand = document.createElement('tr');
-    trGrand.style.fontWeight = '700';
     let grandRowHtml = `<td style="border:1px solid #334155;padding:7px 10px;background:#1e293b;color:#f8fafc;font-weight:700;">GRAND TOTAL</td>`;
     MONTHS.forEach(m => {
         grandRowHtml += `<td style="border:1px solid #334155;padding:6px;text-align:center;background:#292524;color:#fde68a;font-weight:700;">${grandByMonth[m].gly > 0 ? grandByMonth[m].gly.toLocaleString() : '—'}</td>`;
         grandRowHtml += `<td style="border:1px solid #334155;padding:6px;text-align:center;background:#1c1917;color:#fcd34d;font-weight:700;">${grandByMonth[m].aly > 0 ? grandByMonth[m].aly.toLocaleString() : '—'}</td>`;
+        extraChemicals.forEach(c => {
+            grandRowHtml += `<td style="border:1px solid #334155;padding:6px;text-align:center;background:#1e3a5f;color:#93c5fd;font-weight:700;">${grandByMonth[m].extras[c.name] > 0 ? grandByMonth[m].extras[c.name].toLocaleString() : '—'}</td>`;
+        });
     });
     grandRowHtml += `<td style="border:1px solid #0f3820;padding:6px 10px;text-align:center;background:#0f3820;color:#4ade80;font-weight:700;font-size:0.9rem;">${grandTotalGly > 0 ? grandTotalGly.toLocaleString() : '—'}</td>`;
     grandRowHtml += `<td style="border:1px solid #0f3820;padding:6px 10px;text-align:center;background:#052e16;color:#34d399;font-weight:700;font-size:0.9rem;">${grandTotalAly > 0 ? grandTotalAly.toLocaleString() : '—'}</td>`;
+    extraChemicals.forEach(c => {
+        grandRowHtml += `<td style="border:1px solid #1e3a5f;padding:6px 10px;text-align:center;background:#1e3a5f;color:#60a5fa;font-weight:700;font-size:0.9rem;">${grandTotalExtras[c.name] > 0 ? grandTotalExtras[c.name].toLocaleString() : '—'}</td>`;
+    });
     trGrand.innerHTML = grandRowHtml;
     tbody.appendChild(trGrand);
 
@@ -755,7 +786,7 @@ const addNewBlock = (yearStr, phaseIdx) => {
         plantYear: '',
         haPrevious: 0,
         haPresent: 0,
-        months: Object.fromEntries(MONTHS.map(m => [m, { roundGly: '', roundAly: '', litresGly: '', gmAly: '', haGly: '', haAly: '' }]))
+        months: Object.fromEntries(MONTHS.map(m => [m, { roundGly: '', roundAly: '', litresGly: '', gmAly: '', haGly: '', haAly: '', extras: {} }]))
     });
 
     renderSprayingReport();

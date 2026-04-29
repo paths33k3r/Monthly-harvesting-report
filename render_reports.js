@@ -509,6 +509,44 @@
         }
     }
 
+    // Build a simple worksheet XML for extra chemicals (inline strings + numbers)
+    function buildExtraChemSheetXml(year, activeMonths, extraChemicals) {
+        const sprayData = window.state.spraying && window.state.spraying[year];
+
+        function cl(n) { let s=''; while(n>0){n--;s=String.fromCharCode(65+n%26)+s;n=Math.floor(n/26);}return s; }
+        function esc(v) { return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+        function sCell(c,r,v){ return `<c r="${cl(c)}${r}" t="inlineStr"><is><t>${esc(v)}</t></is></c>`; }
+        function nCell(c,r,v){ const n=parseFloat(v); return isNaN(n)||n===0 ? `<c r="${cl(c)}${r}"/>` : `<c r="${cl(c)}${r}"><v>${n}</v></c>`; }
+
+        const rows = [];
+        // Header row
+        let hRow = `<row r="1">${sCell(1,1,'Phase')}${sCell(2,1,'Block')}${sCell(3,1,'Month')}`;
+        extraChemicals.forEach((c,i) => { hRow += sCell(4+i, 1, `${c.name} (${c.uom})`); });
+        hRow += `</row>`;
+        rows.push(hRow);
+
+        let rIdx = 2;
+        if (sprayData) {
+            (sprayData.phases || []).forEach(ph => {
+                (ph.blocks || []).forEach(blk => {
+                    activeMonths.forEach(m => {
+                        const extras = blk.months?.[m]?.extras || {};
+                        if (!extraChemicals.some(c => extras[c.name] !== undefined && extras[c.name] !== '')) return;
+                        let dRow = `<row r="${rIdx}">${sCell(1,rIdx,ph.phaseName)}${sCell(2,rIdx,blk.blockNo)}${sCell(3,rIdx,m)}`;
+                        extraChemicals.forEach((c,i) => { dRow += nCell(4+i, rIdx, extras[c.name] ?? ''); });
+                        dRow += `</row>`;
+                        rows.push(dRow);
+                        rIdx++;
+                    });
+                });
+            });
+        }
+
+        return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+            + `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`
+            + `<sheetData>${rows.join('')}</sheetData></worksheet>`;
+    }
+
     window.downloadSprayingReport = async (year, month) => {
         setStatus('rep-spray-status', 'Generating…');
         try {
@@ -791,6 +829,22 @@
             ctXml = ctXml.replace(/<Override\b[^>]*PartName="\/xl\/worksheets\/sheet\d+\.xml"[^>]*\/>/g, m =>
                 m.includes(sheet4File) ? m : '');
             zip.file('[Content_Types].xml', ctXml);
+
+            // Append Custom Chemicals sheet if this year has any
+            const extraChemicals = (window.state.spraying[year] || {}).extraChemicals || [];
+            if (extraChemicals.length > 0) {
+                const chemXml = buildExtraChemSheetXml(year, activeFull, extraChemicals);
+                zip.file('xl/worksheets/sheetChem.xml', chemXml);
+                const updRels = relsXml.replace('</Relationships>',
+                    '<Relationship Id="rId99" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheetChem.xml"/></Relationships>');
+                zip.file('xl/_rels/workbook.xml.rels', updRels);
+                const updWb = wbXml.replace('</sheets>',
+                    '<sheet name="Custom Chemicals" sheetId="99" r:id="rId99"/></sheets>');
+                zip.file('xl/workbook.xml', updWb);
+                const updCt = ctXml.replace('</Types>',
+                    '<Override PartName="/xl/worksheets/sheetChem.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>');
+                zip.file('[Content_Types].xml', updCt);
+            }
 
             const finalBuf = await zip.generateAsync({ type: 'arraybuffer' });
             console.log('[Spraying v14] final buffer size:', finalBuf.byteLength);
