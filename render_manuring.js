@@ -303,6 +303,8 @@
     if (yearSel) {
       yearSel.onchange = () => window._manuringSetYear(yearSel.value);
     }
+
+    if (typeof window._applyReadOnly === 'function') window._applyReadOnly(wrapper, 'maintenance');
   }
 
   // Edit state

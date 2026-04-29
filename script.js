@@ -245,6 +245,59 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
+        // ── Edit-permission helpers ─────────────────────────────────────
+        window._canEdit = (menuKey) => {
+            if (!currentUserRole) return false;
+            if (currentUserRole.role === 'admin') return true;
+            const em = currentUserRole.editableMenus;
+            if (em === 'all') return true;
+            if (Array.isArray(em)) return em.includes(menuKey);
+            return false;
+        };
+
+        window._applyReadOnly = (wrapper, menuKey) => {
+            if (!wrapper) return;
+            if (!currentUserRole || currentUserRole.role === 'admin') return;
+            if (window._canEdit(menuKey)) return;
+
+            // View-only banner (insert once)
+            if (!wrapper.querySelector('.view-only-banner')) {
+                const banner = document.createElement('div');
+                banner.className = 'view-only-banner';
+                banner.style.cssText = 'background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:0.5rem 1rem;margin-bottom:1rem;font-size:0.85rem;color:#92400e;display:flex;align-items:center;gap:0.5rem;';
+                banner.innerHTML = '👁 <strong>View Only</strong> — You have read-only access to this section. Contact an admin to make changes.';
+                wrapper.insertBefore(banner, wrapper.firstChild);
+            }
+
+            // Disable action buttons (allow download/template/export)
+            const ALLOW = /download|template|export|⬇|📊/i;
+            const BLOCK = /save|delete|add|clear|remove|import|edit|create|💾|🗑|➕|📤|✕|⚗/i;
+            wrapper.querySelectorAll('button').forEach(btn => {
+                if (btn.disabled) return;
+                const text = btn.textContent.trim();
+                if (ALLOW.test(text)) return;
+                if (BLOCK.test(text)) {
+                    btn.disabled = true;
+                    btn.style.opacity = '0.4';
+                    btn.style.cursor = 'not-allowed';
+                    btn.title = 'View only — contact admin to make changes';
+                }
+            });
+
+            // Make text/number inputs read-only
+            wrapper.querySelectorAll('input[type="text"], input[type="number"], textarea').forEach(el => {
+                el.readOnly = true;
+                el.style.background = 'var(--bg-main, #f5f5f5)';
+                el.style.cursor = 'not-allowed';
+            });
+
+            // Block inline onclick handlers (e.g. manuring cell edits)
+            wrapper.querySelectorAll('[onclick]').forEach(el => {
+                el.removeAttribute('onclick');
+                el.style.cursor = 'default';
+            });
+        };
+
         const checkFirstLogin = () => {
             if (currentUserRole && currentUserRole.firstLogin) {
                 const overlay = document.getElementById('first-login-overlay');
@@ -786,9 +839,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     <label style="font-size:0.85rem; color:var(--text-secondary); display:block; margin-bottom:6px;">Allowed Menus (for Normal User role):</label>
                     <div style="display:flex; flex-wrap:wrap; gap:8px;">
                         ${allMenuOptions.map(m => `
-                            <label style="display:flex;align-items:center;gap:5px;font-size:0.85rem;cursor:pointer;padding:4px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-secondary);">
-                                <input type="checkbox" class="new-user-menu-cb" value="${m.key}" checked /> ${m.label}
-                            </label>`).join('')}
+                            <div class="menu-perm-card" style="padding:6px 10px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-secondary);min-width:160px;">
+                                <label style="display:flex;align-items:center;gap:5px;font-size:0.85rem;cursor:pointer;">
+                                    <input type="checkbox" class="new-user-menu-cb" value="${m.key}" checked /> ${m.label}
+                                </label>
+                                <label style="display:flex;align-items:center;gap:5px;font-size:0.76rem;cursor:pointer;color:#2563eb;margin-top:4px;padding-left:2px;">
+                                    <input type="checkbox" class="new-user-edit-cb" value="${m.key}" /> ✏ Can Edit
+                                </label>
+                            </div>`).join('')}
                     </div>
                 </div>
                 <p id="create-user-msg" style="margin-top:0.75rem; min-height:1.2rem; font-size:0.9rem;"></p>
@@ -874,6 +932,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
             });
 
+            // Sync menu ↔ Can Edit checkboxes in Create User form
+            wrapper.querySelectorAll('.new-user-menu-cb').forEach(menuCb => {
+                const editCb = wrapper.querySelector(`.new-user-edit-cb[value="${menuCb.value}"]`);
+                const syncEdit = () => {
+                    if (editCb) { editCb.disabled = !menuCb.checked; if (!menuCb.checked) editCb.checked = false; }
+                };
+                syncEdit();
+                menuCb.addEventListener('change', syncEdit);
+            });
+
             // Create User
             document.getElementById('btn-create-user').onclick = () => createNewUser(allMenuOptions);
         };
@@ -899,10 +967,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     <label style="font-size:0.85rem;color:var(--text-secondary);display:block;margin-bottom:6px;">Allowed Menus:</label>
                     <div style="display:flex;flex-wrap:wrap;gap:8px;">
                         ${allMenuOptions.map(m => {
-                const checked = userData.role === 'admin' || userData.allowedMenus === 'all' || (Array.isArray(userData.allowedMenus) && userData.allowedMenus.includes(m.key));
-                return `<label style="display:flex;align-items:center;gap:5px;font-size:0.85rem;cursor:pointer;padding:4px 8px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-secondary);">
-                                <input type="checkbox" class="edit-menu-cb" value="${m.key}" ${checked ? 'checked' : ''} /> ${m.label}
-                            </label>`;
+                const checked  = userData.role === 'admin' || userData.allowedMenus === 'all' || (Array.isArray(userData.allowedMenus) && userData.allowedMenus.includes(m.key));
+                const editable = userData.role === 'admin' || userData.editableMenus === 'all' || (Array.isArray(userData.editableMenus) && userData.editableMenus.includes(m.key));
+                return `<div class="menu-perm-card" style="padding:6px 10px;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-secondary);min-width:160px;">
+                                <label style="display:flex;align-items:center;gap:5px;font-size:0.85rem;cursor:pointer;">
+                                    <input type="checkbox" class="edit-menu-cb" value="${m.key}" ${checked ? 'checked' : ''} /> ${m.label}
+                                </label>
+                                <label style="display:flex;align-items:center;gap:5px;font-size:0.76rem;cursor:pointer;color:#2563eb;margin-top:4px;padding-left:2px;">
+                                    <input type="checkbox" class="edit-edit-cb" value="${m.key}" ${editable ? 'checked' : ''} ${!checked ? 'disabled' : ''} /> ✏ Can Edit
+                                </label>
+                            </div>`;
             }).join('')}
                     </div>
                 </div>
@@ -920,13 +994,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 menuSection.style.opacity = roleSelect.value === 'admin' ? '0.4' : '1';
                 menuSection.style.pointerEvents = roleSelect.value === 'admin' ? 'none' : '';
             };
+
+            // Sync menu ↔ Can Edit checkboxes in Edit modal
+            overlay.querySelectorAll('.edit-menu-cb').forEach(menuCb => {
+                const editCb = overlay.querySelector(`.edit-edit-cb[value="${menuCb.value}"]`);
+                const syncEdit = () => {
+                    if (editCb) { editCb.disabled = !menuCb.checked; if (!menuCb.checked) editCb.checked = false; }
+                };
+                syncEdit();
+                menuCb.addEventListener('change', syncEdit);
+            });
+
             document.getElementById('edit-user-cancel').onclick = () => overlay.remove();
             document.getElementById('edit-user-save').onclick = async () => {
                 const newRole = roleSelect.value;
-                const checkedMenus = [...overlay.querySelectorAll('.edit-menu-cb:checked')].map(cb => cb.value);
-                const allowedMenus = newRole === 'admin' ? 'all' : checkedMenus;
+                const checkedMenus  = [...overlay.querySelectorAll('.edit-menu-cb:checked')].map(cb => cb.value);
+                const editableMenus = [...overlay.querySelectorAll('.edit-edit-cb:checked')].map(cb => cb.value);
+                const allowedMenus  = newRole === 'admin' ? 'all' : checkedMenus;
+                const editPerms     = newRole === 'admin' ? 'all' : editableMenus;
                 try {
-                    await db.ref('user_roles/' + uid).update({ role: newRole, allowedMenus });
+                    await db.ref('user_roles/' + uid).update({ role: newRole, allowedMenus, editableMenus: editPerms });
                     overlay.remove();
                     if (onSaved) onSaved();
                 } catch (e) {
@@ -940,6 +1027,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const roleVal = document.getElementById('new-user-role').value;
             const msgEl = document.getElementById('create-user-msg');
             const checkedMenus = [...document.querySelectorAll('.new-user-menu-cb:checked')].map(cb => cb.value);
+            const checkedEditMenus = [...document.querySelectorAll('.new-user-edit-cb:checked')].map(cb => cb.value);
 
             if (!emailVal) { msgEl.style.color = 'var(--danger)'; msgEl.textContent = 'Please enter an email address.'; return; }
             msgEl.style.color = 'var(--text-secondary)'; msgEl.textContent = 'Creating user...';
@@ -958,10 +1046,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 .then(async (cred) => {
                     const newUid = cred.user.uid;
                     const allowedMenus = roleVal === 'admin' ? 'all' : checkedMenus;
+                    const editableMenus = roleVal === 'admin' ? 'all' : checkedEditMenus;
                     await db.ref('user_roles/' + newUid).set({
                         email: emailVal,
                         role: roleVal,
                         allowedMenus,
+                        editableMenus,
                         firstLogin: true,
                         createdAt: Date.now()
                     });
@@ -2160,6 +2250,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 intervalWrapper.classList.add('hidden');
                 perfWrapper.classList.remove('hidden');
                 renderPerformanceTable();
+                window._applyReadOnly(perfWrapper, 'performance');
             } else if (isIntervalView) {
                 mainReportWrapper.classList.add('hidden');
                 perfWrapper.classList.add('hidden');
@@ -2167,6 +2258,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (typeof renderIntervalTable === 'function') {
                     renderIntervalTable();
                 }
+                window._applyReadOnly(intervalWrapper, 'performance');
             } else if (isFfbBudgetView) {
                 mainReportWrapper.classList.add('hidden');
                 perfWrapper.classList.add('hidden');
@@ -2174,6 +2266,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (ffbWrapper) {
                     ffbWrapper.classList.remove('hidden');
                     renderFfbBudgetTable();
+                    window._applyReadOnly(ffbWrapper, 'ffbBudget');
                 }
                 tableContainer.classList.add('hidden');
             } else if (isRainfallView) {
@@ -2186,6 +2279,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (typeof renderRainfallTable === 'function') {
                         renderRainfallTable();
                     }
+                    window._applyReadOnly(rainfallWrapper, 'rainfall');
                 }
             } else if (isYtdView) {
                 mainReportWrapper.classList.add('hidden');
@@ -2197,6 +2291,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (typeof renderYtdReport === 'function') {
                         renderYtdReport();
                     }
+                    window._applyReadOnly(ytdWrapper, 'performance');
                 }
             } else if (isCurrentPrevView) {
                 mainReportWrapper.classList.add('hidden');
@@ -2208,6 +2303,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (typeof renderCurrentPrevReport === 'function') {
                         renderCurrentPrevReport();
                     }
+                    window._applyReadOnly(currentPrevWrapper, 'performance');
                 }
             } else if (state.activeViewType === 'spraying') {
                 mainReportWrapper.classList.add('hidden');
@@ -2218,6 +2314,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (sw) {
                     sw.classList.remove('hidden');
                     if (typeof renderSprayingReport === 'function') renderSprayingReport();
+                    window._applyReadOnly(sw, 'maintenance');
                 }
             } else if (state.activeViewType === 'manuring') {
                 mainReportWrapper.classList.add('hidden');
@@ -2228,6 +2325,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (mw) {
                     mw.classList.remove('hidden');
                     if (typeof window.renderManuringReport === 'function') window.renderManuringReport();
+                    window._applyReadOnly(mw, 'maintenance');
                 }
             } else if (state.activeViewType === 'maintenance_coming_soon') {
                 mainReportWrapper.classList.add('hidden');

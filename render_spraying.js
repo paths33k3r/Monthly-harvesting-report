@@ -618,6 +618,8 @@ const renderGrandTotal = (wrapper, data, MONTHS, yearStr, extraChemicals) => {
     tableWrap.appendChild(table);
     div.appendChild(tableWrap);
     wrapper.appendChild(div);
+
+    if (typeof window._applyReadOnly === 'function') window._applyReadOnly(wrapper, 'maintenance');
 };
 
 // ─────────────────────────────────────────────────────────────────────
