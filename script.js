@@ -422,12 +422,38 @@ document.addEventListener('DOMContentLoaded', () => {
         const loadBackupSettings = () => {
             try {
                 const saved = localStorage.getItem(BACKUP_SETTINGS_KEY);
-                return saved ? { ...BACKUP_DEFAULTS, ...JSON.parse(saved) } : { ...BACKUP_DEFAULTS };
+                const parsed = saved ? JSON.parse(saved) : {};
+                return { ...BACKUP_DEFAULTS, ...parsed };
             } catch { return { ...BACKUP_DEFAULTS }; }
         };
 
+        // Save to both localStorage (for sync access) and Firebase (so all devices share settings)
         const saveBackupSettings = (s) => {
             localStorage.setItem(BACKUP_SETTINGS_KEY, JSON.stringify(s));
+            try {
+                if (window._backupSettingsDb) {
+                    window._backupSettingsDb.ref('shared/backup_settings').set(JSON.stringify(s));
+                }
+            } catch (e) { console.warn('Could not save backup settings to Firebase:', e.message); }
+        };
+
+        // Sync backup settings from Firebase into localStorage so this device uses the shared config
+        const syncBackupSettingsFromFirebase = async (dbRef) => {
+            try {
+                const snap = await dbRef.ref('shared/backup_settings').once('value');
+                const val = snap.val();
+                if (val) {
+                    const remote = JSON.parse(val);
+                    const local  = loadBackupSettings();
+                    // Merge: prefer remote for policy fields; keep local lastBackupTime if more recent
+                    const merged = { ...BACKUP_DEFAULTS, ...remote };
+                    if (local.lastBackupTime && remote.lastBackupTime &&
+                        new Date(local.lastBackupTime) > new Date(remote.lastBackupTime)) {
+                        merged.lastBackupTime = local.lastBackupTime;
+                    }
+                    localStorage.setItem(BACKUP_SETTINGS_KEY, JSON.stringify(merged));
+                }
+            } catch (e) { console.warn('Could not sync backup settings from Firebase:', e.message); }
         };
 
         const showToast = (msg) => {
@@ -4201,6 +4227,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.warn("Could not load manuring data:", e.message);
                     if (!state.manuring) state.manuring = {};
                 }
+
+                // Sync backup settings from Firebase so all devices share the same policy
+                window._backupSettingsDb = db;
+                await syncBackupSettingsFromFirebase(db);
 
             } catch (error) {
                 console.error(error);
