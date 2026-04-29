@@ -479,8 +479,14 @@
     cell.alignment = { horizontal:align, vertical:'middle', wrapText:false };
   }
 
-  function buildPhaseSheet(ws, phaseName, phaseData, year) {
+  function buildPhaseSheet(ws, phaseName, phaseData, year, upToMonth) {
     const blocks = (phaseData && phaseData.blocks) ? phaseData.blocks : [];
+    const MONTH_ORDER = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const cutMoIdx = upToMonth ? MONTH_ORDER.indexOf(upToMonth) : 11;
+    const allowedMonths = new Set(Object.keys(XL_MONTH_COL).filter(m => {
+      const base = m === 'Aug2' ? 'Aug' : m;
+      return MONTH_ORDER.indexOf(base) <= cutMoIdx;
+    }));
     const phaseYear = phaseName.replace('PHASE ','');
 
     // Column widths
@@ -564,7 +570,8 @@
       const r0 = rowIdx;
 
       let totBags = 0, totMt = 0, totRounds = 0;
-      for (const v of Object.values(apps)) {
+      for (const [k, v] of Object.entries(apps)) {
+        if (!allowedMonths.has(k)) continue;
         totBags   += v.bags  || 0;
         totMt     += v.mt    || 0;
         totRounds += v.round || 0;
@@ -629,6 +636,7 @@
       }
 
       for (const [month, colNum] of Object.entries(XL_MONTH_COL)) {
+        if (!allowedMonths.has(month)) continue;
         const app = apps[month];
         if (!app || !app.bags) continue;
 
@@ -677,7 +685,13 @@
     }
   }
 
-  function buildSummarySheet(ws, allYearData, year) {
+  function buildSummarySheet(ws, allYearData, year, upToMonth) {
+    const MONTH_ORDER = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const cutMoIdx = upToMonth ? MONTH_ORDER.indexOf(upToMonth) : 11;
+    const allowedMonths = new Set(Object.keys(XL_MONTH_COL).filter(m => {
+      const base = m === 'Aug2' ? 'Aug' : m;
+      return MONTH_ORDER.indexOf(base) <= cutMoIdx;
+    }));
     ws.getColumn(1).width = 12;
     ws.getColumn(2).width = 30;
     for (let c = 3; c <= 7; c++) ws.getColumn(c).width = 14;
@@ -706,7 +720,7 @@
       let phBags = 0, phMt = 0, phHa = 0;
       for (const b of blocks) {
         phHa += b.ha || 0;
-        for (const v of Object.values(b.apps || {})) { phBags += v.bags||0; phMt += v.mt||0; }
+        for (const [k, v] of Object.entries(b.apps || {})) { if (!allowedMonths.has(k)) continue; phBags += v.bags||0; phMt += v.mt||0; }
       }
       phMt = Math.round(phMt*1000)/1000;
       phHa = Math.round(phHa*100)/100;
@@ -744,7 +758,7 @@
     ws.getCell(row,1).alignment.horizontal = 'left';
   }
 
-  window._downloadManuringExcel = async function(overrideYear) {
+  window._downloadManuringExcel = async function(overrideYear, overrideMonth) {
     const btn = document.getElementById('manuring-dl-btn');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating...'; }
     try {
@@ -762,12 +776,12 @@
 
       // Summary sheet first
       const summaryWs = WB.addWorksheet('Summary');
-      buildSummarySheet(summaryWs, yearData, year);
+      buildSummarySheet(summaryWs, yearData, year, overrideMonth);
 
       // Phase sheets
       for (const phaseName of PHASE_NAMES) {
         const ws = WB.addWorksheet(phaseName);
-        buildPhaseSheet(ws, phaseName, yearData[phaseName] || { blocks:[] }, year);
+        buildPhaseSheet(ws, phaseName, yearData[phaseName] || { blocks:[] }, year, overrideMonth);
       }
 
       const buf = await WB.xlsx.writeBuffer();

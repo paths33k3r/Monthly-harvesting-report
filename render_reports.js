@@ -509,7 +509,7 @@
         }
     }
 
-    window.downloadSprayingReport = async (year) => {
+    window.downloadSprayingReport = async (year, month) => {
         setStatus('rep-spray-status', 'Generating…');
         try {
             await ensureJSZip();
@@ -536,6 +536,12 @@
                 setStatus('rep-spray-status', `❌ No spraying data for ${year}. Enter data in the Spraying section first.`, true);
                 return;
             }
+
+            // Filter months up to and including the selected month
+            const cutIdx     = month ? MONTHS_UP.indexOf(month.toUpperCase()) : 11;
+            const activeJJ   = JJ_MONTHS.filter(m => MONTHS_UP.indexOf(m) <= cutIdx);
+            const activeJD   = JD_MONTHS.filter(m => MONTHS_UP.indexOf(m) <= cutIdx);
+            const activeFull = MONTHS_UP.filter((_, i) => i <= cutIdx);
 
             // Convert 1-indexed column number → letter(s)
             function colLetter(n) {
@@ -585,19 +591,22 @@
             }
 
             // Mirror of fillHalf but writing directly to XML
-            function fillHalfXml(section, colMap, halfMonths) {
+            // clearMonths = full half (JAN-JUN or JUL-DEC) — always cleared to remove template data
+            // activeMonths = filtered subset — only these months get data written
+            function fillHalfXml(section, colMap, clearMonths, activeMonths, allActive) {
                 const tGly={}, tAly={}, tHGly={}, tHAly={};
-                halfMonths.forEach(m => { tGly[m]=0; tAly[m]=0; tHGly[m]=0; tHAly[m]=0; });
+                clearMonths.forEach(m => { tGly[m]=0; tAly[m]=0; tHGly[m]=0; tHAly[m]=0; });
                 let grandGly=0, grandAly=0, grandHGly=0, grandHAly=0;
                 let totalHaPrev=0, totalHaPresent=0;
-                const isJulDec = halfMonths[0] === 'JUL';
+                const isJulDec = clearMonths[0] === 'JUL';
 
                 section.blocks.forEach((blockId, bIdx) => {
                     const base = section.start + bIdx * 3;
                     const rRow = base, nRow = base + 1, hRow = base + 2;
                     const blk  = getSprayBlk(year, blockId);
 
-                    halfMonths.forEach(m => {
+                    // Always clear all cells for this half so template data is wiped
+                    clearMonths.forEach(m => {
                         const g = colMap[m];
                         setNum(rRow, g, null); setNum(rRow, g+1, null);
                         setNum(nRow, g, null); setNum(nRow, g+1, null);
@@ -617,7 +626,8 @@
                     totalHaPrev    += haPrev;
                     totalHaPresent += haPresent;
 
-                    halfMonths.forEach(m => {
+                    // Only write data for months up to the selected month
+                    activeMonths.forEach(m => {
                         const md = (blk.months || {})[m] || {};
                         const g  = colMap[m];
                         const rG = (md.roundGly !== undefined && md.roundGly !== '') ? (parseFloat(md.roundGly) || md.roundGly) : null;
@@ -640,23 +650,24 @@
 
                     if (isJulDec) {
                         let bGly=0, bAly=0, bHGly=0, bHAly=0;
-                        MONTHS_UP.forEach(m => {
+                        allActive.forEach(m => {
                             const md = (blk.months || {})[m] || {};
                             bGly  += parseFloat(md.litresGly) || 0;
                             bAly  += parseFloat(md.gmAly)     || 0;
                             bHGly += parseFloat(md.haGly)     || 0;
                             bHAly += parseFloat(md.haAly)     || 0;
                         });
-                        setNum(nRow, TOTAL_GLY_COL, bGly  || null);
-                        setNum(nRow, TOTAL_ALY_COL, bAly  || null);
-                        setNum(hRow, TOTAL_GLY_COL, bHGly || null);
-                        setNum(hRow, TOTAL_ALY_COL, bHAly || null);
+                        setNum(nRow, TOTAL_GLY_COL, bGly);
+                        setNum(nRow, TOTAL_ALY_COL, bAly);
+                        setNum(hRow, TOTAL_GLY_COL, bHGly);
+                        setNum(hRow, TOTAL_ALY_COL, bHAly);
                         grandGly += bGly; grandAly += bAly;
                         grandHGly += bHGly; grandHAly += bHAly;
                     }
                 });
 
-                halfMonths.forEach(m => {
+                // Write section totals for all clearMonths — inactive months write 0, clearing template values
+                clearMonths.forEach(m => {
                     const g = colMap[m];
                     setNum(section.nlg, g,   tGly[m]  || 0);
                     setNum(section.nlg, g+1, tAly[m]  || 0);
@@ -678,8 +689,8 @@
             // patch setNum to count writes
             const _patchedSetNum = setNum;
             SPRAY_PHASES.forEach(ph => {
-                fillHalfXml(ph.janjun, JJ_COLS, JJ_MONTHS);
-                fillHalfXml(ph.juldec, JD_COLS, JD_MONTHS);
+                fillHalfXml(ph.janjun, JJ_COLS, JJ_MONTHS, activeJJ, activeFull);
+                fillHalfXml(ph.juldec, JD_COLS, JD_MONTHS, activeJD, activeFull);
             });
             console.log('[Spraying v14] xml length after writes:', xml.length);
 
@@ -699,27 +710,27 @@
             // Rows 292-293 (JAN-JUN overall) and 297-298 (JUL-DEC overall + TOTAL)
             const sumJJ = { gly:{}, aly:{}, hGly:{}, hAly:{} };
             const sumJD = { gly:{}, aly:{}, hGly:{}, hAly:{} };
-            JJ_MONTHS.forEach(m => { sumJJ.gly[m]=0; sumJJ.aly[m]=0; sumJJ.hGly[m]=0; sumJJ.hAly[m]=0; });
-            JD_MONTHS.forEach(m => { sumJD.gly[m]=0; sumJD.aly[m]=0; sumJD.hGly[m]=0; sumJD.hAly[m]=0; });
+            activeJJ.forEach(m => { sumJJ.gly[m]=0; sumJJ.aly[m]=0; sumJJ.hGly[m]=0; sumJJ.hAly[m]=0; });
+            activeJD.forEach(m => { sumJD.gly[m]=0; sumJD.aly[m]=0; sumJD.hGly[m]=0; sumJD.hAly[m]=0; });
             let grandTotGly=0, grandTotAly=0, grandTotHGly=0, grandTotHAly=0;
             if (sprayData) {
                 (sprayData.phases || []).forEach(ph => {
                     (ph.blocks || []).forEach(blk => {
-                        JJ_MONTHS.forEach(m => {
+                        activeJJ.forEach(m => {
                             const md = (blk.months || {})[m] || {};
                             sumJJ.gly[m]  += parseFloat(md.litresGly) || 0;
                             sumJJ.aly[m]  += parseFloat(md.gmAly)     || 0;
                             sumJJ.hGly[m] += parseFloat(md.haGly)     || 0;
                             sumJJ.hAly[m] += parseFloat(md.haAly)     || 0;
                         });
-                        JD_MONTHS.forEach(m => {
+                        activeJD.forEach(m => {
                             const md = (blk.months || {})[m] || {};
                             sumJD.gly[m]  += parseFloat(md.litresGly) || 0;
                             sumJD.aly[m]  += parseFloat(md.gmAly)     || 0;
                             sumJD.hGly[m] += parseFloat(md.haGly)     || 0;
                             sumJD.hAly[m] += parseFloat(md.haAly)     || 0;
                         });
-                        MONTHS_UP.forEach(m => {
+                        activeFull.forEach(m => {
                             const md = (blk.months || {})[m] || {};
                             grandTotGly  += parseFloat(md.litresGly) || 0;
                             grandTotAly  += parseFloat(md.gmAly)     || 0;
@@ -729,6 +740,7 @@
                     });
                 });
             }
+            // Use full month lists here so inactive months write 0, clearing any template values
             JJ_MONTHS.forEach(m => {
                 const g = JJ_COLS[m];
                 setNum(292, g,   sumJJ.gly[m]  || 0);
@@ -826,11 +838,13 @@
 
         const sprayControls = sprayYears.length
             ? `<select id="sel-spray-yr" style="${SS}">${yearOpts(sprayYears)}</select>
+               <select id="sel-spray-mo" style="${SS}">${monthOpts()}</select>
                <button id="btn-dl-spray" class="btn-primary" style="padding:0.4rem 1rem;">⬇ Download Excel</button>
                <span id="rep-spray-status" style="font-size:0.82rem;color:var(--text-secondary);"></span>`
             : noDataMsg;
 
         const manuringControls = `<select id="sel-manuring-yr" style="${SS}">${yearOpts(manuringYears)}</select>
+               <select id="sel-manuring-mo" style="${SS}">${monthOpts()}</select>
                <button id="btn-dl-manuring" class="btn-primary" style="padding:0.4rem 1rem;">⬇ Download Excel</button>
                <span id="rep-manuring-status" style="font-size:0.82rem;color:var(--text-secondary);"></span>`;
 
@@ -906,19 +920,21 @@
         const btnSpray = document.getElementById('btn-dl-spray');
         if (btnSpray) btnSpray.onclick = () => {
             const yr = document.getElementById('sel-spray-yr').value;
-            if (yr) window.downloadSprayingReport(yr);
+            const mo = document.getElementById('sel-spray-mo').value;
+            if (yr && mo) window.downloadSprayingReport(yr, mo);
         };
 
         const btnManuring = document.getElementById('btn-dl-manuring');
         if (btnManuring) btnManuring.onclick = async () => {
             const yr = document.getElementById('sel-manuring-yr').value;
-            if (!yr) return;
+            const mo = document.getElementById('sel-manuring-mo').value;
+            if (!yr || !mo) return;
             const statusEl = document.getElementById('rep-manuring-status');
             if (statusEl) statusEl.textContent = '';
             btnManuring.disabled = true;
             btnManuring.textContent = '⏳ Generating...';
             try {
-                await window._downloadManuringExcel(yr);
+                await window._downloadManuringExcel(yr, mo);
                 if (statusEl) { statusEl.textContent = '✅ Downloaded!'; setTimeout(() => { statusEl.textContent = ''; }, 3000); }
             } catch (e) {
                 if (statusEl) statusEl.textContent = '❌ ' + e.message;
