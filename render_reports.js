@@ -279,10 +279,12 @@
             const BLACK_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } };
             const WHITE_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
 
-            // Template data cells have black fills baked in — override to white for all data rows
-            for (let i = 0; i < 12; i++) {
-                [2, 3, 4, 6, 7, 8, 10, 11, 12].forEach(c => { ws.getCell(6 + i, c).fill = WHITE_FILL; });
-            }
+            // Helper — set value then immediately override fill so template black fills don't win
+            const setCell = (row, col, val, fill) => {
+                const c = ws.getCell(row, col);
+                c.value = val != null && val !== 0 ? val : null;
+                c.fill  = fill;
+            };
 
             // Clear extra template columns (N onwards — values only, leave borders intact)
             for (let r = 1; r <= 50; r++) {
@@ -299,19 +301,21 @@
 
             let prevCum=0, currCum=0;
             let totPrevD=0, totPrevM=0, totCurrD=0, totCurrM=0;
+            // YTD totals for prev year — only months 0..mIdx (for correct DIFF comparison)
+            let totPrevDYtd=0, totPrevMYtd=0, prevCumYtd=0;
 
             for (let i = 0; i < 12; i++) {
                 const row  = 6 + i;
                 const mKey = MONTHS_UP[i];
 
-                // Previous year — all months always shown
+                // Previous year — all 12 months always shown, white fill applied inline
                 const pd    = rfPrev[mKey] || {};
                 const prevD = parseFloat(pd.days) || 0;
                 const prevM = parseFloat(pd.mm)   || 0;
                 prevCum += prevM;
-                ws.getCell(row, 2).value = prevD || null;
-                ws.getCell(row, 3).value = prevM || null;
-                ws.getCell(row, 4).value = prevCum || null;
+                setCell(row, 2, prevD, WHITE_FILL);
+                setCell(row, 3, prevM, WHITE_FILL);
+                setCell(row, 4, prevCum, WHITE_FILL);
                 totPrevD += prevD; totPrevM += prevM;
 
                 if (i <= mIdx) {
@@ -320,14 +324,18 @@
                     const currD = parseFloat(cd.days) || 0;
                     const currM = parseFloat(cd.mm)   || 0;
                     currCum += currM;
-                    ws.getCell(row, 6).value  = currD || null;
-                    ws.getCell(row, 7).value  = currM || null;
-                    ws.getCell(row, 8).value  = currCum || null;
-                    ws.getCell(row, 10).value = (currD - prevD) || null;
-                    ws.getCell(row, 11).value = (currM - prevM) || null;
+                    setCell(row, 6,  currD,          WHITE_FILL);
+                    setCell(row, 7,  currM,          WHITE_FILL);
+                    setCell(row, 8,  currCum,        WHITE_FILL);
+                    setCell(row, 10, currD - prevD,  WHITE_FILL);
+                    setCell(row, 11, currM - prevM,  WHITE_FILL);
+                    setCell(row, 12, currCum - prevCum, WHITE_FILL);
                     totCurrD += currD; totCurrM += currM;
+                    // Track YTD prev totals for correct DIFF in total row
+                    totPrevDYtd += prevD; totPrevMYtd += prevM;
+                    prevCumYtd = prevCum;
                 } else {
-                    // Future months — black fill on all columns with no data
+                    // Future months — black fill, no data
                     [6, 7, 8, 10, 11, 12].forEach(c => {
                         ws.getCell(row, c).value = null;
                         ws.getCell(row, c).fill  = BLACK_FILL;
@@ -336,17 +344,18 @@
             }
 
             // Total row (row 18)
+            // Prev year shows full-year total; curr year shows YTD; DIFF compares YTD-to-YTD
             ws.getCell(18, 2).value  = totPrevD;
             ws.getCell(18, 3).value  = totPrevM;
             ws.getCell(18, 4).value  = prevCum;
             ws.getCell(18, 6).value  = totCurrD;
             ws.getCell(18, 7).value  = totCurrM;
             ws.getCell(18, 8).value  = currCum;
-            ws.getCell(18, 10).value = totCurrD - totPrevD;
-            ws.getCell(18, 11).value = totCurrM - totPrevM;
+            ws.getCell(18, 10).value = totCurrD - totPrevDYtd;
+            ws.getCell(18, 11).value = totCurrM - totPrevMYtd;
 
-            // Summary notes (rows 22-27)
-            const diff = Math.round(currCum - prevCum);
+            // Summary notes (rows 22-27) — diff uses YTD of both years through selected month
+            const diff = Math.round(currCum - prevCumYtd);
             ws.getCell('A22').value = `MM TO MONTH ${year} vs ${prevYear}`;
             ws.getCell('A23').value = Math.abs(diff);
             ws.getCell('A24').value = parseInt(prevYear);

@@ -240,6 +240,16 @@
                                         FFB Budget Template
                                     </a>
                                 </li>
+                                <li class="nav-item">
+                                    <a href="#" id="sidebar-download-spray-template" class="nav-link">
+                                        Spraying Maintenance Template
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a href="#" id="sidebar-download-manuring-template" class="nav-link">
+                                        Manuring Template
+                                    </a>
+                                </li>
                             </ul>
                         </li>
                         <li class="nav-item">
@@ -261,6 +271,20 @@
                                         FFB Budget
                                     </a>
                                     <input type="file" id="sidebar-import-ffb-input" accept=".xlsx, .xls"
+                                        style="display: none;" />
+                                </li>
+                                <li class="nav-item">
+                                    <a href="#" id="sidebar-import-spray" class="nav-link">
+                                        Spraying Maintenance
+                                    </a>
+                                    <input type="file" id="sidebar-import-spray-input" accept=".xlsx"
+                                        style="display: none;" />
+                                </li>
+                                <li class="nav-item">
+                                    <a href="#" id="sidebar-import-manuring" class="nav-link">
+                                        Manuring
+                                    </a>
+                                    <input type="file" id="sidebar-import-manuring-input" accept=".xlsx"
                                         style="display: none;" />
                                 </li>
                             </ul>
@@ -446,10 +470,10 @@
     <script src="render_rainfall.js"></script>
     <script src="render_ytd_report.js"></script>
     <script src="render_current_vs_prev.js"></script>
-    <script src="render_spraying.js?v=6"></script>
-    <script src="render_manuring.js?v=7"></script>
-    <script src="render_reports.js?v=20"></script>
-    <script src="script.js?v=24"></script>
+    <script src="render_spraying.js?v=9"></script>
+    <script src="render_manuring.js?v=10"></script>
+    <script src="render_reports.js?v=21"></script>
+    <script src="script.js?v=25"></script>
     <script>
         // Use event delegation for topnav toggle interactions to support dynamically added items
         document.addEventListener('click', (e) => {

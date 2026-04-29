@@ -791,3 +791,154 @@ const addNewBlock = (yearStr, phaseIdx) => {
 
     renderSprayingReport();
 };
+
+// ─────────────────────────────────────────────────────────────────────
+// ExcelJS lazy loader (local copy for spraying template/import)
+// ─────────────────────────────────────────────────────────────────────
+async function ensureExcelJSSpraying() {
+    if (typeof window.ExcelJS !== 'undefined') return;
+    await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+        s.onload = res;
+        s.onerror = () => rej(new Error('Failed to load ExcelJS'));
+        document.head.appendChild(s);
+    });
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Download Spraying data entry template
+// ─────────────────────────────────────────────────────────────────────
+async function downloadSprayingTemplate(yearStr) {
+    try {
+        await ensureExcelJSSpraying();
+        const wb = new window.ExcelJS.Workbook();
+        const ws = wb.addWorksheet('Spraying Data');
+
+        const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+        const HEADERS = ['Year','Phase','Block','Ha Previous','Ha Present','Month',
+                         'Round GLY','Litres GLY','Ha GLY','Round ALY','GM ALY','Ha ALY'];
+
+        ws.columns = [
+            {width:8},{width:12},{width:8},{width:13},{width:13},
+            {width:8},{width:12},{width:12},{width:12},{width:10},{width:10},{width:10}
+        ];
+
+        const hdr = ws.getRow(1);
+        hdr.values = HEADERS;
+        hdr.eachCell(cell => {
+            cell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FF1A3D1E' } };
+            cell.font = { bold:true, color:{ argb:'FFFFFFFF' } };
+            cell.alignment = { horizontal:'center' };
+        });
+        hdr.height = 18;
+
+        const yd = window.state.spraying && window.state.spraying[yearStr];
+        let rowIdx = 2;
+        if (yd && yd.phases) {
+            for (const phase of yd.phases) {
+                for (const block of phase.blocks) {
+                    for (const month of MONTHS) {
+                        const md = (block.months && block.months[month]) || {};
+                        const row = ws.getRow(rowIdx);
+                        row.values = [
+                            yearStr, phase.phaseName, block.blockNo,
+                            block.haPrevious != null ? block.haPrevious : '',
+                            block.haPresent  != null ? block.haPresent  : '',
+                            month,
+                            md.roundGly  !== '' && md.roundGly  != null ? md.roundGly  : '',
+                            md.litresGly !== '' && md.litresGly != null ? md.litresGly : '',
+                            md.haGly     !== '' && md.haGly     != null ? md.haGly     : '',
+                            md.roundAly  !== '' && md.roundAly  != null ? md.roundAly  : '',
+                            md.gmAly     !== '' && md.gmAly     != null ? md.gmAly     : '',
+                            md.haAly     !== '' && md.haAly     != null ? md.haAly     : ''
+                        ];
+                        if (yd.phases.indexOf(phase) % 2 === 1) {
+                            row.eachCell(cell => {
+                                cell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFF0F7F0' } };
+                            });
+                        }
+                        rowIdx++;
+                    }
+                }
+            }
+        }
+
+        ws.autoFilter = { from:'A1', to:'L1' };
+
+        const buf = await wb.xlsx.writeBuffer();
+        const blob = new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Spraying_Template_${yearStr}.xlsx`;
+        a.click();
+        URL.revokeObjectURL(url);
+    } catch (err) {
+        alert('Error generating template: ' + err.message);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Import Spraying data from filled template
+// ─────────────────────────────────────────────────────────────────────
+async function importSprayingFromExcel(file, yearStr) {
+    if (!file) return;
+    try {
+        await ensureExcelJSSpraying();
+        const wb = new window.ExcelJS.Workbook();
+        await wb.xlsx.load(await file.arrayBuffer());
+
+        const ws = wb.getWorksheet('Spraying Data') || wb.worksheets[0];
+        if (!ws) { alert('No worksheet found in file.'); return; }
+
+        const yd = window.state.spraying && window.state.spraying[yearStr];
+        if (!yd) { alert(`No spraying data for year ${yearStr}. Add year first.`); return; }
+
+        let updated = 0, skipped = 0;
+        ws.eachRow((row, rowNum) => {
+            if (rowNum === 1) return;
+            const vals = row.values; // 1-indexed in ExcelJS
+            const phaseName = vals[2] != null ? String(vals[2]).trim() : '';
+            const blockNo   = vals[3] != null ? String(vals[3]).trim() : '';
+            const haPrev    = vals[4];
+            const haPresent = vals[5];
+            const month     = vals[6] != null ? String(vals[6]).trim().toUpperCase() : '';
+            const roundGly  = vals[7];
+            const litresGly = vals[8];
+            const haGly     = vals[9];
+            const roundAly  = vals[10];
+            const gmAly     = vals[11];
+            const haAly     = vals[12];
+
+            if (!phaseName || !blockNo || !month) { skipped++; return; }
+
+            const phase = yd.phases.find(p => p.phaseName === phaseName);
+            if (!phase) { skipped++; return; }
+            const block = phase.blocks.find(b => b.blockNo === blockNo);
+            if (!block) { skipped++; return; }
+
+            if (haPrev    != null && haPrev    !== '') block.haPrevious = parseFloat(haPrev)    || block.haPrevious;
+            if (haPresent != null && haPresent !== '') block.haPresent  = parseFloat(haPresent) || block.haPresent;
+
+            if (!block.months) block.months = {};
+            const existing = block.months[month] || {};
+            block.months[month] = {
+                roundGly:  roundGly  != null && roundGly  !== '' ? roundGly  : existing.roundGly  || '',
+                litresGly: litresGly != null && litresGly !== '' ? litresGly : existing.litresGly || '',
+                roundAly:  roundAly  != null && roundAly  !== '' ? roundAly  : existing.roundAly  || '',
+                gmAly:     gmAly     != null && gmAly     !== '' ? gmAly     : existing.gmAly     || '',
+                haGly:     haGly     != null && haGly     !== '' ? haGly     : existing.haGly     || '',
+                haAly:     haAly     != null && haAly     !== '' ? haAly     : existing.haAly     || '',
+                extras:    existing.extras || {}
+            };
+            updated++;
+        });
+
+        saveSprayingData(false);
+        renderSprayingReport();
+        alert(`Import complete: ${updated} rows updated, ${skipped} skipped.`);
+    } catch (err) {
+        alert('Import error: ' + err.message);
+    }
+}

@@ -3740,6 +3740,77 @@ document.addEventListener('DOMContentLoaded', () => {
                     importFfbInput.onchange = handleImportFfbBudget;
                 }
 
+                // Download Template — Spraying Maintenance
+                const dlSprayTplBtn = document.getElementById('sidebar-download-spray-template');
+                if (dlSprayTplBtn) {
+                    dlSprayTplBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        const year = (window.state && window.state.sprayingYear)
+                            || Object.keys((window.state && window.state.spraying) || {}).sort().reverse()[0]
+                            || String(new Date().getFullYear());
+                        if (typeof downloadSprayingTemplate === 'function') {
+                            downloadSprayingTemplate(year);
+                        } else {
+                            alert('Spraying template function not loaded yet.');
+                        }
+                    });
+                }
+
+                // Download Template — Manuring
+                const dlManuringTplBtn = document.getElementById('sidebar-download-manuring-template');
+                if (dlManuringTplBtn) {
+                    dlManuringTplBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        if (typeof window._manuringDownloadTemplate === 'function') {
+                            window._manuringDownloadTemplate();
+                        } else {
+                            alert('Manuring template function not loaded yet.');
+                        }
+                    });
+                }
+
+                // Import Excel — Spraying Maintenance
+                const importSprayBtn = document.getElementById('sidebar-import-spray');
+                const importSprayInput = document.getElementById('sidebar-import-spray-input');
+                if (importSprayBtn && importSprayInput) {
+                    importSprayBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        importSprayInput.value = '';
+                        importSprayInput.click();
+                    });
+                    importSprayInput.onchange = (e) => {
+                        const file = e.target.files[0];
+                        if (!file) return;
+                        const year = (window.state && window.state.sprayingYear)
+                            || Object.keys((window.state && window.state.spraying) || {}).sort().reverse()[0]
+                            || String(new Date().getFullYear());
+                        if (typeof importSprayingFromExcel === 'function') {
+                            importSprayingFromExcel(file, year);
+                        } else {
+                            alert('Spraying import function not loaded yet.');
+                        }
+                    };
+                }
+
+                // Import Excel — Manuring
+                const importManuringBtn = document.getElementById('sidebar-import-manuring');
+                const importManuringInput = document.getElementById('sidebar-import-manuring-input');
+                if (importManuringBtn && importManuringInput) {
+                    importManuringBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        importManuringInput.value = '';
+                        importManuringInput.click();
+                    });
+                    importManuringInput.onchange = (e) => {
+                        const file = e.target.files[0];
+                        if (typeof window._manuringImportExcel === 'function') {
+                            window._manuringImportExcel(file);
+                        } else {
+                            alert('Manuring import function not loaded yet.');
+                        }
+                    };
+                }
+
                 // (Google Drive helpers and backup utilities are defined at runMainApplication scope above)
 
                 // Backup & Restore

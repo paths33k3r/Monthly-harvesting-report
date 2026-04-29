@@ -233,6 +233,8 @@
               ${yearOptions}
             </select>
           </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
           <button class="btn-secondary" onclick="window._manuringAddYear()"
             style="padding:0.35rem 0.85rem; font-size:0.85rem;">➕ Add Year</button>
           <button class="btn-secondary" onclick="window._manuringClearYear()"
@@ -430,6 +432,140 @@
     }
     saveManuringToFirebase();
     renderManuring();
+  };
+
+  // ── Manuring Template Download ───────────────────────────────────────────
+  window._manuringDownloadTemplate = async function() {
+    const currentYear = getCurrentYear();
+    try {
+      await ensureExcelJS();
+      const wb = new window.ExcelJS.Workbook();
+      const ws = wb.addWorksheet('Manuring Data');
+
+      const ALL_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Aug2','Sep','Oct','Nov','Dec'];
+      const HEADERS = ['Year','Phase','Block','Ha','N.Palm','Month','kg per tree','Bags','MT','Fertilizer'];
+
+      ws.columns = [
+        {width:8},{width:14},{width:8},{width:8},{width:8},
+        {width:8},{width:12},{width:8},{width:8},{width:12}
+      ];
+
+      const hdr = ws.getRow(1);
+      hdr.values = HEADERS;
+      hdr.eachCell(cell => {
+        cell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FF1A3D1E' } };
+        cell.font = { bold:true, color:{ argb:'FFFFFFFF' } };
+        cell.alignment = { horizontal:'center' };
+      });
+      hdr.height = 18;
+
+      const data = getManuringData();
+      const yearData = data[currentYear] || {};
+
+      let rowIdx = 2;
+      PHASE_NAMES.forEach((phaseName, phaseIdx) => {
+        const phaseData = yearData[phaseName] || { blocks: [] };
+        phaseData.blocks.forEach(b => {
+          ALL_MONTHS.forEach(m => {
+            const app = (b.apps && b.apps[m]) || {};
+            const row = ws.getRow(rowIdx);
+            row.values = [
+              currentYear, phaseName, b.bk,
+              b.ha, b.npalm, m,
+              app.round != null ? app.round : '',
+              app.bags  != null ? app.bags  : '',
+              app.mt    != null ? app.mt    : '',
+              app.fert  || ''
+            ];
+            if (phaseIdx % 2 === 1) {
+              row.eachCell(cell => {
+                cell.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFF0F7F0' } };
+              });
+            }
+            rowIdx++;
+          });
+        });
+      });
+
+      ws.autoFilter = { from:'A1', to:'J1' };
+
+      const buf = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Manuring_Template_${currentYear}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('Error generating template: ' + err.message);
+    }
+  };
+
+  // ── Manuring Import from Excel ───────────────────────────────────────────
+  window._manuringImportExcel = async function(file) {
+    if (!file) return;
+    const currentYear = getCurrentYear();
+    try {
+      await ensureExcelJS();
+      const wb = new window.ExcelJS.Workbook();
+      await wb.xlsx.load(await file.arrayBuffer());
+
+      const ws = wb.getWorksheet('Manuring Data') || wb.worksheets[0];
+      if (!ws) { alert('No worksheet found in file.'); return; }
+
+      const data = getManuringData();
+      if (!data[currentYear]) {
+        data[currentYear] = createBlankYear();
+        window.state.manuring = data;
+      }
+      const yearData = data[currentYear];
+
+      let updated = 0, skipped = 0;
+      ws.eachRow((row, rowNum) => {
+        if (rowNum === 1) return;
+        const vals = row.values; // 1-indexed
+        const phaseName = vals[2] != null ? String(vals[2]).trim() : '';
+        const bkRaw     = vals[3];
+        const haRaw     = vals[4];
+        const npalmRaw  = vals[5];
+        const month     = vals[6] != null ? String(vals[6]).trim() : '';
+        const round     = vals[7];
+        const bags      = vals[8];
+        const mt        = vals[9];
+        const fert      = vals[10] != null ? String(vals[10]).trim().toUpperCase() : '';
+
+        if (!phaseName || bkRaw == null || !month) { skipped++; return; }
+        // Skip rows with no application data
+        if ((round == null || round === '') && (bags == null || bags === '') &&
+            (mt == null || mt === '') && !fert) { skipped++; return; }
+
+        const bk = parseInt(bkRaw);
+        const phaseData = yearData[phaseName];
+        if (!phaseData) { skipped++; return; }
+        const block = phaseData.blocks.find(b => b.bk === bk);
+        if (!block) { skipped++; return; }
+
+        if (haRaw    != null && haRaw    !== '') block.ha    = parseFloat(haRaw)    || block.ha;
+        if (npalmRaw != null && npalmRaw !== '') block.npalm = parseInt(npalmRaw)   || block.npalm;
+
+        if (!block.apps) block.apps = {};
+        block.apps[month] = {
+          round: round != null && round !== '' ? parseFloat(round) : (block.apps[month]?.round ?? 0),
+          bags:  bags  != null && bags  !== '' ? parseInt(bags)    : (block.apps[month]?.bags  ?? 0),
+          mt:    mt    != null && mt    !== '' ? parseFloat(mt)    : (block.apps[month]?.mt    ?? 0),
+          fert:  fert  || block.apps[month]?.fert || ''
+        };
+        updated++;
+      });
+
+      window.state.manuring = data;
+      saveManuringToFirebase();
+      renderManuring();
+      alert(`Import complete: ${updated} rows updated, ${skipped} skipped.`);
+    } catch (err) {
+      alert('Import error: ' + err.message);
+    }
   };
 
   // ── ExcelJS lazy loader ──────────────────────────────────────────────────
