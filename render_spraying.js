@@ -351,7 +351,15 @@ const renderPhaseTable = (wrapper, phase, phaseIdx, yearStr, MONTHS, extraChemic
                     tdG.appendChild(createSprayInput('number', mData.roundGly, v=>{mData.roundGly=v;})); tr.appendChild(tdG);
                     const tdA = document.createElement('td'); tdA.style.cssText = cellStyle;
                     tdA.appendChild(createSprayInput('number', mData.roundAly, v=>{mData.roundAly=v;})); tr.appendChild(tdA);
-                    extraChemicals.forEach(() => { const td=document.createElement('td'); td.style.cssText=cellStyle; tr.appendChild(td); });
+                    extraChemicals.forEach(c => {
+                        const tdX = document.createElement('td'); tdX.style.cssText = cellStyle;
+                        const curVal = mData.extras[c.name + '_round'] ?? '';
+                        tdX.appendChild(createSprayInput('number', curVal, v => {
+                            if (!mData.extras) mData.extras = {};
+                            mData.extras[c.name + '_round'] = v;
+                        }));
+                        tr.appendChild(tdX);
+                    });
 
                 } else if (subRow === 'No.Litre / GM') {
                     const tdG = document.createElement('td'); tdG.style.cssText = cellStyle + 'background:#fefce8;';
@@ -376,7 +384,15 @@ const renderPhaseTable = (wrapper, phase, phaseIdx, yearStr, MONTHS, extraChemic
                     tdG.appendChild(createSprayInput('number', mData.haGly, v=>{mData.haGly=v;})); tr.appendChild(tdG);
                     const tdA = document.createElement('td'); tdA.style.cssText = cellStyle + 'background:#dcfce7;';
                     tdA.appendChild(createSprayInput('number', mData.haAly, v=>{mData.haAly=v;})); tr.appendChild(tdA);
-                    extraChemicals.forEach(() => { const td=document.createElement('td'); td.style.cssText=cellStyle+'background:#f0f9ff;'; tr.appendChild(td); });
+                    extraChemicals.forEach(c => {
+                        const tdX = document.createElement('td'); tdX.style.cssText = cellStyle + 'background:#f0f9ff;';
+                        const curVal = mData.extras[c.name + '_ha'] ?? '';
+                        tdX.appendChild(createSprayInput('number', curVal, v => {
+                            if (!mData.extras) mData.extras = {};
+                            mData.extras[c.name + '_ha'] = v;
+                        }));
+                        tr.appendChild(tdX);
+                    });
                 }
             });
 
