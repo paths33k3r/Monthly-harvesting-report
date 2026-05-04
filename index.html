@@ -171,6 +171,25 @@
                             </li>
                         </ul>
                     </li>
+                    <li class="nav-item" data-menu-key="ironhorse">
+                        <div class="nav-item-header has-children">
+                            <span class="nav-icon">🐴</span>
+                            <span class="nav-label">Iron Horse</span>
+                            <span class="nav-chevron">▼</span>
+                        </div>
+                        <ul class="nav-submenu">
+                            <li class="nav-item">
+                                <a href="#" id="sidebar-ironhorse-assets" class="nav-link">
+                                    🔧 Asset Numbers
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="#" id="sidebar-ironhorse-expenses" class="nav-link">
+                                    💰 Expenses
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
                     <li class="nav-item" data-menu-key="rainfall">
                         <div class="nav-item-header has-children">
                             <span class="nav-icon">🌧️</span>
@@ -250,6 +269,11 @@
                                         Manuring Template
                                     </a>
                                 </li>
+                                <li class="nav-item">
+                                    <a href="#" id="sidebar-download-ironhorse-template" class="nav-link">
+                                        Iron Horse Expenses Template
+                                    </a>
+                                </li>
                             </ul>
                         </li>
                         <li class="nav-item">
@@ -285,6 +309,13 @@
                                         Manuring
                                     </a>
                                     <input type="file" id="sidebar-import-manuring-input" accept=".xlsx"
+                                        style="display: none;" />
+                                </li>
+                                <li class="nav-item">
+                                    <a href="#" id="sidebar-import-ironhorse-expenses" class="nav-link">
+                                        Iron Horse Expenses
+                                    </a>
+                                    <input type="file" id="sidebar-import-ironhorse-input" accept=".xlsx,.xls"
                                         style="display: none;" />
                                 </li>
                             </ul>
@@ -446,6 +477,16 @@
                     <!-- JS will generate Manuring report here -->
                 </div>
 
+                <div id="ironhorse-assets-wrapper" class="report-wrapper hidden"
+                    style="max-width: 1300px; padding: 0; background: transparent; border: none; box-shadow: none;">
+                    <!-- JS will generate Iron Horse Asset Numbers here -->
+                </div>
+
+                <div id="ironhorse-expenses-wrapper" class="report-wrapper hidden"
+                    style="max-width: 1200px; padding: 0; background: transparent; border: none; box-shadow: none;">
+                    <!-- JS will generate Iron Horse Expenses here -->
+                </div>
+
                 <div id="maintenance-coming-soon-wrapper" class="report-wrapper hidden"
                     style="max-width: 600px;">
                     <!-- Coming Soon for Slashing / Pruning -->
@@ -470,10 +511,11 @@
     <script src="render_rainfall.js"></script>
     <script src="render_ytd_report.js"></script>
     <script src="render_current_vs_prev.js"></script>
+    <script src="render_ironhorse.js?v=5"></script>
     <script src="render_spraying.js?v=11"></script>
     <script src="render_manuring.js?v=11"></script>
     <script src="render_reports.js?v=21"></script>
-    <script src="script.js?v=27"></script>
+    <script src="script.js?v=29"></script>
     <script>
         // Use event delegation for topnav toggle interactions to support dynamically added items
         document.addEventListener('click', (e) => {
