@@ -1145,8 +1145,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const ffbWrapper = document.getElementById('ffb-budget-wrapper');
         const rainfallWrapper = document.getElementById('rainfall-wrapper');
 
-        // Expose db and uid for render_spraying.js
+        // Expose db for render_spraying.js and render_ironhorse.js
         window._sprayingDb = db;
+        window._ironHorseDb = db;
         window._sprayingUid = auth.currentUser ? auth.currentUser.uid : null;
         auth.onAuthStateChanged(u => {
             window._sprayingUid = u ? u.uid : null;
@@ -2182,6 +2183,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const sprayingWrapper = document.getElementById('spraying-wrapper');
             const manuringWrapper = document.getElementById('manuring-wrapper');
             const maintenanceComingSoonWrapper = document.getElementById('maintenance-coming-soon-wrapper');
+            const ihAssetsWrapper   = document.getElementById('ironhorse-assets-wrapper');
+            const ihExpensesWrapper = document.getElementById('ironhorse-expenses-wrapper');
             if (ffbWrapper) ffbWrapper.innerHTML = ''; // Clear FFB budget widgets
             if (rainfallWrapper) rainfallWrapper.innerHTML = ''; // Clear Rainfall widgets
             if (ytdWrapper) ytdWrapper.innerHTML = '';
@@ -2189,6 +2192,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (sprayingWrapper) sprayingWrapper.innerHTML = '';
             if (manuringWrapper) manuringWrapper.innerHTML = '';
             if (maintenanceComingSoonWrapper) maintenanceComingSoonWrapper.innerHTML = '';
+            if (ihAssetsWrapper)   ihAssetsWrapper.innerHTML = '';
+            if (ihExpensesWrapper) ihExpensesWrapper.innerHTML = '';
             if (userMgmtWrapper) { userMgmtWrapper.innerHTML = ''; userMgmtWrapper.classList.add('hidden'); }
             if (excelReportsWrapper) { excelReportsWrapper.innerHTML = ''; excelReportsWrapper.classList.add('hidden'); }
 
@@ -2203,6 +2208,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (sprayingWrapperEl) sprayingWrapperEl.classList.add('hidden');
             if (manuringWrapperEl) manuringWrapperEl.classList.add('hidden');
             if (maintenanceCSWrapperEl) maintenanceCSWrapperEl.classList.add('hidden');
+            if (ihAssetsWrapper)   ihAssetsWrapper.classList.add('hidden');
+            if (ihExpensesWrapper) ihExpensesWrapper.classList.add('hidden');
 
             // User Management view
             if (state.activeViewType === 'user_mgmt') {
@@ -2326,6 +2333,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     mw.classList.remove('hidden');
                     if (typeof window.renderManuringReport === 'function') window.renderManuringReport();
                     window._applyReadOnly(mw, 'maintenance');
+                }
+            } else if (state.activeViewType === 'ironhorse_assets') {
+                mainReportWrapper.classList.add('hidden');
+                perfWrapper.classList.add('hidden');
+                intervalWrapper.classList.add('hidden');
+                tableContainer.classList.add('hidden');
+                const ihAW = document.getElementById('ironhorse-assets-wrapper');
+                if (ihAW) {
+                    ihAW.classList.remove('hidden');
+                    if (typeof renderIronHorseAssets === 'function') renderIronHorseAssets();
+                }
+            } else if (state.activeViewType === 'ironhorse_expenses') {
+                mainReportWrapper.classList.add('hidden');
+                perfWrapper.classList.add('hidden');
+                intervalWrapper.classList.add('hidden');
+                tableContainer.classList.add('hidden');
+                const ihEW = document.getElementById('ironhorse-expenses-wrapper');
+                if (ihEW) {
+                    ihEW.classList.remove('hidden');
+                    if (typeof renderIronHorseExpenses === 'function') renderIronHorseExpenses();
                 }
             } else if (state.activeViewType === 'maintenance_coming_soon') {
                 mainReportWrapper.classList.add('hidden');
@@ -3893,6 +3920,24 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 }
 
+                // Download Template — Iron Horse Expenses
+                const dlIronHorseTplBtn = document.getElementById('sidebar-download-ironhorse-template');
+                if (dlIronHorseTplBtn) {
+                    dlIronHorseTplBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        const year = (window.state && window.state.ihExpensesYear)
+                            || Object.keys((window.state && window.state.ironHorse && window.state.ironHorse.expenses) || {})
+                                .filter(k => /^\d{4}$/.test(k)).sort().reverse()[0]
+                            || String(new Date().getFullYear());
+                        const month = (window.state && window.state.ihExpensesMonth) || '';
+                        if (typeof downloadIronHorseTemplate === 'function') {
+                            downloadIronHorseTemplate(year, month);
+                        } else {
+                            alert('Iron Horse template function not loaded yet.');
+                        }
+                    });
+                }
+
                 // Import Excel — Spraying Maintenance
                 const importSprayBtn = document.getElementById('sidebar-import-spray');
                 const importSprayInput = document.getElementById('sidebar-import-spray-input');
@@ -4043,6 +4088,60 @@ document.addEventListener('DOMContentLoaded', () => {
                         renderTable();
                     };
                 }
+
+                // ── Iron Horse nav handlers ─────────────────────────────
+                const sidebarIronHorseAssets = document.getElementById('sidebar-ironhorse-assets');
+                if (sidebarIronHorseAssets) {
+                    sidebarIronHorseAssets.onclick = (e) => {
+                        e.preventDefault();
+                        if (!state.ironHorse) state.ironHorse = {};
+                        if (!state.ironHorse.assets) state.ironHorse.assets = {};
+                        if (!state.ironHorse.expenses) state.ironHorse.expenses = {};
+                        const availYears = Object.keys(state.ironHorse.assets).filter(k => /^\d{4}$/.test(k));
+                        if (availYears.length === 0) {
+                            const y = String(new Date().getFullYear());
+                            if (typeof getDefaultIronHorseAssets === 'function') {
+                                state.ironHorse.assets[y] = getDefaultIronHorseAssets();
+                            }
+                            state.ihAssetsYear = y;
+                        }
+                        state.activeViewType = 'ironhorse_assets';
+                        renderSidebar(); renderTable();
+                    };
+                }
+
+                const sidebarIronHorseExpenses = document.getElementById('sidebar-ironhorse-expenses');
+                if (sidebarIronHorseExpenses) {
+                    sidebarIronHorseExpenses.onclick = (e) => {
+                        e.preventDefault();
+                        if (!state.ironHorse) state.ironHorse = {};
+                        if (!state.ironHorse.expenses) state.ironHorse.expenses = {};
+                        state.activeViewType = 'ironhorse_expenses';
+                        renderSidebar(); renderTable();
+                    };
+                }
+
+                // Iron Horse Expenses import via Data Management sidebar
+                const sidebarImportIH = document.getElementById('sidebar-import-ironhorse-expenses');
+                const sidebarImportIHInput = document.getElementById('sidebar-import-ironhorse-input');
+                if (sidebarImportIH && sidebarImportIHInput) {
+                    sidebarImportIH.onclick = (e) => { e.preventDefault(); sidebarImportIHInput.click(); };
+                    sidebarImportIHInput.onchange = async () => {
+                        const file = sidebarImportIHInput.files[0];
+                        if (!file) return;
+                        const yr = prompt('Import to year:', state.ihExpensesYear || String(new Date().getFullYear()));
+                        if (!yr || !yr.trim()) return;
+                        const mn = prompt('Import to month (e.g. JAN):', state.ihExpensesMonth || 'JAN');
+                        if (!mn || !mn.trim()) return;
+                        if (!state.ironHorse) state.ironHorse = {};
+                        if (!state.ironHorse.expenses) state.ironHorse.expenses = {};
+                        if (typeof importIronHorseExpenses === 'function') {
+                            await importIronHorseExpenses(file, yr.trim(), mn.trim().toUpperCase());
+                        }
+                        sidebarImportIHInput.value = '';
+                    };
+                }
+                // ── End Iron Horse nav handlers ─────────────────────────
 
                 const sidebarSlashing = document.getElementById('sidebar-slashing');
                 if (sidebarSlashing) {
@@ -4324,6 +4423,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (e) {
                     console.warn("Could not load manuring data:", e.message);
                     if (!state.manuring) state.manuring = {};
+                }
+
+                // Load Iron Horse data (shared across all users)
+                try {
+                    const ihSnap = await db.ref('shared/ironhorse_data').once('value');
+                    const ihData = ihSnap.val();
+                    if (ihData) {
+                        state.ironHorse = JSON.parse(ihData);
+                        console.log("Iron Horse data loaded from cloud.");
+                    } else {
+                        if (!state.ironHorse) state.ironHorse = { assets: {}, expenses: {} };
+                    }
+                } catch (e) {
+                    console.warn("Could not load Iron Horse data:", e.message);
+                    if (!state.ironHorse) state.ironHorse = { assets: {}, expenses: {} };
                 }
 
                 // Sync backup settings from Firebase so all devices share the same policy
