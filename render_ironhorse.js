@@ -806,17 +806,15 @@ async function downloadIronHorseTemplate(yearStr, monthStr) {
         gtRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
         gtRow.getCell(1).alignment = { horizontal: 'left' };
         for (let c = 0; c < cats.length; c++) {
-            const colLetter = String.fromCharCode('A'.charCodeAt(0) + 1 + c);
             const cell = gtRow.getCell(2 + c);
-            cell.value = { formula: `SUM(${colLetter}${headerRowIdx + 1}:${colLetter}${gtRowIdx - 1})` };
+            cell.value = 0;
             cell.numFmt = '#,##0.00;-#,##0.00;"-"';
             cell.font = { bold: true, color: { argb: 'FF86EFAC' } };
             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
             cell.alignment = { horizontal: 'right' };
         }
-        const gtTotalCol = String.fromCharCode('A'.charCodeAt(0) + 1 + cats.length);
         const gtTotalCell = gtRow.getCell(headers.length);
-        gtTotalCell.value = { formula: `SUM(${gtTotalCol}${headerRowIdx + 1}:${gtTotalCol}${gtRowIdx - 1})` };
+        gtTotalCell.value = 0;
         gtTotalCell.numFmt = '#,##0.00;-#,##0.00;"-"';
         gtTotalCell.font = { bold: true, color: { argb: 'FF4ADE80' } };
         gtTotalCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF14532D' } };
@@ -828,8 +826,9 @@ async function downloadIronHorseTemplate(yearStr, monthStr) {
         const a = document.createElement('a');
         a.href = url;
         a.download = `Iron_Horse_Expenses${monthStr ? '_' + monthStr : ''}_${yearStr}.xlsx`;
+        document.body.appendChild(a);
         a.click();
-        URL.revokeObjectURL(url);
+        setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
     } catch (err) {
         console.error('Iron Horse template error:', err);
         alert('Template error: ' + err.message);
@@ -904,6 +903,9 @@ async function importIronHorseExpenses(file, yearStr, monthStr) {
 
         // Parse data rows
         const parseV = v => {
+            if (v == null || v === '') return 0;
+            // ExcelJS returns formula cells as { formula: '...', result: value }
+            if (typeof v === 'object' && v !== null && 'result' in v) v = v.result;
             if (v == null || v === '') return 0;
             const s = String(v).trim();
             if (s === '-' || s === '—') return 0;
