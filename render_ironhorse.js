@@ -953,3 +953,409 @@ async function importIronHorseExpenses(file, yearStr, monthStr) {
         alert('Import error: ' + err.message);
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Iron Horse expenses mini-table injected under each gang's perf chart
+// Called from script.js renderPerformanceTable() after chart is built.
+// perfMonth = "Jan"/"Feb" (perf format); converted to "JAN"/"FEB" internally.
+// ─────────────────────────────────────────────────────────────────────
+const renderIHExpensesForGang = (gangWrapper, gangName, yearStr, perfMonth) => {
+    const monthStr = perfMonth.toUpperCase();
+    const monthIdx = IH_MONTHS.indexOf(monthStr);
+    if (monthIdx === -1) return;
+
+    if (!window.state.ironHorse) return;
+
+    // Normalize: strip "- previously ..." suffix and trailing GANG word
+    const normGang = s => (s || '').trim().toUpperCase()
+        .replace(/\s*-\s*PREVIOUSLY\b.*/i, '')
+        .replace(/\bGANG\b\s*$/i, '')
+        .trim();
+
+    // Fuzzy match: equal, prefix, or first-word typo (≤1 char diff)
+    const gangMatch = (a, b) => {
+        const n1 = normGang(a), n2 = normGang(b);
+        if (!n1 || !n2) return false;
+        if (n1 === n2) return true;
+        if (n1.startsWith(n2) || n2.startsWith(n1)) return true;
+        // Single-word fuzzy match for typos (e.g. WENDELINUS vs WENDERLINUS)
+        const w1 = n1.split(/\s+/)[0], w2 = n2.split(/\s+/)[0];
+        if (w1.length >= 5 && w2.length >= 5 && Math.abs(w1.length - w2.length) <= 2) {
+            const [lng, sht] = w1.length >= w2.length ? [w1, w2] : [w2, w1];
+            let m = 0, si = 0;
+            for (let li = 0; li < lng.length && si < sht.length; li++) {
+                if (lng[li] === sht[si]) { m++; si++; }
+            }
+            if (m >= sht.length - 1 && m >= 5) return true;
+        }
+        return false;
+    };
+
+    const assets = (window.state.ironHorse.assets || {})[yearStr] || [];
+    const assignedAssets = assets.filter(asset => {
+        const active = resolveGangForMonth(asset.gangAssignments || [], yearStr, monthIdx);
+        return active && gangMatch(active.gang, gangName);
+    });
+
+    const yd        = ihEnsureExpenseYear(yearStr);
+    const monthData = ((yd.months || {})[monthStr]) || {};
+    const allCats   = ihGetAllCategories(yearStr);
+    const baseCount = IH_CATS.length;
+
+    // ── Section wrapper ───────────────────────────────────────────────
+    const section = document.createElement('div');
+    section.style.cssText = 'margin-top:2rem;';
+
+    const secTitle = document.createElement('div');
+    secTitle.style.cssText = 'font-size:0.9rem; font-weight:700; color:var(--text-primary); margin-bottom:0.75rem; padding-bottom:0.5rem; border-bottom:2px solid #1d4ed8; text-transform:uppercase; letter-spacing:0.03em;';
+    secTitle.textContent = `🐴 Iron Horse Expenses — ${gangName} (${monthStr} ${yearStr})`;
+    section.appendChild(secTitle);
+
+    if (assignedAssets.length === 0) {
+        const ph = document.createElement('div');
+        ph.style.cssText = 'padding:1rem 1.25rem; background:var(--bg-card); border:1px solid var(--border-color); border-radius:6px; color:var(--text-secondary); font-size:0.85rem; text-align:center;';
+        ph.textContent = `No Iron Horse machines assigned to ${gangName} for ${monthStr} ${yearStr}.`;
+        section.appendChild(ph);
+        gangWrapper.appendChild(section);
+        return;
+    }
+
+    // ── Expense table ─────────────────────────────────────────────────
+    const scrollWrap = document.createElement('div');
+    scrollWrap.style.cssText = 'overflow-x:auto; background:var(--bg-card); border:1px solid var(--border-color); border-radius:8px;';
+
+    const table = document.createElement('table');
+    table.style.cssText = 'width:100%; border-collapse:collapse; font-size:0.82rem;';
+
+    const hS     = 'background:#1e293b; color:#f8fafc; padding:7px 12px; border:1px solid #334155; font-weight:600; font-size:0.78rem; text-transform:uppercase; text-align:right;';
+    const hXtraS = 'background:#1e3a5f; color:#dbeafe; padding:7px 12px; border:1px solid #2d4f7c; font-weight:600; font-size:0.78rem; text-transform:uppercase; text-align:right;';
+
+    const headerCells = allCats.map((c, i) =>
+        `<th style="${i < baseCount ? hS : hXtraS}">${ihGetCatLabel(c)}</th>`
+    ).join('');
+
+    table.innerHTML = `<thead><tr>
+        <th style="${hS}text-align:left; min-width:110px;">Asset No</th>
+        ${headerCells}
+        <th style="${hS}background:#14532d; color:#dcfce7; min-width:100px;">Total</th>
+    </tr></thead>`;
+
+    const tbody  = document.createElement('tbody');
+    const cS     = 'border:1px solid var(--border-color); padding:6px 12px; text-align:right;';
+    const cXtraS = cS + 'background:#eff6ff;';
+
+    const grandTotals = {};
+    allCats.forEach(c => { grandTotals[c] = 0; });
+    let grandTotal = 0;
+
+    assignedAssets.forEach((asset, ai) => {
+        const row = monthData[asset.assetNo] || {};
+        const tr  = document.createElement('tr');
+        tr.style.background = ai % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-main)';
+
+        const tdNo = document.createElement('td');
+        tdNo.style.cssText = cS + 'font-weight:700; color:var(--accent); text-align:left;';
+        tdNo.textContent = asset.assetNo;
+        tr.appendChild(tdNo);
+
+        let rowTotal = 0;
+        allCats.forEach((c, i) => {
+            const val = parseFloat(row[c]) || 0;
+            grandTotals[c] += val;
+            rowTotal += val;
+            const td = document.createElement('td');
+            td.style.cssText = i < baseCount ? cS : cXtraS;
+            td.textContent = val > 0
+                ? val.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                : '—';
+            tr.appendChild(td);
+        });
+        grandTotal += rowTotal;
+
+        const tdTot = document.createElement('td');
+        tdTot.style.cssText = cS + 'background:#f0fdf4; font-weight:700; color:#166534;';
+        tdTot.textContent = rowTotal > 0
+            ? rowTotal.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            : '—';
+        tr.appendChild(tdTot);
+        tbody.appendChild(tr);
+    });
+
+    // Grand total row
+    const trGrand = document.createElement('tr');
+    trGrand.style.cssText = 'background:#1e293b; color:#f8fafc;';
+    const tdGLbl = document.createElement('td');
+    tdGLbl.style.cssText = 'border:1px solid #334155; padding:7px 12px; font-weight:700; text-align:left;';
+    tdGLbl.textContent = 'Grand Total';
+    trGrand.appendChild(tdGLbl);
+
+    allCats.forEach((c, i) => {
+        const td = document.createElement('td');
+        td.style.cssText = 'border:1px solid #334155; padding:7px 12px; text-align:right; font-weight:700;'
+            + (i < baseCount ? 'color:#86efac;' : 'color:#93c5fd; background:#1e3a5f;');
+        td.textContent = grandTotals[c] > 0
+            ? grandTotals[c].toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            : '—';
+        trGrand.appendChild(td);
+    });
+
+    const tdGTotal = document.createElement('td');
+    tdGTotal.style.cssText = 'border:1px solid #334155; padding:7px 12px; text-align:right; font-weight:700; color:#4ade80; background:#14532d;';
+    tdGTotal.textContent = grandTotal > 0
+        ? grandTotal.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : '—';
+    trGrand.appendChild(tdGTotal);
+    tbody.appendChild(trGrand);
+
+    table.appendChild(tbody);
+    scrollWrap.appendChild(table);
+    section.appendChild(scrollWrap);
+    gangWrapper.appendChild(section);
+};
+
+// ─────────────────────────────────────────────────────────────────────
+// Cost per Ha Report
+// Two tables:
+//   1. Cost / Ha — monthly expense per asset ÷ gang's total Ha
+//   2. Issued Cost — raw RM per asset per month
+// Ha per gang is derived from state.reports[year] block data.
+// ─────────────────────────────────────────────────────────────────────
+const renderIronHorseCostPerHa = () => {
+    const wrapper = document.getElementById('ironhorse-costperha-wrapper');
+    if (!wrapper) return;
+    wrapper.innerHTML = '';
+
+    if (!window.state.ironHorse) window.state.ironHorse = {};
+
+    const availYears = Object.keys(window.state.ironHorse.assets || {})
+        .filter(k => /^\d{4}$/.test(k)).sort();
+    const yearStr = window.state.ihCostPerHaYear
+        || availYears[availYears.length - 1]
+        || String(new Date().getFullYear());
+
+    // ── Toolbar ──────────────────────────────────────────────────────
+    const toolbar = document.createElement('div');
+    toolbar.style.cssText = 'display:flex; align-items:center; gap:1rem; margin-bottom:1.5rem; flex-wrap:wrap;';
+
+    const titleEl = document.createElement('div');
+    titleEl.style.cssText = 'font-size:1.1rem; font-weight:700; color:var(--text-primary); text-transform:uppercase; flex:1;';
+    titleEl.textContent = `Iron Horse — Expenses by Cost per Ha`;
+    toolbar.appendChild(titleEl);
+
+    if (availYears.length > 0) {
+        toolbar.appendChild(ihMakeSelector(
+            'Year:',
+            availYears.map(y => ({ value: y, label: y })),
+            yearStr,
+            v => { window.state.ihCostPerHaYear = v; renderIronHorseCostPerHa(); }
+        ));
+    }
+    wrapper.appendChild(toolbar);
+
+    // ── Data preparation ──────────────────────────────────────────────
+    const assets   = (window.state.ironHorse.assets || {})[yearStr] || [];
+    const yd       = ihEnsureExpenseYear(yearStr);
+    const allCats  = ihGetAllCategories(yearStr);
+
+    // Gang Ha: sum block.ha per gang from state.reports[year]
+    const reports  = (window.state.reports || {})[yearStr] || [];
+    const gangHaMap = {};
+    reports.forEach(b => {
+        if (b.gang && typeof b.ha === 'number' && b.ha > 0) {
+            gangHaMap[b.gang] = (gangHaMap[b.gang] || 0) + b.ha;
+        }
+    });
+    const noHaData = Object.keys(gangHaMap).length === 0;
+
+    // Resolve each asset's gang per month; group by July (mid-year) for display order
+    const assetMonthGang = {};
+    assets.forEach(asset => {
+        assetMonthGang[asset.assetNo] = {};
+        IH_MONTHS.forEach((m, i) => {
+            const a = resolveGangForMonth(asset.gangAssignments || [], yearStr, i);
+            assetMonthGang[asset.assetNo][m] = a ? a.gang : null;
+        });
+    });
+
+    const gangOrder   = [];
+    const gangToAssets = {};
+    assets.forEach(asset => {
+        const julyGang = assetMonthGang[asset.assetNo]['JUL'];
+        const primary  = julyGang
+            || IH_MONTHS.map(m => assetMonthGang[asset.assetNo][m]).find(g => g)
+            || '__UNASSIGNED__';
+        if (!gangToAssets[primary]) {
+            gangToAssets[primary] = [];
+            gangOrder.push(primary);
+        }
+        gangToAssets[primary].push(asset.assetNo);
+    });
+
+    // Monthly expense per asset (sum of all categories)
+    const assetMonthExp = {};
+    assets.forEach(asset => {
+        assetMonthExp[asset.assetNo] = {};
+        let yr = 0;
+        IH_MONTHS.forEach(m => {
+            const row = ((yd.months || {})[m] || {})[asset.assetNo] || {};
+            const v   = allCats.reduce((s, c) => s + (parseFloat(row[c]) || 0), 0);
+            assetMonthExp[asset.assetNo][m] = v;
+            yr += v;
+        });
+        assetMonthExp[asset.assetNo]['YEAR'] = yr;
+    });
+
+    // Gang monthly totals
+    const gangMonthExp = {};
+    gangOrder.forEach(gangName => {
+        gangMonthExp[gangName] = {};
+        let yr = 0;
+        IH_MONTHS.forEach(m => {
+            const v = (gangToAssets[gangName] || []).reduce((s, a) => s + (assetMonthExp[a]?.[m] || 0), 0);
+            gangMonthExp[gangName][m] = v;
+            yr += v;
+        });
+        gangMonthExp[gangName]['YEAR'] = yr;
+    });
+
+    // Grand totals
+    const grandMonthExp = {};
+    let grandYearExp = 0;
+    IH_MONTHS.forEach(m => {
+        const v = gangOrder.reduce((s, g) => s + (gangMonthExp[g]?.[m] || 0), 0);
+        grandMonthExp[m] = v;
+        grandYearExp += v;
+    });
+    const totalHa = Object.values(gangHaMap).reduce((s, h) => s + h, 0);
+
+    // Formatters
+    const fmtRm = v => v !== 0
+        ? v.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : '—';
+    const fmtHa = h => h > 0 ? h.toFixed(2) : '—';
+    const fmtCph = (cost, ha) => {
+        if (!ha || ha <= 0) return '—';
+        return (cost / ha).toFixed(2);
+    };
+
+    // Shared CSS
+    const hS    = 'background:#1e293b;color:#f8fafc;padding:7px 10px;border:1px solid #334155;font-weight:600;font-size:0.75rem;text-transform:uppercase;text-align:right;white-space:nowrap;';
+    const hLS   = hS + 'text-align:left;min-width:155px;';
+    const hTotS = hS + 'background:#14532d;color:#dcfce7;min-width:95px;';
+    const gS    = 'background:#0f172a;color:#e2e8f0;padding:7px 10px;border:1px solid #1e293b;font-weight:700;font-size:0.78rem;text-align:right;';
+    const gLS   = gS + 'text-align:left;padding-left:10px;';
+    const gTotS = gS + 'background:#14532d;color:#dcfce7;';
+    const aS    = 'border:1px solid var(--border-color);padding:6px 10px;font-size:0.78rem;text-align:right;';
+    const aLS   = aS + 'text-align:left;padding-left:26px;color:var(--accent);font-weight:600;';
+    const aTotS = aS + 'background:#f0fdf4;font-weight:700;color:#166534;';
+    const grS   = 'border:1px solid #334155;padding:7px 10px;font-weight:700;text-align:right;';
+    const grLS  = grS + 'text-align:left;';
+    const grTotS = grS + 'background:#14532d;color:#4ade80;';
+
+    // ── Generic table builder ─────────────────────────────────────────
+    const buildTable = (title, gangExtraCell, assetExtraCell, grandExtraCell) => {
+        const section = document.createElement('div');
+        section.style.cssText = 'margin-bottom:2.5rem;';
+
+        const secTitle = document.createElement('div');
+        secTitle.style.cssText = 'font-size:0.95rem;font-weight:700;color:var(--text-primary);margin-bottom:0.75rem;padding-bottom:0.5rem;border-bottom:2px solid var(--accent);';
+        secTitle.textContent = title;
+        section.appendChild(secTitle);
+
+        if (noHaData && title.includes('Cost / Ha')) {
+            const warn = document.createElement('div');
+            warn.style.cssText = 'padding:1rem;background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;font-size:0.85rem;color:#92400e;margin-bottom:0.75rem;';
+            warn.textContent = `⚠ No hectarage data found for ${yearStr}. Ha values will show as "—". Please ensure harvesting block data is imported for this year.`;
+            section.appendChild(warn);
+        }
+
+        const scrollWrap = document.createElement('div');
+        scrollWrap.style.cssText = 'overflow-x:auto;background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;';
+
+        const table = document.createElement('table');
+        table.style.cssText = 'width:100%;border-collapse:collapse;font-size:0.78rem;';
+
+        const monthHdrs = IH_MONTHS.map(m => `<th style="${hS}">${m}</th>`).join('');
+        table.innerHTML = `<thead><tr>
+            <th style="${hLS}">Gang / Asset</th>
+            <th style="${hS}min-width:75px;">Ha</th>
+            ${monthHdrs}
+            <th style="${hTotS}">Total</th>
+        </tr></thead>`;
+
+        const tbody = document.createElement('tbody');
+
+        gangOrder.forEach(gangName => {
+            const ha      = gangHaMap[gangName] || 0;
+            const label   = gangName === '__UNASSIGNED__' ? '— Unassigned —' : gangName;
+            const monthTds = IH_MONTHS.map(m =>
+                `<td style="${gS}">${gangExtraCell.monthVal(gangMonthExp[gangName][m], ha)}</td>`
+            ).join('');
+            const trGang = document.createElement('tr');
+            trGang.innerHTML = `
+                <td style="${gLS}">${label}</td>
+                <td style="${gS}">${fmtHa(ha)}</td>
+                ${monthTds}
+                <td style="${gTotS}">${gangExtraCell.yearVal(gangMonthExp[gangName]['YEAR'], ha)}</td>`;
+            tbody.appendChild(trGang);
+
+            (gangToAssets[gangName] || []).forEach((assetNo, ai) => {
+                const monthAssetTds = IH_MONTHS.map(m =>
+                    `<td style="${aS}">${assetExtraCell.monthVal(assetMonthExp[assetNo][m], ha)}</td>`
+                ).join('');
+                const tr = document.createElement('tr');
+                tr.style.background = ai % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-main)';
+                tr.innerHTML = `
+                    <td style="${aLS}">↳ ${assetNo}</td>
+                    <td style="${aS}">—</td>
+                    ${monthAssetTds}
+                    <td style="${aTotS}">${assetExtraCell.yearVal(assetMonthExp[assetNo]['YEAR'], ha)}</td>`;
+                tbody.appendChild(tr);
+            });
+        });
+
+        // Grand total row
+        const monthGrandTds = IH_MONTHS.map(m =>
+            `<td style="${grS}color:#86efac;">${grandExtraCell.monthVal(grandMonthExp[m], totalHa)}</td>`
+        ).join('');
+        const trGrand = document.createElement('tr');
+        trGrand.style.cssText = 'background:#1e293b;color:#f8fafc;';
+        trGrand.innerHTML = `
+            <td style="${grLS}">Grand Total</td>
+            <td style="${grS}">${fmtHa(totalHa)}</td>
+            ${monthGrandTds}
+            <td style="${grTotS}">${grandExtraCell.yearVal(grandYearExp, totalHa)}</td>`;
+        tbody.appendChild(trGrand);
+
+        table.appendChild(tbody);
+        scrollWrap.appendChild(table);
+        section.appendChild(scrollWrap);
+        return section;
+    };
+
+    if (gangOrder.length === 0) {
+        const empty = document.createElement('div');
+        empty.style.cssText = 'background:var(--bg-card);border:1px solid var(--border-color);border-radius:8px;padding:3rem;text-align:center;color:var(--text-secondary);';
+        empty.innerHTML = `<div style="font-size:2.5rem;margin-bottom:1rem;">📊</div>
+            <div style="font-size:1rem;font-weight:600;margin-bottom:0.5rem;">No data for ${yearStr}</div>
+            <div style="font-size:0.85rem;">Add assets under <strong>Asset Numbers</strong> and record expenses under <strong>Expenses</strong> first.</div>`;
+        wrapper.appendChild(empty);
+        return;
+    }
+
+    // Table 1: Cost / Ha
+    wrapper.appendChild(buildTable(
+        `Cost / Ha (RM/Ha) — ${yearStr}`,
+        { monthVal: (cost, ha) => fmtCph(cost, ha), yearVal: (cost, ha) => fmtCph(cost, ha) },
+        { monthVal: (cost, ha) => fmtCph(cost, ha), yearVal: (cost, ha) => fmtCph(cost, ha) },
+        { monthVal: (cost, ha) => fmtCph(cost, ha), yearVal: (cost, ha) => fmtCph(cost, ha) }
+    ));
+
+    // Table 2: Issued Cost
+    wrapper.appendChild(buildTable(
+        `Issued Cost (RM) — ${yearStr}`,
+        { monthVal: (cost) => fmtRm(cost), yearVal: (cost) => fmtRm(cost) },
+        { monthVal: (cost) => fmtRm(cost), yearVal: (cost) => fmtRm(cost) },
+        { monthVal: (cost) => fmtRm(cost), yearVal: (cost) => fmtRm(cost) }
+    ));
+};

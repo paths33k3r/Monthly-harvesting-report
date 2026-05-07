@@ -2183,8 +2183,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const sprayingWrapper = document.getElementById('spraying-wrapper');
             const manuringWrapper = document.getElementById('manuring-wrapper');
             const maintenanceComingSoonWrapper = document.getElementById('maintenance-coming-soon-wrapper');
-            const ihAssetsWrapper   = document.getElementById('ironhorse-assets-wrapper');
-            const ihExpensesWrapper = document.getElementById('ironhorse-expenses-wrapper');
+            const ihAssetsWrapper    = document.getElementById('ironhorse-assets-wrapper');
+            const ihExpensesWrapper  = document.getElementById('ironhorse-expenses-wrapper');
+            const ihCostPerHaWrapper = document.getElementById('ironhorse-costperha-wrapper');
             if (ffbWrapper) ffbWrapper.innerHTML = ''; // Clear FFB budget widgets
             if (rainfallWrapper) rainfallWrapper.innerHTML = ''; // Clear Rainfall widgets
             if (ytdWrapper) ytdWrapper.innerHTML = '';
@@ -2192,8 +2193,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (sprayingWrapper) sprayingWrapper.innerHTML = '';
             if (manuringWrapper) manuringWrapper.innerHTML = '';
             if (maintenanceComingSoonWrapper) maintenanceComingSoonWrapper.innerHTML = '';
-            if (ihAssetsWrapper)   ihAssetsWrapper.innerHTML = '';
-            if (ihExpensesWrapper) ihExpensesWrapper.innerHTML = '';
+            if (ihAssetsWrapper)    ihAssetsWrapper.innerHTML = '';
+            if (ihExpensesWrapper)  ihExpensesWrapper.innerHTML = '';
+            if (ihCostPerHaWrapper) ihCostPerHaWrapper.innerHTML = '';
             if (userMgmtWrapper) { userMgmtWrapper.innerHTML = ''; userMgmtWrapper.classList.add('hidden'); }
             if (excelReportsWrapper) { excelReportsWrapper.innerHTML = ''; excelReportsWrapper.classList.add('hidden'); }
 
@@ -2208,8 +2210,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (sprayingWrapperEl) sprayingWrapperEl.classList.add('hidden');
             if (manuringWrapperEl) manuringWrapperEl.classList.add('hidden');
             if (maintenanceCSWrapperEl) maintenanceCSWrapperEl.classList.add('hidden');
-            if (ihAssetsWrapper)   ihAssetsWrapper.classList.add('hidden');
-            if (ihExpensesWrapper) ihExpensesWrapper.classList.add('hidden');
+            if (ihAssetsWrapper)    ihAssetsWrapper.classList.add('hidden');
+            if (ihExpensesWrapper)  ihExpensesWrapper.classList.add('hidden');
+            if (ihCostPerHaWrapper) ihCostPerHaWrapper.classList.add('hidden');
 
             // User Management view
             if (state.activeViewType === 'user_mgmt') {
@@ -2353,6 +2356,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (ihEW) {
                     ihEW.classList.remove('hidden');
                     if (typeof renderIronHorseExpenses === 'function') renderIronHorseExpenses();
+                }
+            } else if (state.activeViewType === 'ironhorse_costperha') {
+                mainReportWrapper.classList.add('hidden');
+                perfWrapper.classList.add('hidden');
+                intervalWrapper.classList.add('hidden');
+                tableContainer.classList.add('hidden');
+                const ihCW = document.getElementById('ironhorse-costperha-wrapper');
+                if (ihCW) {
+                    ihCW.classList.remove('hidden');
+                    if (typeof renderIronHorseCostPerHa === 'function') renderIronHorseCostPerHa();
                 }
             } else if (state.activeViewType === 'maintenance_coming_soon') {
                 mainReportWrapper.classList.add('hidden');
@@ -2828,6 +2841,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
 
                 calculatePerformanceTotals(perfData, gBlocks, safeGangId);
+
+                if (typeof renderIHExpensesForGang === 'function') {
+                    renderIHExpensesForGang(gangWrapper, gangName, String(year), month);
+                }
             });
         };
 
@@ -4117,6 +4134,15 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (!state.ironHorse) state.ironHorse = {};
                         if (!state.ironHorse.expenses) state.ironHorse.expenses = {};
                         state.activeViewType = 'ironhorse_expenses';
+                        renderSidebar(); renderTable();
+                    };
+                }
+
+                const sidebarIronHorseCostPerHa = document.getElementById('sidebar-ironhorse-costperha');
+                if (sidebarIronHorseCostPerHa) {
+                    sidebarIronHorseCostPerHa.onclick = (e) => {
+                        e.preventDefault();
+                        state.activeViewType = 'ironhorse_costperha';
                         renderSidebar(); renderTable();
                     };
                 }
