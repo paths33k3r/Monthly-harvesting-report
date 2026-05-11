@@ -2599,6 +2599,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const gBlocks = blocks.filter(b => monthAssignments[b.block_id] === gangName);
                 if (gBlocks.length === 0) return; // skip empty gangs
 
+                // Add divider between gangs
+                if (gangIndex > 0) {
+                    const divider = document.createElement('hr');
+                    divider.style.cssText = 'border: none; border-top: 3px solid var(--border-color); margin: 2rem 0;';
+                    perfWrapper.appendChild(divider);
+                }
+
                 // Create wrapper block for this gang
                 const gangWrapper = document.createElement('div');
                 // Adding specific bottom margin to separate gangs clearly
