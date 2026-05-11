@@ -24,6 +24,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const passInp = document.getElementById('login-pass');
     const loginErr = document.getElementById('login-error');
 
+    [emailInp, passInp].forEach(el => {
+        el.addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('btn-login').click(); });
+    });
+
     document.getElementById('btn-login').onclick = () => {
         loginErr.textContent = '';
         const email = emailInp.value.trim();
