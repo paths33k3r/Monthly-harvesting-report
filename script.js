@@ -1119,8 +1119,22 @@ document.addEventListener('DOMContentLoaded', () => {
                             alert("Data saved successfully to cloud!");
                             if (typeof window.logAudit === 'function') {
                                 const sec = state.activeViewType || 'harvesting';
-                                const yr = state.selectedReportYear || '';
-                                window.logAudit('save', sec, `Year ${yr}`, `View: ${sec}`);
+                                const yr = state.activeViewValue || state.selectedReportYear || '';
+
+                                // Diff rainfall data if that's the active section
+                                let details = '';
+                                let changeLines = [];
+                                if (sec === 'rainfall_record' && yr && state.rainfall && state.rainfall[yr]) {
+                                    const diffs = window._auditDiff(`rainfall_${yr}`, state.rainfall[yr]);
+                                    diffs.forEach(d => {
+                                        changeLines.push(`${d.path}: ${d.before} → ${d.after}`);
+                                    });
+                                    // Update snapshot after save
+                                    window._auditSnapshot(`rainfall_${yr}`, state.rainfall[yr]);
+                                }
+                                details = changeLines.length ? changeLines.join(', ') : '';
+
+                                window.logAudit('save', sec, `Year ${yr}`, details);
                             }
                         }
                     })
@@ -1137,6 +1151,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // ── Audit log ─────────────────────────────────────────────────────────
         window._auditDb = db;
+
+        // Snapshots: take a copy of section data when it's opened so we can diff on save
+        window._auditSnapshots = {};
+        window._auditSnapshot = function (key, data) {
+            window._auditSnapshots[key] = JSON.stringify(data);
+        };
+        window._auditDiff = function (key, currentData) {
+            const prev = window._auditSnapshots[key];
+            if (!prev) return [];
+            try {
+                const prevObj = JSON.parse(prev);
+                const currObj = typeof currentData === 'object' ? currentData : JSON.parse(currentData);
+                const changes = [];
+                function walk(p, c, path) {
+                    if (typeof p !== 'object' || typeof c !== 'object' || p === null || c === null) {
+                        if (p !== c) changes.push({ path, before: p, after: c });
+                        return;
+                    }
+                    const keys = new Set([...Object.keys(p), ...Object.keys(c)]);
+                    keys.forEach(k => walk(p[k], c[k], path ? `${path}.${k}` : k));
+                }
+                walk(prevObj, currObj, '');
+                return changes;
+            } catch (e) { return []; }
+        };
 
         window.logAudit = function (action, section, target, details = '', before = null, after = null) {
             if (!auth.currentUser) return;
@@ -2340,6 +2379,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         renderRainfallTable();
                     }
                     window._applyReadOnly(rainfallWrapper, 'rainfall');
+                    // Snapshot rainfall data for this year so we can diff on save
+                    const rfYear = state.activeViewValue;
+                    if (rfYear && state.rainfall && state.rainfall[rfYear]) {
+                        window._auditSnapshot(`rainfall_${rfYear}`, state.rainfall[rfYear]);
+                    }
                 }
             } else if (isYtdView) {
                 mainReportWrapper.classList.add('hidden');

@@ -193,17 +193,23 @@ function _auditTruncate(str, max) {
 
 function _auditSectionLabel(section) {
     const MAP = {
-        harvesting:   'Harvesting',
-        performance:  'Performance',
-        ironhorse:    'Iron Horse',
-        spraying:     'Spraying',
-        manuring:     'Manuring',
-        rainfall:     'Rainfall',
-        ffb_budget:   'FFB Budget',
-        reports:      'Reports',
-        user_mgmt:    'User Mgmt',
-        gangs:        'Gangs',
-        backup:       'Backup',
+        harvesting:       'Harvesting',
+        performance:      'Performance',
+        perf_month:       'Performance',
+        interval_month:   'Harvesting',
+        report_year:      'Harvesting',
+        ironhorse:        'Iron Horse',
+        ironhorse_assets: 'Iron Horse',
+        ironhorse_expenses: 'Iron Horse',
+        spraying:         'Spraying',
+        manuring:         'Manuring',
+        rainfall:         'Rainfall',
+        rainfall_record:  'Rainfall',
+        ffb_budget:       'FFB Budget',
+        reports:          'Reports',
+        user_mgmt:        'User Mgmt',
+        gangs:            'Gangs',
+        backup:           'Backup',
     };
     return MAP[section] || (section || '—');
 }
