@@ -180,6 +180,10 @@ const ihMakeSelector = (labelText, options, currentVal, onChange) => {
     return wrap;
 };
 
+// Sort/filter state for assets table (persists across re-renders)
+let _ihAssetsSort = { col: 'assetNo', dir: 'asc' };
+let _ihAssetsFilter = '';
+
 // ─────────────────────────────────────────────────────────────────────
 // Asset Numbers View
 // ─────────────────────────────────────────────────────────────────────
@@ -270,6 +274,33 @@ const renderIronHorseAssets = () => {
     toolbar.appendChild(rightGroup);
     wrapper.appendChild(toolbar);
 
+    // ── Filter bar ───────────────────────────────────────────────────
+    const filterBar = document.createElement('div');
+    filterBar.style.cssText = 'display:flex; align-items:center; gap:0.75rem; margin-bottom:0.75rem; flex-wrap:wrap;';
+
+    const filterInput = document.createElement('input');
+    filterInput.type = 'text';
+    filterInput.placeholder = 'Filter by asset no or gang…';
+    filterInput.value = _ihAssetsFilter;
+    filterInput.style.cssText = 'padding:0.4rem 0.7rem; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem; background:var(--bg-card); min-width:220px;';
+    filterInput.oninput = () => { _ihAssetsFilter = filterInput.value; renderIronHorseAssets(); };
+    filterBar.appendChild(filterInput);
+
+    if (_ihAssetsFilter) {
+        const clearBtn = document.createElement('button');
+        clearBtn.textContent = '✕ Clear';
+        clearBtn.style.cssText = 'padding:0.35rem 0.7rem; border:1px solid var(--border-color); border-radius:6px; font-size:0.82rem; background:var(--bg-secondary); cursor:pointer;';
+        clearBtn.onclick = () => { _ihAssetsFilter = ''; renderIronHorseAssets(); };
+        filterBar.appendChild(clearBtn);
+    }
+
+    const filterNote = document.createElement('span');
+    filterNote.style.cssText = 'font-size:0.78rem; color:var(--text-secondary);';
+    filterNote.textContent = 'Click a column header to sort';
+    filterBar.appendChild(filterNote);
+
+    wrapper.appendChild(filterBar);
+
     // ── Asset Table ──────────────────────────────────────────────────
     const tableWrap = document.createElement('div');
     tableWrap.style.cssText = 'background:var(--bg-card); border:1px solid var(--border-color); border-radius:8px; overflow:hidden;';
@@ -278,25 +309,71 @@ const renderIronHorseAssets = () => {
     table.style.cssText = 'width:100%; border-collapse:collapse; font-size:0.85rem;';
 
     const hS = 'background:#1e293b; color:#f8fafc; padding:8px 12px; border:1px solid #334155; font-weight:600; font-size:0.78rem; text-transform:uppercase; white-space:nowrap;';
-    table.innerHTML = `<thead><tr>
-        <th style="${hS}text-align:center;">Asset No</th>
-        <th style="${hS}text-align:left;">Description</th>
-        <th style="${hS}text-align:center;">Gang — ${monthStr} ${yearStr}</th>
+    const sortArrow = (col) => {
+        if (_ihAssetsSort.col !== col) return ' <span style="opacity:0.35;">⇅</span>';
+        return _ihAssetsSort.dir === 'asc' ? ' <span>▲</span>' : ' <span>▼</span>';
+    };
+    const sortStyle = 'cursor:pointer; user-select:none;';
+
+    const thead = document.createElement('thead');
+    thead.innerHTML = `<tr>
+        <th style="${hS}${sortStyle}text-align:center;" data-sort="assetNo">Asset No${sortArrow('assetNo')}</th>
+        <th style="${hS}${sortStyle}text-align:left;" data-sort="description">Description${sortArrow('description')}</th>
+        <th style="${hS}${sortStyle}text-align:center;" data-sort="gang">Gang — ${monthStr} ${yearStr}${sortArrow('gang')}</th>
         <th style="${hS}text-align:left;">Assignment History</th>
         <th style="${hS}text-align:center;">Actions</th>
-    </tr></thead>`;
+    </tr>`;
+    thead.querySelectorAll('th[data-sort]').forEach(th => {
+        th.onclick = () => {
+            const col = th.dataset.sort;
+            if (_ihAssetsSort.col === col) {
+                _ihAssetsSort.dir = _ihAssetsSort.dir === 'asc' ? 'desc' : 'asc';
+            } else {
+                _ihAssetsSort = { col, dir: 'asc' };
+            }
+            renderIronHorseAssets();
+        };
+    });
+    table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
     const cS = 'border:1px solid var(--border-color); padding:8px 12px; vertical-align:top;';
 
-    if (assets.length === 0) {
+    // Apply filter
+    const filterLow = _ihAssetsFilter.trim().toLowerCase();
+    let displayAssets = assets.filter(asset => {
+        if (!filterLow) return true;
+        const gang = resolveGangForMonth(asset.gangAssignments || [], yearStr, monthIdx);
+        const gangName = (gang && gang.gang) ? gang.gang.toLowerCase() : '';
+        return asset.assetNo.toLowerCase().includes(filterLow) ||
+               (asset.description || '').toLowerCase().includes(filterLow) ||
+               gangName.includes(filterLow);
+    });
+
+    // Apply sort
+    displayAssets = displayAssets.slice().sort((a, b) => {
+        let av, bv;
+        if (_ihAssetsSort.col === 'gang') {
+            const ag = resolveGangForMonth(a.gangAssignments || [], yearStr, monthIdx);
+            const bg = resolveGangForMonth(b.gangAssignments || [], yearStr, monthIdx);
+            av = (ag && ag.gang) ? ag.gang : 'zzz';
+            bv = (bg && bg.gang) ? bg.gang : 'zzz';
+        } else {
+            av = (a[_ihAssetsSort.col] || '').toLowerCase();
+            bv = (b[_ihAssetsSort.col] || '').toLowerCase();
+        }
+        const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+        return _ihAssetsSort.dir === 'asc' ? cmp : -cmp;
+    });
+
+    if (displayAssets.length === 0) {
         const tr = document.createElement('tr');
         tr.innerHTML = `<td colspan="5" style="${cS}text-align:center; color:var(--text-secondary); padding:2rem;">
-            No assets for ${yearStr}. Click <strong>Add Asset</strong> to begin.</td>`;
+            ${filterLow ? `No assets match "<strong>${_ihAssetsFilter}</strong>"` : `No assets for ${yearStr}. Click <strong>Add Asset</strong> to begin.`}</td>`;
         tbody.appendChild(tr);
     }
 
-    assets.forEach((asset, ai) => {
+    displayAssets.forEach((asset, ai) => {
         const active = resolveGangForMonth(asset.gangAssignments || [], yearStr, monthIdx);
         const tr = document.createElement('tr');
         tr.style.background = ai % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-main)';
