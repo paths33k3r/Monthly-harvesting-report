@@ -240,6 +240,12 @@
                             <span class="nav-label">Reports</span>
                         </div>
                     </li>
+                    <li class="nav-item" id="nav-audit-log-item" data-menu-key="auditLog" style="display:none;">
+                        <div class="nav-item-header">
+                            <span class="nav-icon">📋</span>
+                            <a href="#" id="sidebar-audit-log" class="nav-link" style="text-decoration:none; color:inherit; font-weight:500;">Audit Log</a>
+                        </div>
+                    </li>
                 <li class="nav-item" data-menu-key="dataManagement">
                     <div class="nav-item-header has-children">
                         <span class="nav-icon">⚙️</span>
@@ -502,6 +508,11 @@
                     <!-- Coming Soon for Slashing / Pruning -->
                 </div>
 
+                <div id="audit-log-wrapper" class="report-wrapper hidden"
+                    style="max-width: 1200px; padding:0; background:transparent; border:none; box-shadow:none;">
+                    <!-- JS will generate Audit Log panel here -->
+                </div>
+
                 <div id="user-mgmt-wrapper" class="report-wrapper hidden"
                     style="max-width: 900px;">
                     <!-- JS will generate User Management panel here -->
@@ -521,11 +532,12 @@
     <script src="render_rainfall.js"></script>
     <script src="render_ytd_report.js"></script>
     <script src="render_current_vs_prev.js"></script>
-    <script src="render_ironhorse.js?v=13"></script>
+    <script src="render_audit.js?v=1"></script>
+    <script src="render_ironhorse.js?v=14"></script>
     <script src="render_spraying.js?v=11"></script>
     <script src="render_manuring.js?v=11"></script>
-    <script src="render_reports.js?v=21"></script>
-    <script src="script.js?v=30"></script>
+    <script src="render_reports.js?v=22"></script>
+    <script src="script.js?v=31"></script>
     <script>
         // Use event delegation for topnav toggle interactions to support dynamically added items
         document.addEventListener('click', (e) => {

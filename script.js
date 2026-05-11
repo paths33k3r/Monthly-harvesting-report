@@ -236,6 +236,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const userMgmtItem = document.getElementById('nav-user-mgmt-item');
             if (userMgmtItem) userMgmtItem.style.display = isAdmin ? '' : 'none';
 
+            const auditLogItem = document.getElementById('nav-audit-log-item');
+            if (auditLogItem) auditLogItem.style.display = isAdmin ? '' : 'none';
+
             if (!isAdmin && Array.isArray(currentUserRole.allowedMenus)) {
                 const allowed = currentUserRole.allowedMenus;
                 document.querySelectorAll('.nav-menu > .nav-item[data-menu-key]').forEach(item => {
@@ -1112,7 +1115,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 db.ref('shared/app_state').set(JSON.stringify(state))
                     .then(() => {
                         window.dispatchEvent(new CustomEvent('harvesting:activity'));
-                        if (!silent) alert("Data saved successfully to cloud!");
+                        if (!silent) {
+                            alert("Data saved successfully to cloud!");
+                            if (typeof window.logAudit === 'function') {
+                                const sec = state.activeViewType || 'harvesting';
+                                const yr = state.selectedReportYear || '';
+                                window.logAudit('save', sec, `Year ${yr}`, `View: ${sec}`);
+                            }
+                        }
                     })
                     .catch(e => {
                         console.error("Firebase save error:", e);
@@ -1125,6 +1135,32 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         window.saveState = saveState;
 
+        // ── Audit log ─────────────────────────────────────────────────────────
+        window._auditDb = db;
+
+        window.logAudit = function (action, section, target, details = '', before = null, after = null) {
+            if (!auth.currentUser) return;
+            const entry = {
+                ts: Date.now(),
+                user: auth.currentUser.email || auth.currentUser.uid,
+                action,
+                section,
+                target: target || '',
+                details: details || '',
+            };
+            if (before !== null) entry.before = typeof before === 'string' ? before : JSON.stringify(before);
+            if (after  !== null) entry.after  = typeof after  === 'string' ? after  : JSON.stringify(after);
+            db.ref('shared/audit_log').push(entry).catch(e => console.warn('Audit log write error:', e));
+
+            // Purge entries older than 12 months (only run occasionally)
+            if (Math.random() < 0.05) {
+                const cutoff = Date.now() - 365 * 24 * 60 * 60 * 1000;
+                db.ref('shared/audit_log').orderByChild('ts').endAt(cutoff).once('value', snap => {
+                    snap.forEach(child => child.ref.remove());
+                });
+            }
+        };
+        // ─────────────────────────────────────────────────────────────────────
 
         // DOM Elements
         const tableBody = document.getElementById('table-body');
@@ -1248,6 +1284,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const confirmDelete = confirm(`WARNING: Are you sure you want to permanently delete ALL data for Report Year ${state.selectedReportYear}?`);
             if (!confirmDelete) return;
 
+            if (typeof window.logAudit === 'function') {
+                window.logAudit('delete', 'harvesting', `Year ${state.selectedReportYear}`, 'Bulk delete of entire report year');
+            }
             delete state.reports[state.selectedReportYear];
 
             const remainingYears = Object.keys(state.reports).sort((a, b) => parseInt(a) - parseInt(b));
@@ -1469,6 +1508,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 state.activeViewType = 'interval_month';
                 state.activePerfMonth = targetMonth;
 
+                if (typeof window.logAudit === 'function') {
+                    window.logAudit('import', 'harvesting', `${targetMonth} ${targetYear}`, `File: ${file.name} — ${newBlocks.length} blocks imported`);
+                }
                 // Update UI
                 alert(`Successfully imported ${newBlocks.length} blocks!`);
                 renderSidebar();
@@ -1559,6 +1601,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 e.target.value = '';
+                if (typeof window.logAudit === 'function') {
+                    window.logAudit('import', 'ffb_budget', `Year ${importYear}`, `File: ${file.name} — ${state.ffbBudget[importYear].length} blocks imported`);
+                }
                 alert(`Successfully imported ${state.ffbBudget[importYear].length} blocks for year ${importYear}!`);
 
                 // Switch view if it was FFB Budget already
@@ -1827,6 +1872,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         actionDiv.appendChild(createActionIcon('🗑️', 'delete-gang', () => {
                             if (confirm(`WARNING: Remove Gang '${gang}' from Year ${year}? This will return all blocks in this gang to 'Unassigned' (it will NOT delete the planting phase data).`)) {
+                                if (typeof window.logAudit === 'function') {
+                                    window.logAudit('delete', 'gangs', `Gang "${gang}" — Year ${year}`, 'Gang removed; blocks returned to Unassigned');
+                                }
                                 // Non-destructive: Just unassign blocks
                                 blocks.forEach(b => {
                                     if (b.gang === gang) b.gang = "Unassigned";
@@ -2198,6 +2246,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (ihCostPerHaWrapper) ihCostPerHaWrapper.innerHTML = '';
             if (userMgmtWrapper) { userMgmtWrapper.innerHTML = ''; userMgmtWrapper.classList.add('hidden'); }
             if (excelReportsWrapper) { excelReportsWrapper.innerHTML = ''; excelReportsWrapper.classList.add('hidden'); }
+            const auditLogWrapper = document.getElementById('audit-log-wrapper');
+            if (auditLogWrapper) { auditLogWrapper.innerHTML = ''; auditLogWrapper.classList.add('hidden'); }
 
             // Hide special wrappers by default
             if (ffbWrapper) ffbWrapper.classList.add('hidden');
@@ -2366,6 +2416,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (ihCW) {
                     ihCW.classList.remove('hidden');
                     if (typeof renderIronHorseCostPerHa === 'function') renderIronHorseCostPerHa();
+                }
+            } else if (state.activeViewType === 'audit_log') {
+                mainReportWrapper.classList.add('hidden');
+                perfWrapper.classList.add('hidden');
+                intervalWrapper.classList.add('hidden');
+                tableContainer.classList.add('hidden');
+                const alw = document.getElementById('audit-log-wrapper');
+                if (alw) {
+                    alw.classList.remove('hidden');
+                    if (typeof window.renderAuditLog === 'function') window.renderAuditLog();
                 }
             } else if (state.activeViewType === 'maintenance_coming_soon') {
                 mainReportWrapper.classList.add('hidden');
@@ -4151,6 +4211,17 @@ document.addEventListener('DOMContentLoaded', () => {
                         e.preventDefault();
                         state.activeViewType = 'ironhorse_costperha';
                         renderSidebar(); renderTable();
+                    };
+                }
+
+                // ── Audit Log nav handler ───────────────────────────────
+                const sidebarAuditLog = document.getElementById('sidebar-audit-log');
+                if (sidebarAuditLog) {
+                    sidebarAuditLog.onclick = (e) => {
+                        e.preventDefault();
+                        state.activeViewType = 'audit_log';
+                        renderSidebar();
+                        renderTable();
                     };
                 }
 

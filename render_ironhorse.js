@@ -253,7 +253,9 @@ const renderIronHorseAssets = () => {
         const no = prompt('Asset number (e.g. GT25):');
         if (!no || !no.trim()) return;
         const desc = prompt('Description:', 'IRON HORSE') || 'IRON HORSE';
-        assets.push({ assetNo: no.trim().toUpperCase(), description: desc.trim(), gangAssignments: [] });
+        const newAssetNo = no.trim().toUpperCase();
+        assets.push({ assetNo: newAssetNo, description: desc.trim(), gangAssignments: [] });
+        if (typeof window.logAudit === 'function') window.logAudit('add', 'ironhorse', `Asset ${newAssetNo} — Year ${yearStr}`, desc.trim());
         saveIronHorseData(); renderIronHorseAssets();
     };
     rightGroup.appendChild(btnAddAsset);
@@ -365,9 +367,9 @@ const renderIronHorseAssets = () => {
                 btnEditAssign.title = 'Edit this assignment';
                 btnEditAssign.onclick = () => {
                     ihShowGangAssignModal(asset.assetNo, yearStr, ({ gang, from, to, remark }) => {
-                        // Find the original assignment by matching all fields and update in-place
                         const orig = asset.gangAssignments.find(a => a.gang === g.gang && a.from === g.from);
                         if (orig) {
+                            if (typeof window.logAudit === 'function') window.logAudit('edit', 'ironhorse', `${asset.assetNo} gang assignment`, `Before: ${orig.gang} (${orig.from}→${orig.to}), After: ${gang} (${from}→${to})`);
                             orig.gang = gang; orig.from = from; orig.to = to; orig.remark = remark;
                         }
                         saveIronHorseData(); renderIronHorseAssets();
@@ -383,7 +385,10 @@ const renderIronHorseAssets = () => {
                 btnDelAssign.onclick = () => {
                     if (!confirm(`Remove gang assignment "${g.gang}" for ${asset.assetNo}?`)) return;
                     const origIdx = asset.gangAssignments.findIndex(a => a.gang === g.gang && a.from === g.from);
-                    if (origIdx > -1) asset.gangAssignments.splice(origIdx, 1);
+                    if (origIdx > -1) {
+                        if (typeof window.logAudit === 'function') window.logAudit('delete', 'ironhorse', `${asset.assetNo} gang assignment`, `Removed: ${g.gang} (${g.from}→${g.to})`);
+                        asset.gangAssignments.splice(origIdx, 1);
+                    }
                     saveIronHorseData(); renderIronHorseAssets();
                 };
                 row.appendChild(btnDelAssign);
@@ -404,6 +409,7 @@ const renderIronHorseAssets = () => {
             ihShowGangAssignModal(asset.assetNo, yearStr, ({ gang, from, to, remark }) => {
                 if (!asset.gangAssignments) asset.gangAssignments = [];
                 asset.gangAssignments.push({ gang, from, to, remark });
+                if (typeof window.logAudit === 'function') window.logAudit('add', 'ironhorse', `${asset.assetNo} gang assignment`, `${gang} (${from}→${to})`);
                 saveIronHorseData(); renderIronHorseAssets();
             });
         };
@@ -418,6 +424,7 @@ const renderIronHorseAssets = () => {
             const currentList = window.state.ironHorse.assets[yearStr];
             const idx = currentList.findIndex(a => a.assetNo === asset.assetNo);
             if (idx > -1) {
+                if (typeof window.logAudit === 'function') window.logAudit('delete', 'ironhorse', `Asset ${asset.assetNo} — Year ${yearStr}`, 'Asset removed with all gang assignments');
                 currentList.splice(idx, 1);
                 saveIronHorseData(); renderIronHorseAssets();
             }
@@ -696,7 +703,12 @@ const saveIronHorseData = (silent = true) => {
         return;
     }
     window._ironHorseDb.ref('shared/ironhorse_data').set(JSON.stringify(window.state.ironHorse))
-        .then(() => { if (!silent) alert('Iron Horse data saved!'); })
+        .then(() => {
+            if (!silent) {
+                alert('Iron Horse data saved!');
+                if (typeof window.logAudit === 'function') window.logAudit('save', 'ironhorse', 'Iron Horse data', '');
+            }
+        })
         .catch(e => { console.error('Iron Horse save error:', e); if (!silent) alert('Error: ' + e.message); });
 };
 

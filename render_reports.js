@@ -84,6 +84,9 @@
         a.href = url; a.download = filename;
         document.body.appendChild(a); a.click();
         document.body.removeChild(a); URL.revokeObjectURL(url);
+        if (typeof window.logAudit === 'function') {
+            window.logAudit('download', 'reports', filename, '');
+        }
     }
 
     function setStatus(id, msg, autoClear) {
