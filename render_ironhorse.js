@@ -1228,7 +1228,7 @@ const renderIronHorseCostPerHa = () => {
 
     const titleEl = document.createElement('div');
     titleEl.style.cssText = 'font-size:1.1rem; font-weight:700; color:var(--text-primary); text-transform:uppercase; flex:1;';
-    titleEl.textContent = `Iron Horse — Expenses by Cost per Ha`;
+    titleEl.textContent = `Iron Horse — Expenses by Cost per FFB MT`;
     toolbar.appendChild(titleEl);
 
     if (availYears.length > 0) {
@@ -1317,14 +1317,112 @@ const renderIronHorseCostPerHa = () => {
     });
     const totalHa = Object.values(gangHaMap).reduce((s, h) => s + h, 0);
 
+    // FFB MT per gang per month — from performance data (r1+r2+r3 per block)
+    // 3-tier lookup to handle gang name variations between iron horse and performance sections:
+    //   1. Exact key match
+    //   2. Case-insensitive / partial-prefix match
+    //   3. Block-level aggregation via gangAssignments (handles name mismatches entirely)
+    const sumBlocksMt = gPerf => {
+        if (!gPerf || !gPerf.blocks) return 0;
+        return Object.values(gPerf.blocks).reduce((s, b) => s + (b.r1 || 0) + (b.r2 || 0) + (b.r3 || 0), 0);
+    };
+
+    const getGangMonthMt = (monthPerf, gangName) => {
+        if (!monthPerf) return 0;
+
+        // 1. Exact match
+        if (monthPerf[gangName]) return sumBlocksMt(monthPerf[gangName]);
+
+        // 2a. Case-insensitive exact match
+        const lowerG = gangName.toLowerCase();
+        const ciKey = Object.keys(monthPerf).find(k => k !== 'gangAssignments' && k.toLowerCase() === lowerG);
+        if (ciKey) return sumBlocksMt(monthPerf[ciKey]);
+
+        // 2b. Performance key is a prefix of the iron horse gang name (e.g. "YUDI" ⊂ "YUDI GANG -previously ERDI GANG")
+        const perfKeys = Object.keys(monthPerf).filter(k => k !== 'gangAssignments');
+        const prefixKey = perfKeys.find(k => {
+            const kl = k.toLowerCase();
+            return kl.length >= 4 && lowerG.startsWith(kl);
+        });
+        if (prefixKey) return sumBlocksMt(monthPerf[prefixKey]);
+
+        // 2c. First word of iron horse name matches start of performance key
+        const firstWord = gangName.split(' ')[0].toLowerCase();
+        if (firstWord.length >= 4) {
+            const fwKey = perfKeys.find(k => k.toLowerCase().startsWith(firstWord));
+            if (fwKey) return sumBlocksMt(monthPerf[fwKey]);
+        }
+
+        // 2d. First 5 letters match (handles spelling differences, e.g. WENDERLINUS vs WENDELINUS)
+        const strip = s => s.toLowerCase().replace(/[^a-z]/g, '');
+        const fiveG = strip(gangName).substring(0, 5);
+        if (fiveG.length >= 5) {
+            const f5Key = perfKeys.find(k => strip(k).startsWith(fiveG));
+            if (f5Key) return sumBlocksMt(monthPerf[f5Key]);
+        }
+
+        // 2e. Try the name that appears after "previously" in the iron horse gang name
+        //     (e.g. "YUDI GANG -previously ERDI GANG" → try matching "ERDI GANG")
+        const prevMatch = gangName.match(/previously\s+(.+)/i);
+        if (prevMatch) {
+            const prevFirst = prevMatch[1].trim().split(/\s+/)[0].toLowerCase();
+            if (prevFirst.length >= 4) {
+                const pvKey = perfKeys.find(k => k.toLowerCase().startsWith(prevFirst));
+                if (pvKey) return sumBlocksMt(monthPerf[pvKey]);
+            }
+        }
+
+        // 3. Block-level aggregation: find blocks owned by this gang via gangAssignments,
+        //    then sum r1+r2+r3 across all performance entries for those block IDs.
+        const assignments = monthPerf.gangAssignments || {};
+        const ownedBlocks = new Set(
+            Object.entries(assignments).filter(([, g]) => g === gangName).map(([id]) => id)
+        );
+        if (ownedBlocks.size > 0) {
+            let total = 0;
+            Object.entries(monthPerf).forEach(([key, gData]) => {
+                if (key === 'gangAssignments' || !gData?.blocks) return;
+                Object.entries(gData.blocks).forEach(([blockId, b]) => {
+                    if (ownedBlocks.has(blockId)) total += (b.r1 || 0) + (b.r2 || 0) + (b.r3 || 0);
+                });
+            });
+            return total;
+        }
+
+        return 0;
+    };
+
+    const gangMonthMt = {};
+    const grandMonthMt = {};
+    let grandYearMt = 0;
+    const gangYearMt = {};
+    IH_MONTHS.forEach(m => {
+        const perfKey = m.charAt(0) + m.slice(1).toLowerCase(); // "JAN" → "Jan"
+        const monthPerf = (window.state.performance?.[yearStr]?.[perfKey]) || {};
+        let grandMt = 0;
+        gangOrder.forEach(gangName => {
+            if (!gangMonthMt[gangName]) gangMonthMt[gangName] = {};
+            const gMt = getGangMonthMt(monthPerf, gangName);
+            gangMonthMt[gangName][m] = gMt;
+            grandMt += gMt;
+        });
+        grandMonthMt[m] = grandMt;
+        grandYearMt += grandMt;
+    });
+    gangOrder.forEach(g => {
+        gangYearMt[g] = IH_MONTHS.reduce((s, m) => s + (gangMonthMt[g]?.[m] || 0), 0);
+    });
+    const noMtData = grandYearMt === 0;
+
     // Formatters
     const fmtRm = v => v !== 0
         ? v.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
         : '—';
     const fmtHa = h => h > 0 ? h.toFixed(2) : '—';
-    const fmtCph = (cost, ha) => {
-        if (!ha || ha <= 0) return '—';
-        return (cost / ha).toFixed(2);
+    const fmtMt = v => v > 0 ? v.toFixed(2) : '—';
+    const fmtCpmt = (cost, mt) => {
+        if (!mt || mt <= 0) return '—';
+        return (cost / mt).toFixed(2);
     };
 
     // Shared CSS
@@ -1342,7 +1440,16 @@ const renderIronHorseCostPerHa = () => {
     const grTotS = grS + 'background:#14532d;color:#4ade80;';
 
     // ── Generic table builder ─────────────────────────────────────────
-    const buildTable = (title, gangExtraCell, assetExtraCell, grandExtraCell) => {
+    // colHeader: string for the secondary column ("Ha")
+    // gangColVal(gangName): value shown in secondary column for gang rows
+    // grandColVal(): value shown in secondary column for grand total row
+    // warn: optional warning string shown below title
+    // gangLabelSuffix(gangName): optional extra HTML appended inside the gang name cell
+    // gangSubRow(gangName): optional fn returning {label, colVal, getMonthVal(m), yearVal} for a sub-row after the gang header
+    // gangExtraCell.monthVal(cost, gangName, m), gangExtraCell.yearVal(cost, gangName)
+    // assetExtraCell.monthVal(cost, gangName, m), assetExtraCell.yearVal(cost, gangName)
+    // grandExtraCell.monthVal(cost, m), grandExtraCell.yearVal(cost)
+    const buildTable = (title, colHeader, gangColVal, grandColVal, warn, gangLabelSuffix, gangSubRow, gangExtraCell, assetExtraCell, grandExtraCell) => {
         const section = document.createElement('div');
         section.style.cssText = 'margin-bottom:2.5rem;';
 
@@ -1351,11 +1458,11 @@ const renderIronHorseCostPerHa = () => {
         secTitle.textContent = title;
         section.appendChild(secTitle);
 
-        if (noHaData && title.includes('Cost / Ha')) {
-            const warn = document.createElement('div');
-            warn.style.cssText = 'padding:1rem;background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;font-size:0.85rem;color:#92400e;margin-bottom:0.75rem;';
-            warn.textContent = `⚠ No hectarage data found for ${yearStr}. Ha values will show as "—". Please ensure harvesting block data is imported for this year.`;
-            section.appendChild(warn);
+        if (warn) {
+            const warnEl = document.createElement('div');
+            warnEl.style.cssText = 'padding:1rem;background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;font-size:0.85rem;color:#92400e;margin-bottom:0.75rem;';
+            warnEl.textContent = warn;
+            section.appendChild(warnEl);
         }
 
         const scrollWrap = document.createElement('div');
@@ -1367,7 +1474,7 @@ const renderIronHorseCostPerHa = () => {
         const monthHdrs = IH_MONTHS.map(m => `<th style="${hS}">${m}</th>`).join('');
         table.innerHTML = `<thead><tr>
             <th style="${hLS}">Gang / Asset</th>
-            <th style="${hS}min-width:75px;">Ha</th>
+            <th style="${hS}min-width:75px;">${colHeader}</th>
             ${monthHdrs}
             <th style="${hTotS}">Total</th>
         </tr></thead>`;
@@ -1375,22 +1482,42 @@ const renderIronHorseCostPerHa = () => {
         const tbody = document.createElement('tbody');
 
         gangOrder.forEach(gangName => {
-            const ha      = gangHaMap[gangName] || 0;
-            const label   = gangName === '__UNASSIGNED__' ? '— Unassigned —' : gangName;
+            const label    = gangName === '__UNASSIGNED__' ? '— Unassigned —' : gangName;
+            const suffix   = gangLabelSuffix ? gangLabelSuffix(gangName) : '';
             const monthTds = IH_MONTHS.map(m =>
-                `<td style="${gS}">${gangExtraCell.monthVal(gangMonthExp[gangName][m], ha)}</td>`
+                `<td style="${gS}">${gangExtraCell.monthVal(gangMonthExp[gangName][m], gangName, m)}</td>`
             ).join('');
             const trGang = document.createElement('tr');
             trGang.innerHTML = `
-                <td style="${gLS}">${label}</td>
-                <td style="${gS}">${fmtHa(ha)}</td>
+                <td style="${gLS}">${label}${suffix}</td>
+                <td style="${gS}">${gangColVal(gangName)}</td>
                 ${monthTds}
-                <td style="${gTotS}">${gangExtraCell.yearVal(gangMonthExp[gangName]['YEAR'], ha)}</td>`;
+                <td style="${gTotS}">${gangExtraCell.yearVal(gangMonthExp[gangName]['YEAR'], gangName)}</td>`;
             tbody.appendChild(trGang);
+
+            // Optional sub-row (e.g. "FFB MT of Month")
+            if (gangSubRow) {
+                const sub = gangSubRow(gangName);
+                if (sub) {
+                    const subS  = 'background:#162032;color:#7dd3fc;padding:5px 10px;border:1px solid #1e3a52;font-size:0.72rem;font-style:italic;text-align:right;';
+                    const subLS = subS + 'text-align:left;padding-left:22px;font-weight:600;min-width:155px;';
+                    const subTotS = subS + 'background:#0f2d45;color:#38bdf8;font-weight:700;';
+                    const subMonthTds = IH_MONTHS.map(m =>
+                        `<td style="${subS}">${sub.getMonthVal(m)}</td>`
+                    ).join('');
+                    const trSub = document.createElement('tr');
+                    trSub.innerHTML = `
+                        <td style="${subLS}">${sub.label}</td>
+                        <td style="${subS}">${sub.colVal}</td>
+                        ${subMonthTds}
+                        <td style="${subTotS}">${sub.yearVal}</td>`;
+                    tbody.appendChild(trSub);
+                }
+            }
 
             (gangToAssets[gangName] || []).forEach((assetNo, ai) => {
                 const monthAssetTds = IH_MONTHS.map(m =>
-                    `<td style="${aS}">${assetExtraCell.monthVal(assetMonthExp[assetNo][m], ha)}</td>`
+                    `<td style="${aS}">${assetExtraCell.monthVal(assetMonthExp[assetNo][m], gangName, m)}</td>`
                 ).join('');
                 const tr = document.createElement('tr');
                 tr.style.background = ai % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-main)';
@@ -1398,22 +1525,22 @@ const renderIronHorseCostPerHa = () => {
                     <td style="${aLS}">↳ ${assetNo}</td>
                     <td style="${aS}">—</td>
                     ${monthAssetTds}
-                    <td style="${aTotS}">${assetExtraCell.yearVal(assetMonthExp[assetNo]['YEAR'], ha)}</td>`;
+                    <td style="${aTotS}">${assetExtraCell.yearVal(assetMonthExp[assetNo]['YEAR'], gangName)}</td>`;
                 tbody.appendChild(tr);
             });
         });
 
         // Grand total row
         const monthGrandTds = IH_MONTHS.map(m =>
-            `<td style="${grS}color:#86efac;">${grandExtraCell.monthVal(grandMonthExp[m], totalHa)}</td>`
+            `<td style="${grS}color:#86efac;">${grandExtraCell.monthVal(grandMonthExp[m], m)}</td>`
         ).join('');
         const trGrand = document.createElement('tr');
         trGrand.style.cssText = 'background:#1e293b;color:#f8fafc;';
         trGrand.innerHTML = `
             <td style="${grLS}">Grand Total</td>
-            <td style="${grS}">${fmtHa(totalHa)}</td>
+            <td style="${grS}">${grandColVal()}</td>
             ${monthGrandTds}
-            <td style="${grTotS}">${grandExtraCell.yearVal(grandYearExp, totalHa)}</td>`;
+            <td style="${grTotS}">${grandExtraCell.yearVal(grandYearExp)}</td>`;
         tbody.appendChild(trGrand);
 
         table.appendChild(tbody);
@@ -1432,17 +1559,47 @@ const renderIronHorseCostPerHa = () => {
         return;
     }
 
-    // Table 1: Cost / Ha
+    // Table 1: Cost / FFB MT — Ha column, FFB MT shown as subtitle in gang name cell
+    const mtWarn = noMtData
+        ? `⚠ No harvesting performance data found for ${yearStr}. FFB MT values will show as "—". Please ensure performance data is entered for this year.`
+        : null;
+    const ffbMtSubtitle = gangName => {
+        const mt = gangYearMt[gangName] || 0;
+        return mt > 0
+            ? `<div style="font-size:0.68rem;color:#94a3b8;font-weight:400;margin-top:2px;">FFB: ${mt.toLocaleString('en-MY', {minimumFractionDigits:2,maximumFractionDigits:2})} MT</div>`
+            : '';
+    };
+    const ffbMtSubRow = gangName => ({
+        label: 'FFB MT of Month',
+        colVal: '—',
+        getMonthVal: m => fmtMt(gangMonthMt[gangName]?.[m] || 0),
+        yearVal: fmtMt(gangYearMt[gangName] || 0)
+    });
     wrapper.appendChild(buildTable(
-        `Cost / Ha (RM/Ha) — ${yearStr}`,
-        { monthVal: (cost, ha) => fmtCph(cost, ha), yearVal: (cost, ha) => fmtCph(cost, ha) },
-        { monthVal: (cost, ha) => fmtCph(cost, ha), yearVal: (cost, ha) => fmtCph(cost, ha) },
-        { monthVal: (cost, ha) => fmtCph(cost, ha), yearVal: (cost, ha) => fmtCph(cost, ha) }
+        `Cost / FFB MT (RM/MT) — ${yearStr}`,
+        'Ha',
+        gangName => fmtHa(gangHaMap[gangName] || 0),
+        () => fmtHa(totalHa),
+        mtWarn,
+        ffbMtSubtitle,
+        ffbMtSubRow,
+        { monthVal: (cost, gangName, m) => fmtCpmt(cost, gangMonthMt[gangName]?.[m]),
+          yearVal:  (cost, gangName)     => fmtCpmt(cost, gangYearMt[gangName]) },
+        { monthVal: (cost, gangName, m) => fmtCpmt(cost, gangMonthMt[gangName]?.[m]),
+          yearVal:  (cost, gangName)     => fmtCpmt(cost, gangYearMt[gangName]) },
+        { monthVal: (cost, m) => fmtCpmt(cost, grandMonthMt[m]),
+          yearVal:  (cost)    => fmtCpmt(cost, grandYearMt) }
     ));
 
     // Table 2: Issued Cost
     wrapper.appendChild(buildTable(
         `Issued Cost (RM) — ${yearStr}`,
+        'Ha',
+        gangName => fmtHa(gangHaMap[gangName] || 0),
+        () => fmtHa(totalHa),
+        noHaData ? `⚠ No hectarage data found for ${yearStr}. Ha values will show as "—". Please ensure harvesting block data is imported for this year.` : null,
+        null,
+        null,
         { monthVal: (cost) => fmtRm(cost), yearVal: (cost) => fmtRm(cost) },
         { monthVal: (cost) => fmtRm(cost), yearVal: (cost) => fmtRm(cost) },
         { monthVal: (cost) => fmtRm(cost), yearVal: (cost) => fmtRm(cost) }
