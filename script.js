@@ -2640,6 +2640,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
             perfWrapper.innerHTML = ''; // Start clean
 
+            // Clear all performance data for this month/year
+            const clearMonthBtn = document.createElement('button');
+            clearMonthBtn.textContent = `🗑 Clear All Data for ${month} ${year}`;
+            clearMonthBtn.style.cssText = 'margin-bottom:1.25rem;padding:0.4rem 0.9rem;font-size:0.8rem;cursor:pointer;background:transparent;border:1px solid var(--danger);color:var(--danger);border-radius:4px;';
+            clearMonthBtn.onclick = () => {
+                if (!confirm(`Clear ALL performance data for ${month} ${year}?\n\nThis removes all block harvest figures (R1, R2, R3) and gang assignments for this month. This cannot be undone.`)) return;
+                if (state.performance[year]) delete state.performance[year][month];
+                saveState();
+                renderPerformanceTable();
+            };
+            perfWrapper.appendChild(clearMonthBtn);
+
             // Ensure state tree
             state.performance[year] = state.performance[year] || {};
             state.performance[year][month] = state.performance[year][month] || {};
