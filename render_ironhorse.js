@@ -1425,6 +1425,175 @@ const renderIronHorseCostPerHa = () => {
         return (cost / mt).toFixed(2);
     };
 
+    // ── Download Excel ────────────────────────────────────────────────
+    const downloadCostPerFFBMtExcel = async () => {
+        if (typeof window.ExcelJS === 'undefined') {
+            await new Promise((res, rej) => {
+                const s = document.createElement('script');
+                s.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+                s.onload = res; s.onerror = () => rej(new Error('Failed to load ExcelJS'));
+                document.head.appendChild(s);
+            });
+        }
+        const wb = new window.ExcelJS.Workbook();
+        const ws = wb.addWorksheet(`Cost per FFB MT ${yearStr}`);
+        const COLS = 15; // GANG/ASSET + HA + 12 months + TOTAL
+
+        ws.getColumn(1).width = 38;
+        ws.getColumn(2).width = 10;
+        IH_MONTHS.forEach((_, i) => { ws.getColumn(3 + i).width = 9; });
+        ws.getColumn(15).width = 10;
+
+        const BORDER_NORMAL = { style: 'thin',   color: { argb: 'FFB0B8C4' } };
+        const BORDER_DARK   = { style: 'thin',   color: { argb: 'FF6B7280' } };
+        const BORDER_MEDIUM = { style: 'medium', color: { argb: 'FF374151' } };
+        const applyBorder = (cell, type = 'normal') => {
+            const s = type === 'dark' ? BORDER_DARK : type === 'medium' ? BORDER_MEDIUM : BORDER_NORMAL;
+            cell.border = { top: s, bottom: s, left: s, right: s };
+        };
+        const numFmt = '#,##0.00';
+        const n = v => (v > 0 ? v : null);
+
+        // Title
+        const r1 = ws.addRow(['IRON HORSE — EXPENSES BY COST PER FFB MT']);
+        ws.mergeCells(r1.number, 1, r1.number, COLS);
+        Object.assign(r1.getCell(1), {
+            font: { bold: true, size: 14, color: { argb: 'FFFFFFFF' } },
+            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } },
+            alignment: { horizontal: 'center', vertical: 'middle' }
+        });
+        r1.height = 24;
+
+        const r2 = ws.addRow([`Cost / FFB MT (RM/MT) — ${yearStr}`]);
+        ws.mergeCells(r2.number, 1, r2.number, COLS);
+        Object.assign(r2.getCell(1), {
+            font: { bold: true, size: 11, color: { argb: 'FFFFFFFF' } },
+            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } },
+            alignment: { horizontal: 'center', vertical: 'middle' }
+        });
+        r2.height = 18;
+
+        ws.addRow([]);
+
+        // Header
+        const hRow = ws.addRow(['GANG / ASSET', 'HA', ...IH_MONTHS, 'TOTAL']);
+        hRow.height = 18;
+        hRow.eachCell({ includeEmpty: true }, (cell, c) => {
+            cell.font = { bold: true, size: 9, color: { argb: 'FFF8FAFC' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: c === COLS ? 'FF14532D' : 'FF1E293B' } };
+            cell.alignment = { horizontal: c === 1 ? 'left' : 'right', vertical: 'middle' };
+            applyBorder(cell, 'dark');
+        });
+        hRow.getCell(COLS).font = { bold: true, size: 9, color: { argb: 'FFDCFCE7' } };
+
+        const styleRow = (row, fg, fontArgb, bold, size = 9, italic = false) => {
+            row.eachCell({ includeEmpty: true }, (cell, c) => {
+                cell.font = { bold, italic, size, color: { argb: fontArgb } };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fg } };
+                cell.alignment = { horizontal: c === 1 ? 'left' : 'right', vertical: 'middle' };
+                applyBorder(cell, 'normal');
+                if (c > 1 && typeof cell.value === 'number') cell.numFmt = numFmt;
+            });
+        };
+
+        // Data rows
+        gangOrder.forEach(gangName => {
+            const gangLabel = gangName === '__UNASSIGNED__' ? '— Unassigned —' : gangName;
+
+            // Gang Cost/MT row
+            const cpmtVals = IH_MONTHS.map(m => {
+                const mt = gangMonthMt[gangName]?.[m] || 0;
+                return mt > 0 ? (gangMonthExp[gangName]?.[m] || 0) / mt : null;
+            });
+            const cpmtTotal = gangYearMt[gangName] > 0 ? (gangMonthExp[gangName]?.['YEAR'] || 0) / gangYearMt[gangName] : null;
+            const gRow = ws.addRow([gangLabel, n(gangHaMap[gangName] || 0), ...cpmtVals, cpmtTotal]);
+            styleRow(gRow, 'FF0F172A', 'FFE2E8F0', true);
+            gRow.eachCell({ includeEmpty: true }, cell => applyBorder(cell, 'medium'));
+            gRow.getCell(COLS).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF14532D' } };
+            gRow.getCell(COLS).font = { bold: true, size: 9, color: { argb: 'FFDCFCE7' } };
+            gRow.height = 16;
+
+            // FFB MT sub-row
+            const mtVals = IH_MONTHS.map(m => n(gangMonthMt[gangName]?.[m] || 0));
+            const mtRow = ws.addRow(['  FFB MT of Month', null, ...mtVals, n(gangYearMt[gangName] || 0)]);
+            styleRow(mtRow, 'FFDBEAFE', 'FF1E40AF', false, 8, true);
+            mtRow.getCell(COLS).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFbfdbfe' } };
+            mtRow.height = 14;
+
+            // Expenses sub-row
+            const expVals = IH_MONTHS.map(m => n(gangMonthExp[gangName]?.[m] || 0));
+            const expRow = ws.addRow(['  Total Expenses (RM)', null, ...expVals, n(gangMonthExp[gangName]?.['YEAR'] || 0)]);
+            styleRow(expRow, 'FFFEE2E2', 'FF991B1B', false, 8, true);
+            expRow.getCell(COLS).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFECACA' } };
+            expRow.height = 14;
+
+            // Asset rows
+            (gangToAssets[gangName] || []).forEach((assetNo, ai) => {
+                const aVals = IH_MONTHS.map(m => {
+                    const mt = gangMonthMt[gangName]?.[m] || 0;
+                    return mt > 0 ? (assetMonthExp[assetNo]?.[m] || 0) / mt : null;
+                });
+                const aTotalMt = gangYearMt[gangName] || 0;
+                const aTotal = aTotalMt > 0 ? (assetMonthExp[assetNo]?.['YEAR'] || 0) / aTotalMt : null;
+                const aRow = ws.addRow([`  ↳ ${assetNo}`, null, ...aVals, aTotal]);
+                styleRow(aRow, ai % 2 === 0 ? 'FFFFFFFF' : 'FFF8FAFC', 'FF334155', false, 8);
+                aRow.getCell(COLS).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
+                aRow.getCell(COLS).font = { bold: true, size: 8, color: { argb: 'FF166534' } };
+                aRow.height = 14;
+            });
+        });
+
+        // Grand Total — Cost/MT (first)
+        const gtCpmtVals = IH_MONTHS.map(m => {
+            const mt = grandMonthMt[m] || 0;
+            return mt > 0 ? (grandMonthExp[m] || 0) / mt : null;
+        });
+        const gtCpmtTotal = grandYearMt > 0 ? grandYearExp / grandYearMt : null;
+        const gtCpmtRow = ws.addRow(['Cost / FFB MT of the month', null, ...gtCpmtVals, gtCpmtTotal]);
+        styleRow(gtCpmtRow, 'FF1E293B', 'FFF8FAFC', true);
+        gtCpmtRow.eachCell({ includeEmpty: true }, cell => applyBorder(cell, 'medium'));
+        gtCpmtRow.getCell(COLS).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF14532D' } };
+        gtCpmtRow.getCell(COLS).font = { bold: true, size: 9, color: { argb: 'FF4ADE80' } };
+        gtCpmtRow.height = 18;
+
+        // Grand Total — FFB MT (second)
+        const gtMtVals = IH_MONTHS.map(m => n(grandMonthMt[m] || 0));
+        const gtMtRow = ws.addRow(['Grand Total FFB MT of the month', n(totalHa), ...gtMtVals, n(grandYearMt)]);
+        styleRow(gtMtRow, 'FFDBEAFE', 'FF1E40AF', true);
+        gtMtRow.eachCell({ includeEmpty: true }, cell => applyBorder(cell, 'medium'));
+        gtMtRow.height = 16;
+
+        // Grand Total — Expenses (third)
+        const gtExpVals = IH_MONTHS.map(m => n(grandMonthExp[m] || 0));
+        const gtExpRow = ws.addRow(['Grand Total Expenses (RM)', null, ...gtExpVals, n(grandYearExp)]);
+        styleRow(gtExpRow, 'FFFEE2E2', 'FF991B1B', true);
+        gtExpRow.eachCell({ includeEmpty: true }, cell => applyBorder(cell, 'medium'));
+        gtExpRow.height = 16;
+
+        // Download
+        const buf = await wb.xlsx.writeBuffer();
+        const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Iron_Horse_Cost_per_FFB_MT_${yearStr}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+    };
+
+    const btnDlExcel = document.createElement('button');
+    btnDlExcel.className = 'btn-secondary';
+    btnDlExcel.style.cssText = 'padding:0.4rem 0.9rem;font-size:0.85rem;';
+    btnDlExcel.innerHTML = '📥 Download Excel';
+    btnDlExcel.onclick = async () => {
+        btnDlExcel.disabled = true;
+        btnDlExcel.textContent = 'Generating…';
+        try { await downloadCostPerFFBMtExcel(); }
+        finally { btnDlExcel.disabled = false; btnDlExcel.innerHTML = '📥 Download Excel'; }
+    };
+    toolbar.appendChild(btnDlExcel);
+
     // Shared CSS
     const hS    = 'background:#1e293b;color:#f8fafc;padding:7px 10px;border:1px solid #334155;font-weight:600;font-size:0.75rem;text-transform:uppercase;text-align:right;white-space:nowrap;';
     const hLS   = hS + 'text-align:left;min-width:155px;';
@@ -1449,7 +1618,7 @@ const renderIronHorseCostPerHa = () => {
     // gangExtraCell.monthVal(cost, gangName, m), gangExtraCell.yearVal(cost, gangName)
     // assetExtraCell.monthVal(cost, gangName, m), assetExtraCell.yearVal(cost, gangName)
     // grandExtraCell.monthVal(cost, m), grandExtraCell.yearVal(cost)
-    const buildTable = (title, colHeader, gangColVal, grandColVal, warn, gangLabelSuffix, gangSubRow, gangExtraCell, assetExtraCell, grandExtraCell) => {
+    const buildTable = (title, colHeader, gangColVal, grandColVal, warn, gangLabelSuffix, gangSubRow, gangExtraCell, assetExtraCell, grandExtraCell, grandRows) => {
         const section = document.createElement('div');
         section.style.cssText = 'margin-bottom:2.5rem;';
 
@@ -1495,13 +1664,16 @@ const renderIronHorseCostPerHa = () => {
                 <td style="${gTotS}">${gangExtraCell.yearVal(gangMonthExp[gangName]['YEAR'], gangName)}</td>`;
             tbody.appendChild(trGang);
 
-            // Optional sub-row (e.g. "FFB MT of Month")
+            // Optional sub-row(s) — gangSubRow may return a single object or an array
             if (gangSubRow) {
-                const sub = gangSubRow(gangName);
-                if (sub) {
-                    const subS  = 'background:#162032;color:#7dd3fc;padding:5px 10px;border:1px solid #1e3a52;font-size:0.72rem;font-style:italic;text-align:right;';
+                const subResult = gangSubRow(gangName);
+                const subs = subResult ? (Array.isArray(subResult) ? subResult : [subResult]) : [];
+                subs.forEach(sub => {
+                    const color   = sub.color || '#7dd3fc';
+                    const totColor= sub.color || '#38bdf8';
+                    const subS  = `background:#162032;color:${color};padding:5px 10px;border:1px solid #1e3a52;font-size:0.72rem;font-style:italic;text-align:right;`;
                     const subLS = subS + 'text-align:left;padding-left:22px;font-weight:600;min-width:155px;';
-                    const subTotS = subS + 'background:#0f2d45;color:#38bdf8;font-weight:700;';
+                    const subTotS = `background:#0f2d45;color:${totColor};font-weight:700;padding:5px 10px;border:1px solid #1e3a52;font-size:0.72rem;font-style:italic;text-align:right;`;
                     const subMonthTds = IH_MONTHS.map(m =>
                         `<td style="${subS}">${sub.getMonthVal(m)}</td>`
                     ).join('');
@@ -1512,7 +1684,7 @@ const renderIronHorseCostPerHa = () => {
                         ${subMonthTds}
                         <td style="${subTotS}">${sub.yearVal}</td>`;
                     tbody.appendChild(trSub);
-                }
+                });
             }
 
             (gangToAssets[gangName] || []).forEach((assetNo, ai) => {
@@ -1530,18 +1702,39 @@ const renderIronHorseCostPerHa = () => {
             });
         });
 
-        // Grand total row
-        const monthGrandTds = IH_MONTHS.map(m =>
-            `<td style="${grS}color:#86efac;">${grandExtraCell.monthVal(grandMonthExp[m], m)}</td>`
-        ).join('');
-        const trGrand = document.createElement('tr');
-        trGrand.style.cssText = 'background:#1e293b;color:#f8fafc;';
-        trGrand.innerHTML = `
-            <td style="${grLS}">Grand Total</td>
-            <td style="${grS}">${grandColVal()}</td>
-            ${monthGrandTds}
-            <td style="${grTotS}">${grandExtraCell.yearVal(grandYearExp)}</td>`;
-        tbody.appendChild(trGrand);
+        // Grand total row(s)
+        if (grandRows && grandRows.length) {
+            grandRows.forEach(gr => {
+                const isPrimary = !!gr.primary;
+                const c = gr.color;
+                const rowS   = isPrimary ? grS   : `background:#162032;color:${c || '#7dd3fc'};padding:5px 10px;border:1px solid #1e3a52;font-size:0.72rem;text-align:right;`;
+                const rowLS  = isPrimary ? grLS  : rowS + 'text-align:left;';
+                const rowTotS= isPrimary ? grTotS: `background:#0f2d45;color:${c || '#38bdf8'};font-weight:700;padding:5px 10px;border:1px solid #1e3a52;font-size:0.72rem;text-align:right;`;
+                const monthTds = IH_MONTHS.map(m =>
+                    `<td style="${rowS}">${gr.monthVal(m)}</td>`
+                ).join('');
+                const tr = document.createElement('tr');
+                if (isPrimary) tr.style.cssText = 'background:#1e293b;color:#f8fafc;';
+                tr.innerHTML = `
+                    <td style="${rowLS}">${gr.label}</td>
+                    <td style="${rowS}">${gr.colVal}</td>
+                    ${monthTds}
+                    <td style="${rowTotS}">${gr.yearVal}</td>`;
+                tbody.appendChild(tr);
+            });
+        } else {
+            const monthGrandTds = IH_MONTHS.map(m =>
+                `<td style="${grS}color:#86efac;">${grandExtraCell.monthVal(grandMonthExp[m], m)}</td>`
+            ).join('');
+            const trGrand = document.createElement('tr');
+            trGrand.style.cssText = 'background:#1e293b;color:#f8fafc;';
+            trGrand.innerHTML = `
+                <td style="${grLS}">Grand Total</td>
+                <td style="${grS}">${grandColVal()}</td>
+                ${monthGrandTds}
+                <td style="${grTotS}">${grandExtraCell.yearVal(grandYearExp)}</td>`;
+            tbody.appendChild(trGrand);
+        }
 
         table.appendChild(tbody);
         scrollWrap.appendChild(table);
@@ -1569,12 +1762,21 @@ const renderIronHorseCostPerHa = () => {
             ? `<div style="font-size:0.68rem;color:#94a3b8;font-weight:400;margin-top:2px;">FFB: ${mt.toLocaleString('en-MY', {minimumFractionDigits:2,maximumFractionDigits:2})} MT</div>`
             : '';
     };
-    const ffbMtSubRow = gangName => ({
-        label: 'FFB MT of Month',
-        colVal: '—',
-        getMonthVal: m => fmtMt(gangMonthMt[gangName]?.[m] || 0),
-        yearVal: fmtMt(gangYearMt[gangName] || 0)
-    });
+    const ffbMtSubRow = gangName => [
+        {
+            label: 'FFB MT of Month',
+            colVal: '—',
+            getMonthVal: m => fmtMt(gangMonthMt[gangName]?.[m] || 0),
+            yearVal: fmtMt(gangYearMt[gangName] || 0)
+        },
+        {
+            label: 'Total Expenses (RM)',
+            colVal: '—',
+            getMonthVal: m => fmtRm(gangMonthExp[gangName]?.[m] || 0),
+            yearVal: fmtRm(gangMonthExp[gangName]?.['YEAR'] || 0),
+            color: '#f87171'
+        }
+    ];
     wrapper.appendChild(buildTable(
         `Cost / FFB MT (RM/MT) — ${yearStr}`,
         'Ha',
@@ -1587,8 +1789,30 @@ const renderIronHorseCostPerHa = () => {
           yearVal:  (cost, gangName)     => fmtCpmt(cost, gangYearMt[gangName]) },
         { monthVal: (cost, gangName, m) => fmtCpmt(cost, gangMonthMt[gangName]?.[m]),
           yearVal:  (cost, gangName)     => fmtCpmt(cost, gangYearMt[gangName]) },
-        { monthVal: (cost, m) => fmtCpmt(cost, grandMonthMt[m]),
-          yearVal:  (cost)    => fmtCpmt(cost, grandYearMt) }
+        null,
+        [
+            {
+                label:    'Cost / FFB MT of the month',
+                colVal:   '—',
+                monthVal: m => fmtCpmt(grandMonthExp[m], grandMonthMt[m]),
+                yearVal:  fmtCpmt(grandYearExp, grandYearMt),
+                primary:  true
+            },
+            {
+                label:    'Grand Total FFB MT of the month',
+                colVal:   fmtHa(totalHa),
+                monthVal: m => fmtMt(grandMonthMt[m] || 0),
+                yearVal:  fmtMt(grandYearMt),
+                color:    '#7dd3fc'
+            },
+            {
+                label:    'Grand Total Expenses (RM)',
+                colVal:   '—',
+                monthVal: m => fmtRm(grandMonthExp[m] || 0),
+                yearVal:  fmtRm(grandYearExp),
+                color:    '#f87171'
+            }
+        ]
     ));
 
     // Table 2: Issued Cost
