@@ -1941,6 +1941,220 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
+        // ── Generic main-panel selector (replaces nested year/month dropdown menus) ──
+        const SELECTOR_CONFIG = {
+            interval_month:  { title: 'Harvesting Interval',          monthBased: true,  menuKey: 'performance', yearsFrom: 'reports' },
+            perf_month:      { title: 'Harvester Performance Chart',  monthBased: true,  menuKey: 'performance', yearsFrom: 'reports' },
+            current_prev:    { title: 'Current vs Previous Month',    monthBased: true,  menuKey: 'performance', yearsFrom: 'reports' },
+            ytd:             { title: 'Harvesting YTD',               monthBased: true,  menuKey: 'performance', yearsFrom: 'reports' },
+            rainfall_record: { title: 'Rainfall Record',             monthBased: false, menuKey: 'rainfall',    yearsFrom: 'rainfall' },
+            ffb_budget:      { title: 'FFB Budget Estimate',         monthBased: false, menuKey: 'ffbBudget',   yearsFrom: 'ffbBudget' }
+        };
+
+        const selectorYearsFor = (src) => {
+            let obj = {};
+            if (src === 'reports') obj = state.reports || {};
+            else if (src === 'rainfall') obj = state.rainfall || {};
+            else if (src === 'ffbBudget') obj = state.ffbBudget || {};
+            return Object.keys(obj).filter(k => /^\d{4}$/.test(k)).sort((a, b) => parseInt(a) - parseInt(b));
+        };
+
+        const selectorAddYear = (cfg) => {
+            const newYearStr = prompt(`Enter the new ${cfg.title} Year (e.g., 2027):`);
+            if (!newYearStr || !newYearStr.trim()) return null;
+            const newYear = newYearStr.trim();
+            if (cfg.yearsFrom === 'reports') {
+                alert('Add report years from the Planting Phase Record menu.');
+                return null;
+            } else if (cfg.yearsFrom === 'rainfall') {
+                if (!state.rainfall) state.rainfall = {};
+                if (state.rainfall[newYear]) { alert(`Rainfall Record for ${newYear} already exists!`); return null; }
+                if (typeof createEmptyRainfallYear === 'function') state.rainfall[newYear] = createEmptyRainfallYear();
+                else state.rainfall[newYear] = {};
+            } else if (cfg.yearsFrom === 'ffbBudget') {
+                if (!state.ffbBudget) state.ffbBudget = {};
+                if (state.ffbBudget[newYear]) { alert(`FFB Budget Year ${newYear} already exists!`); return null; }
+                const existing = Object.keys(state.ffbBudget).filter(k => /^\d{4}$/.test(k)).sort((a, b) => parseInt(a) - parseInt(b));
+                state.ffbBudget[newYear] = existing.length ? JSON.parse(JSON.stringify(state.ffbBudget[existing[existing.length - 1]])) : [];
+            }
+            saveState(true);
+            return newYear;
+        };
+
+        const openSelectorTarget = (target, year, month) => {
+            const cfg = SELECTOR_CONFIG[target];
+            state.selectedReportYear = year;
+            state.activeViewType = target;
+            if (cfg && cfg.monthBased) {
+                state.activePerfMonth = month;
+            } else {
+                state.activeViewValue = year;
+            }
+            renderSidebar();
+            renderTable();
+            if (typeof recalculateTotals === 'function') recalculateTotals();
+        };
+
+        const renderSelectorView = () => {
+            const wrapper = document.getElementById('selector-wrapper');
+            if (!wrapper) return;
+            wrapper.innerHTML = '';
+
+            const target = state.selectorTarget || state.activeViewValue;
+            const cfg = SELECTOR_CONFIG[target];
+            if (!cfg) { wrapper.innerHTML = `<div style="padding:2rem; text-align:center; color:var(--text-secondary);">Unknown view.</div>`; return; }
+
+            const canEdit = (typeof window._canEdit === 'function') ? window._canEdit(cfg.menuKey) : true;
+            const years = selectorYearsFor(cfg.yearsFrom);
+
+            state._selectorYear = state._selectorYear || {};
+            let year = state._selectorYear[target] || state.selectedReportYear;
+            if (!year || !years.includes(year)) year = years.length ? years[years.length - 1] : '';
+            state._selectorYear[target] = year;
+
+            const addYearBtnHtml = (canEdit && cfg.yearsFrom !== 'reports')
+                ? `<button id="sel-add-year" class="btn-secondary" style="padding:0.45rem 0.9rem;"><span>➕</span> Add Year</button>` : '';
+
+            // Toolbar
+            const toolbar = document.createElement('div');
+            toolbar.style.cssText = 'display:flex; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:1.25rem;';
+            toolbar.innerHTML = `
+                <h2 style="margin:0; font-size:1.15rem; color:var(--text-primary);">${cfg.title}${year ? ' — ' + year : ''}</h2>
+                ${years.length ? `<label style="font-size:0.85rem; color:var(--text-secondary); margin-left:auto;">Year</label>
+                <select id="sel-year" class="edit-input" style="padding:0.4rem 0.6rem;">
+                    ${years.map(y => `<option value="${y}" ${y === year ? 'selected' : ''}>${y}</option>`).join('')}
+                </select>` : '<span style="margin-left:auto;"></span>'}
+                ${addYearBtnHtml}
+            `;
+            wrapper.appendChild(toolbar);
+
+            if (!years.length) {
+                const msg = document.createElement('div');
+                msg.style.cssText = 'padding:2rem; text-align:center; color:var(--text-secondary); border:1px dashed var(--border-color); border-radius:8px;';
+                msg.innerHTML = (cfg.yearsFrom === 'reports')
+                    ? 'No report years yet. Add a year from the Planting Phase Record menu.'
+                    : `No years yet.${canEdit ? ' Click <strong>➕ Add Year</strong>.' : ''}`;
+                wrapper.appendChild(msg);
+            } else if (cfg.monthBased) {
+                // Month grid
+                const grid = document.createElement('div');
+                grid.style.cssText = 'display:grid; grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); gap:0.75rem;';
+                months.forEach(m => {
+                    const hasData = !!(state.performance && state.performance[year] && state.performance[year][m]);
+                    const card = document.createElement('div');
+                    card.className = 'sel-month-card';
+                    card.dataset.month = m;
+                    card.style.cssText = `position:relative; cursor:pointer; user-select:none; padding:0.9rem 0.75rem; border-radius:8px; text-align:center; font-weight:600;
+                        border:1px solid ${hasData ? 'var(--accent-color, #2563eb)' : 'var(--border-color)'};
+                        background:${hasData ? 'rgba(37,99,235,0.08)' : 'var(--bg-secondary, #f8fafc)'};
+                        color:var(--text-primary);`;
+                    card.innerHTML = `
+                        <div style="font-size:1.05rem;">${m}</div>
+                        <div style="font-size:0.72rem; font-weight:500; margin-top:0.25rem; color:${hasData ? 'var(--accent-color, #2563eb)' : 'var(--text-secondary)'};">${hasData ? '● has data' : 'no data'}</div>
+                        <span class="sel-month-newtab" data-month="${m}" title="Open in new tab" style="position:absolute; top:4px; right:6px; font-size:0.8rem; color:var(--text-secondary); padding:2px;">↗</span>
+                    `;
+                    grid.appendChild(card);
+                });
+                wrapper.appendChild(grid);
+
+                grid.querySelectorAll('.sel-month-card').forEach(card => {
+                    card.onclick = () => openSelectorTarget(target, year, card.dataset.month);
+                });
+                grid.querySelectorAll('.sel-month-newtab').forEach(el => {
+                    el.onclick = (e) => {
+                        e.stopPropagation();
+                        const hash = `#view=${target}&year=${year}&month=${encodeURIComponent(el.dataset.month)}`;
+                        window.open(window.location.pathname + hash, '_blank');
+                    };
+                });
+            } else {
+                // Year-only: render the actual report table inline, directly below the toolbar.
+                // The report wrappers (ffb-budget-wrapper / rainfall-wrapper) live elsewhere in the
+                // DOM, so relocate the matching one to sit right after the selector wrapper.
+                state.selectedReportYear = year;   // renderRainfallTable reads this
+                state.activeViewValue = year;      // renderFfbBudgetTable reads this
+
+                let reportWrapper = null;
+                if (target === 'ffb_budget') {
+                    reportWrapper = document.getElementById('ffb-budget-wrapper');
+                    if (reportWrapper) {
+                        wrapper.insertAdjacentElement('afterend', reportWrapper);
+                        reportWrapper.classList.remove('hidden');
+                        if (typeof renderFfbBudgetTable === 'function') renderFfbBudgetTable();
+                    }
+                } else if (target === 'rainfall_record') {
+                    reportWrapper = document.getElementById('rainfall-wrapper');
+                    if (reportWrapper) {
+                        wrapper.insertAdjacentElement('afterend', reportWrapper);
+                        reportWrapper.classList.remove('hidden');
+                        if (typeof renderRainfallTable === 'function') renderRainfallTable();
+                        const rfYear = year;
+                        if (rfYear && state.rainfall && state.rainfall[rfYear] && typeof window._auditSnapshot === 'function') {
+                            window._auditSnapshot(`rainfall_${rfYear}`, state.rainfall[rfYear]);
+                        }
+                    }
+                }
+                if (reportWrapper && typeof window._applyReadOnly === 'function') {
+                    window._applyReadOnly(reportWrapper, cfg.menuKey);
+                }
+            }
+
+            const yearSel = document.getElementById('sel-year');
+            if (yearSel) yearSel.onchange = () => { state._selectorYear[target] = yearSel.value; renderSelectorView(); };
+
+            const addYearBtn = document.getElementById('sel-add-year');
+            if (addYearBtn) addYearBtn.onclick = () => {
+                const ny = selectorAddYear(cfg);
+                if (ny) { state._selectorYear[target] = ny; renderSelectorView(); renderSidebar(); }
+            };
+        };
+
+        // Year-selector bar for the Planting Phase Record (report_year view).
+        // The main report renders inline into #main-report-wrapper, so instead of
+        // routing it through the selector view we inject a matching toolbar card
+        // (reusing #selector-wrapper) directly above the report.
+        const renderPlantingYearBar = () => {
+            const wrapper = document.getElementById('selector-wrapper');
+            const mainW = document.getElementById('main-report-wrapper');
+            if (!wrapper || !mainW) return;
+            wrapper.innerHTML = '';
+
+            const years = Object.keys(state.reports || {}).filter(k => /^\d{4}$/.test(k)).sort((a, b) => parseInt(a) - parseInt(b));
+            if (!years.length) { wrapper.classList.add('hidden'); return; }
+
+            let year = state.selectedReportYear;
+            if (!year || !years.includes(year)) { year = years[years.length - 1]; state.selectedReportYear = year; }
+            const canEdit = (typeof window._canEdit === 'function') ? window._canEdit('planting') : true;
+
+            const toolbar = document.createElement('div');
+            toolbar.style.cssText = 'display:flex; align-items:center; flex-wrap:wrap; gap:0.75rem;';
+            toolbar.innerHTML = `
+                <h2 style="margin:0; font-size:1.15rem; color:var(--text-primary);">Planting Phase Record — ${year}</h2>
+                <label style="font-size:0.85rem; color:var(--text-secondary); margin-left:auto;">Year</label>
+                <select id="pl-year" class="edit-input" style="padding:0.4rem 0.6rem;">
+                    ${years.map(y => `<option value="${y}" ${y === year ? 'selected' : ''}>${y}</option>`).join('')}
+                </select>
+                ${canEdit ? `<button id="pl-add-year" class="btn-secondary" style="padding:0.45rem 0.9rem;"><span>➕</span> Add Year</button>` : ''}
+            `;
+            wrapper.appendChild(toolbar);
+
+            // Position the bar directly above the main report card.
+            mainW.insertAdjacentElement('beforebegin', wrapper);
+            wrapper.classList.remove('hidden');
+
+            const ySel = document.getElementById('pl-year');
+            if (ySel) ySel.onchange = () => {
+                state.selectedReportYear = ySel.value;
+                state.activeViewType = 'report_year';
+                state.activeViewValue = ySel.value;
+                renderSidebar();
+                renderTable();
+                if (typeof recalculateTotals === 'function') recalculateTotals();
+            };
+            const addBtn = document.getElementById('pl-add-year');
+            if (addBtn && typeof handleAddReportYear === 'function') addBtn.onclick = handleAddReportYear;
+        };
+
         const renderSidebar = () => {
             // Handle Sidebar Header styling
             const navHeaderBudget = document.getElementById('nav-header-budget');
@@ -2522,12 +2736,14 @@ document.addEventListener('DOMContentLoaded', () => {
             type: state.activeViewType,
             value: state.activeViewValue,
             year: state.selectedReportYear,
-            ganttFilter: state.maintGanttFilter
+            ganttFilter: state.maintGanttFilter,
+            selectorTarget: state.selectorTarget
         });
         const _sameView = (a, b) => {
             if (!a || !b) return false;
             return a.type === b.type && a.value === b.value &&
-                   a.year === b.year && a.ganttFilter === b.ganttFilter;
+                   a.year === b.year && a.ganttFilter === b.ganttFilter &&
+                   a.selectorTarget === b.selectorTarget;
         };
         const updateGlobalBackButton = () => {
             const btn = document.getElementById('global-back-btn');
@@ -2548,6 +2764,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 state.activeViewValue = prev.value;
                 if (prev.year != null) state.selectedReportYear = prev.year;
                 state.maintGanttFilter = prev.ganttFilter;
+                state.selectorTarget = prev.selectorTarget;
                 renderSidebar();
                 renderTable();
             });
@@ -2584,6 +2801,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const ihExpensesWrapper  = document.getElementById('ironhorse-expenses-wrapper');
             const ihCostPerHaWrapper = document.getElementById('ironhorse-costperha-wrapper');
             const gangOverviewWrapper = document.getElementById('gang-overview-wrapper');
+            const selectorWrapper = document.getElementById('selector-wrapper');
             const mntGangsWrapper    = document.getElementById('maintenance-gangs-wrapper');
             const mntWorklogWrapper  = document.getElementById('maintenance-worklog-wrapper');
             const mntGanttWrapper    = document.getElementById('maintenance-gantt-wrapper');
@@ -2598,6 +2816,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (ihExpensesWrapper)  ihExpensesWrapper.innerHTML = '';
             if (ihCostPerHaWrapper) ihCostPerHaWrapper.innerHTML = '';
             if (gangOverviewWrapper) { gangOverviewWrapper.innerHTML = ''; gangOverviewWrapper.classList.add('hidden'); }
+            if (selectorWrapper) { selectorWrapper.innerHTML = ''; selectorWrapper.classList.add('hidden'); }
             if (mntGangsWrapper)    { mntGangsWrapper.innerHTML = '';   mntGangsWrapper.classList.add('hidden'); }
             if (mntWorklogWrapper)  { mntWorklogWrapper.innerHTML = ''; mntWorklogWrapper.classList.add('hidden'); }
             if (mntGanttWrapper)    { mntGanttWrapper.innerHTML = '';   mntGanttWrapper.classList.add('hidden'); }
@@ -2640,6 +2859,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (excelReportsWrapper) {
                     excelReportsWrapper.classList.remove('hidden');
                     if (typeof window.renderReportsPanel === 'function') window.renderReportsPanel();
+                }
+                return;
+            }
+
+            // Generic selector landing view (year + month/year picker)
+            if (state.activeViewType === 'selector') {
+                mainReportWrapper.classList.add('hidden');
+                perfWrapper.classList.add('hidden');
+                intervalWrapper.classList.add('hidden');
+                tableContainer.classList.add('hidden');
+                if (selectorWrapper) {
+                    selectorWrapper.classList.remove('hidden');
+                    renderSelectorView();
+                    const _cfg = SELECTOR_CONFIG[state.selectorTarget || state.activeViewValue];
+                    if (_cfg) window._applyReadOnly(selectorWrapper, _cfg.menuKey);
                 }
                 return;
             }
@@ -2850,6 +3084,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 tableContainer.classList.remove('hidden');
 
                 const isYearView = state.activeViewType === 'report_year';
+                if (isYearView) {
+                    renderPlantingYearBar();
+                }
                 if (tableTitle) {
                     tableTitle.textContent = isYearView
                         ? `Planting Phase (O/P) Breakdown year ${state.activeViewValue}`
@@ -4671,6 +4908,42 @@ document.addEventListener('DOMContentLoaded', () => {
                         renderTable();
                     };
                 }
+
+                // Planting Phase Record — opens the main report (report_year) with a year-selector bar
+                const sidebarPlanting = document.getElementById('sidebar-planting');
+                if (sidebarPlanting) {
+                    sidebarPlanting.onclick = (e) => {
+                        e.preventDefault();
+                        const years = Object.keys(state.reports || {}).filter(k => /^\d{4}$/.test(k)).sort((a, b) => parseInt(a) - parseInt(b));
+                        let year = state.selectedReportYear;
+                        if (!year || !years.includes(year)) year = years.length ? years[years.length - 1] : year;
+                        state.selectedReportYear = year;
+                        state.activeViewType = 'report_year';
+                        state.activeViewValue = year;
+                        renderSidebar();
+                        renderTable();
+                        if (typeof recalculateTotals === 'function') recalculateTotals();
+                    };
+                }
+
+                // ── Selector landing pages (year/month picker in main panel) ──
+                [
+                    ['sidebar-interval',     'interval_month'],
+                    ['sidebar-perf',         'perf_month'],
+                    ['sidebar-current-prev', 'current_prev'],
+                    ['sidebar-ytd',          'ytd'],
+                    ['sidebar-rainfall',     'rainfall_record'],
+                    ['sidebar-ffb-budget',   'ffb_budget']
+                ].forEach(([linkId, target]) => {
+                    const el = document.getElementById(linkId);
+                    if (el) el.onclick = (e) => {
+                        e.preventDefault();
+                        state.activeViewType = 'selector';
+                        state.selectorTarget = target;
+                        renderSidebar();
+                        renderTable();
+                    };
+                });
 
                 const sidebarMntWorklog = document.getElementById('sidebar-mnt-worklog');
                 if (sidebarMntWorklog) {

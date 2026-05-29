@@ -317,7 +317,9 @@ main {
     flex: 1;
     padding: 2rem;
     display: flex;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
 }
 
 .report-wrapper {
@@ -511,6 +513,30 @@ main {
 .edit-input[type=number] {
     -moz-appearance: textfield;
     appearance: textfield;
+}
+
+/* Make <select> dropdowns clearly look interactive: visible border + chevron */
+select.edit-input {
+    border: 1.5px solid var(--border-color);
+    background-color: var(--bg-card);
+    cursor: pointer;
+    padding-right: 2rem;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%232563eb' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 0.6rem center;
+}
+
+select.edit-input:hover {
+    border-color: var(--accent);
+    background-color: var(--bg-card);
+}
+
+select.edit-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
 }
 
 /* Action Buttons */
