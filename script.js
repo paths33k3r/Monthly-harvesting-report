@@ -210,14 +210,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = snap.val();
                 if (data) {
                     currentUserRole = data;
-                } else {
-                    // First ever user — grant admin rights and save
+                    return;
+                }
+                // No record for this user. Only the very first user of the whole
+                // system gets admin (bootstrap); everyone else defaults to a
+                // locked-down role until an admin grants access.
+                const allSnap = await db.ref('user_roles').once('value');
+                const isFirstEverUser = !allSnap.exists() || allSnap.numChildren() === 0;
+                if (isFirstEverUser) {
                     currentUserRole = { role: 'admin', allowedMenus: 'all', firstLogin: false, email: auth.currentUser.email, createdAt: Date.now() };
+                    await db.ref('user_roles/' + uid).set(currentUserRole);
+                } else {
+                    currentUserRole = { role: 'user', allowedMenus: [], editableMenus: [], firstLogin: false, email: auth.currentUser.email, createdAt: Date.now() };
                     await db.ref('user_roles/' + uid).set(currentUserRole);
                 }
             } catch (e) {
+                // Fail closed: if we can't determine the role, assume least privilege.
                 console.error('loadUserRole error:', e);
-                currentUserRole = { role: 'admin', allowedMenus: 'all', firstLogin: false };
+                currentUserRole = { role: 'user', allowedMenus: [], editableMenus: [], firstLogin: false };
             }
         };
 

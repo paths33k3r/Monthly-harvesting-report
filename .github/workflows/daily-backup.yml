@@ -32,3 +32,15 @@ jobs:
           GDRIVE_REFRESH_TOKEN:     ${{ secrets.GDRIVE_REFRESH_TOKEN }}
           GDRIVE_FOLDER_ID:         ${{ secrets.GDRIVE_FOLDER_ID }}
 
+      # Safety net: keep the backup JSON as a downloadable artifact even when
+      # the Drive upload fails (if: always() runs this step regardless of the
+      # script's exit code). Artifacts are retained for 90 days.
+      - name: Upload backup artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firebase-backup
+          path: harvesting_backup_*.json
+          retention-days: 90
+          if-no-files-found: warn
+

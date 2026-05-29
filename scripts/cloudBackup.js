@@ -56,10 +56,16 @@ async function runBackup() {
     console.log(`Backup file created: ${filename} (${(jsonContent.length / 1024).toFixed(1)} KB)`);
 
     // --- Step 2: Upload to Google Drive ---
+    // The local file (written above) is always uploaded as a GitHub Actions
+    // artifact by the workflow's upload-artifact step, so it survives even if
+    // the Drive upload below fails. We still treat a Drive failure as a hard
+    // error (exit 1) so the workflow goes red and GitHub emails the owner —
+    // a silently-succeeding job that uploads nothing is the worst outcome.
     if (!clientId || !clientSecret || !refreshToken || !driveFolderId) {
-        console.log("Google Drive secrets not configured — skipping Drive upload.");
-        console.log("Backup is saved as a GitHub Actions artifact.");
-        return;
+        console.error("Error: Google Drive secrets are not fully configured.");
+        console.error("Missing one of: GDRIVE_CLIENT_ID, GDRIVE_CLIENT_SECRET, GDRIVE_REFRESH_TOKEN, GDRIVE_FOLDER_ID.");
+        console.error("The backup artifact was still produced, but nothing was uploaded to Drive.");
+        process.exit(1);
     }
 
     try {
@@ -88,8 +94,15 @@ async function runBackup() {
         console.log(`  Size:     ${(parseInt(response.data.size) / 1024).toFixed(1)} KB`);
 
     } catch (driveErr) {
-        console.error("Google Drive upload failed:", driveErr.message);
-        console.log("Backup is still saved as a GitHub Actions artifact.");
+        console.error("Google Drive upload FAILED:", driveErr.message);
+        if (/invalid_grant|token has been expired|revoked/i.test(driveErr.message || '')) {
+            console.error("This usually means GDRIVE_REFRESH_TOKEN has expired or been revoked.");
+            console.error("If your Google OAuth consent screen is in 'Testing' mode, refresh tokens");
+            console.error("expire after 7 days. Set the consent screen to 'In production' and");
+            console.error("regenerate the token with scripts/getGoogleToken.js, then update the secret.");
+        }
+        console.error("The backup artifact was still produced for this run.");
+        process.exit(1); // fail loudly so the workflow turns red and notifies the owner
     }
 
     console.log("Backup process complete.");
