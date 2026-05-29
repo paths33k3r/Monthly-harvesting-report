@@ -172,6 +172,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ffbBudget: null, // initialized later
             rainfall: null, // initialized later
             gangsByYear: {}, // { "2025": ["DARSO GANG", ...], "2026": [...] }
+            maintenance: {}, // { "2026": { activityTypes, gangs:{}, entries:[] } } — loaded from shared/maintenance_data
             selectedReportYear: null,
             activeViewType: 'report_year',
             activeViewValue: null,
@@ -1763,6 +1764,183 @@ document.addEventListener('DOMContentLoaded', () => {
             recalculateTotals();
         };
 
+        // ── Harvesting Gang management (shared by the overview page) ──────
+        const renameGang = (year, gang) => {
+            const newName = prompt(`Rename gang '${gang}' in Year ${year}:`);
+            if (!newName || !newName.trim() || newName.trim() === gang) return;
+            const trimmedName = newName.trim();
+            const blocks = state.reports[year] || [];
+            blocks.forEach(b => { if (b.gang === gang) b.gang = trimmedName; });
+            const gIdx = (state.gangsByYear[year] || []).indexOf(gang);
+            if (gIdx > -1) state.gangsByYear[year][gIdx] = trimmedName;
+            if (state.performance[year]) {
+                Object.keys(state.performance[year]).forEach(m => {
+                    const mData = state.performance[year][m];
+                    if (mData.gangAssignments) {
+                        Object.keys(mData.gangAssignments).forEach(bId => {
+                            if (mData.gangAssignments[bId] === gang) mData.gangAssignments[bId] = trimmedName;
+                        });
+                    }
+                    if (mData[gang]) { mData[trimmedName] = mData[gang]; delete mData[gang]; }
+                });
+            }
+            if (state.activeViewType === 'gang' && state.activeViewValue === gang && state.selectedReportYear === year) {
+                state.activeViewValue = trimmedName;
+            }
+            if (typeof window.logAudit === 'function') window.logAudit('update', 'gangs', `Renamed "${gang}" → "${trimmedName}" — Year ${year}`, '');
+            saveState(true);
+            renderGangOverview();
+            renderSidebar();
+            renderTable();
+            recalculateTotals();
+        };
+
+        const removeGang = (year, gang) => {
+            if (!confirm(`WARNING: Remove Gang '${gang}' from Year ${year}? This will return all blocks in this gang to 'Unassigned' (it will NOT delete the planting phase data).`)) return;
+            if (typeof window.logAudit === 'function') window.logAudit('delete', 'gangs', `Gang "${gang}" — Year ${year}`, 'Gang removed; blocks returned to Unassigned');
+            const blocks = state.reports[year] || [];
+            blocks.forEach(b => { if (b.gang === gang) b.gang = 'Unassigned'; });
+            state.gangsByYear[year] = (state.gangsByYear[year] || []).filter(g => g !== gang);
+            if (state.performance[year]) {
+                Object.keys(state.performance[year]).forEach(m => {
+                    const mData = state.performance[year][m];
+                    if (mData.gangAssignments) {
+                        Object.keys(mData.gangAssignments).forEach(bId => {
+                            if (mData.gangAssignments[bId] === gang) mData.gangAssignments[bId] = 'Unassigned';
+                        });
+                    }
+                    if (mData[gang]) delete mData[gang];
+                });
+            }
+            if (state.activeViewType === 'gang' && state.activeViewValue === gang && state.selectedReportYear === year) {
+                state.activeViewType = 'gang_overview';
+            }
+            saveState(true);
+            renderGangOverview();
+            renderSidebar();
+            renderTable();
+            recalculateTotals();
+        };
+
+        const renderGangOverview = () => {
+            const wrapper = document.getElementById('gang-overview-wrapper');
+            if (!wrapper) return;
+            wrapper.innerHTML = '';
+
+            const years = Object.keys(state.reports).sort((a, b) => parseInt(a) - parseInt(b));
+            if (years.length === 0) {
+                wrapper.innerHTML = `<div style="padding:2rem; text-align:center; color:var(--text-secondary);">No report years yet. Add a year first.</div>`;
+                return;
+            }
+            let year = state.selectedReportYear;
+            if (!year || !state.reports[year]) { year = years[years.length - 1]; state.selectedReportYear = year; }
+
+            const canEdit = (typeof window._canEdit === 'function') ? window._canEdit('gangs') : true;
+            const blocks = state.reports[year] || [];
+            const gangs = (state.gangsByYear[year] || []).slice().sort();
+
+            const toolbar = document.createElement('div');
+            toolbar.style.cssText = 'display:flex; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:1.25rem;';
+            toolbar.innerHTML = `
+                <h2 style="margin:0; font-size:1.15rem; color:var(--text-primary);">Harvesting Gangs — ${year}</h2>
+                <label style="font-size:0.85rem; color:var(--text-secondary); margin-left:auto;">Year</label>
+                <select id="go-year" class="edit-input" style="padding:0.4rem 0.6rem;">
+                    ${years.map(y => `<option value="${y}" ${y === year ? 'selected' : ''}>${y}</option>`).join('')}
+                </select>
+                ${canEdit ? `<button id="go-add-gang" class="btn-primary" style="padding:0.45rem 0.9rem;"><span>➕</span> Add Gang</button>
+                             <button id="go-dup-year" class="btn-secondary" style="padding:0.45rem 0.9rem;" title="Create a new year by duplicating this year's gangs &amp; blocks">📋 Add Year (Duplicate)</button>` : ''}
+            `;
+            wrapper.appendChild(toolbar);
+
+            const tableWrap = document.createElement('div');
+            tableWrap.style.cssText = 'overflow-x:auto;';
+
+            const enc = (s) => encodeURIComponent(s);
+            const unassigned = blocks.filter(b => !b.gang || b.gang === 'Unassigned');
+            const unaHa = unassigned.reduce((s, b) => s + (Number(b.ha) || 0), 0);
+
+            if (gangs.length === 0) {
+                tableWrap.innerHTML = `<div style="padding:2rem; text-align:center; color:var(--text-secondary); border:1px dashed var(--border-color); border-radius:8px;">No gangs for ${year} yet.${canEdit ? ' Click <strong>➕ Add Gang</strong>.' : ''}</div>`;
+            } else {
+                let rows = '';
+                gangs.forEach(g => {
+                    const gb = blocks.filter(b => b.gang === g);
+                    const ha = gb.reduce((s, b) => s + (Number(b.ha) || 0), 0);
+                    rows += `<tr>
+                        <td class="go-open" data-gang="${enc(g)}" style="font-weight:600; cursor:pointer;">${g}</td>
+                        <td style="text-align:center;">${gb.length}</td>
+                        <td style="text-align:right;">${formatHA(ha)}</td>
+                        <td style="text-align:right; white-space:nowrap;">
+                            ${canEdit ? `<span class="go-rename" data-gang="${enc(g)}" title="Rename" style="cursor:pointer; padding:2px 6px;">✏️</span>
+                                         <span class="go-delete" data-gang="${enc(g)}" title="Delete" style="cursor:pointer; padding:2px 6px;">🗑️</span>` : ''}
+                            <span class="go-open" data-gang="${enc(g)}" title="Open blocks" style="cursor:pointer; padding:2px 6px; color:var(--accent-color, #2563eb);">▶</span>
+                        </td>
+                    </tr>`;
+                });
+                tableWrap.innerHTML = `
+                <table class="report-table" style="width:100%; border-collapse:collapse;">
+                    <thead>
+                        <tr>
+                            <th style="text-align:left;">Gang</th>
+                            <th style="text-align:center;">Blocks</th>
+                            <th style="text-align:right;">Total HA</th>
+                            <th style="text-align:right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows}
+                        ${unassigned.length ? `<tr style="color:var(--text-secondary);">
+                            <td class="go-open" data-gang="${enc('Unassigned')}" style="font-style:italic; cursor:pointer;">Unassigned</td>
+                            <td style="text-align:center;">${unassigned.length}</td>
+                            <td style="text-align:right;">${formatHA(unaHa)}</td>
+                            <td style="text-align:right;"><span class="go-open" data-gang="${enc('Unassigned')}" title="Open blocks" style="cursor:pointer; padding:2px 6px;">▶</span></td>
+                        </tr>` : ''}
+                    </tbody>
+                </table>`;
+            }
+            wrapper.appendChild(tableWrap);
+
+            const yearSel = document.getElementById('go-year');
+            if (yearSel) yearSel.onchange = () => { state.selectedReportYear = yearSel.value; renderGangOverview(); };
+
+            wrapper.querySelectorAll('.go-open').forEach(el => {
+                el.onclick = (e) => {
+                    e.stopPropagation();
+                    const g = decodeURIComponent(el.dataset.gang);
+                    state.selectedReportYear = year;
+                    state.activeViewType = 'gang';
+                    state.activeViewValue = g;
+                    renderSidebar();
+                    renderTable();
+                    recalculateTotals();
+                };
+            });
+
+            if (canEdit) {
+                const addBtn = document.getElementById('go-add-gang');
+                if (addBtn) addBtn.onclick = () => {
+                    const name = prompt(`Enter new Gang name for Year ${year}:`);
+                    if (name && name.trim()) {
+                        const t = name.trim();
+                        if (!state.gangsByYear[year]) state.gangsByYear[year] = [];
+                        if (!state.gangsByYear[year].includes(t)) state.gangsByYear[year].push(t);
+                        if (typeof window.logAudit === 'function') window.logAudit('add', 'gangs', `Gang "${t}" — Year ${year}`, '');
+                        saveState(true);
+                        renderGangOverview();
+                        renderSidebar();
+                    }
+                };
+                const dupBtn = document.getElementById('go-dup-year');
+                if (dupBtn) dupBtn.onclick = (e) => handleDuplicateGangYear(e);
+                wrapper.querySelectorAll('.go-rename').forEach(el => {
+                    el.onclick = (e) => { e.stopPropagation(); renameGang(year, decodeURIComponent(el.dataset.gang)); };
+                });
+                wrapper.querySelectorAll('.go-delete').forEach(el => {
+                    el.onclick = (e) => { e.stopPropagation(); removeGang(year, decodeURIComponent(el.dataset.gang)); };
+                });
+            }
+        };
+
         const renderSidebar = () => {
             // Handle Sidebar Header styling
             const navHeaderBudget = document.getElementById('nav-header-budget');
@@ -2007,7 +2185,76 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     sidebarGangYearList.appendChild(liYear);
                 });
+
+                // Add Year (Duplicate) link rendered at the end of the year list
+                const liAddYear = document.createElement('li');
+                liAddYear.className = 'nav-item';
+                const aAddYear = document.createElement('a');
+                aAddYear.href = '#';
+                aAddYear.id = 'global-add-year-gang-btn';
+                aAddYear.className = 'nav-link add-year-link';
+                aAddYear.style.borderTop = '1px solid var(--border-color)';
+                aAddYear.style.marginTop = '0.5rem';
+                aAddYear.innerHTML = `<span style="margin-right:0.5rem;">➕</span> Add Year (Duplicate)`;
+                aAddYear.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleDuplicateGangYear(e);
+                };
+                liAddYear.appendChild(aAddYear);
+                sidebarGangYearList.appendChild(liAddYear);
             }
+
+            // Activity-specific Gantt shortcuts under Maintenance (Slashing / Pruning).
+            // Only shown when the Work Log has entries for that activity.
+            const renderActivityGantt = (containerId, activityName) => {
+                const container = document.getElementById(containerId);
+                if (!container) return;
+                // Only manage our own dynamically-added items; keep any static links (e.g. Record).
+                container.querySelectorAll('.mnt-dynamic-gantt').forEach(n => n.remove());
+                const mdata = state.maintenance || {};
+                // Keyword-aware match: "Slash"/"Slashing" both count as Slashing.
+                const canon = (typeof window.mntCanonActivity === 'function')
+                    ? window.mntCanonActivity
+                    : (n) => String(n == null ? '' : n).trim();
+                const years = Object.keys(mdata).filter(y => {
+                    const yd = mdata[y];
+                    return yd && Array.isArray(yd.entries) &&
+                        yd.entries.some(e => canon(e.activity).toLowerCase() === activityName.toLowerCase());
+                }).sort((a, b) => parseInt(b) - parseInt(a));
+
+                if (years.length === 0) {
+                    const li = document.createElement('li');
+                    li.className = 'nav-item mnt-dynamic-gantt';
+                    li.innerHTML = `<span class="nav-link" style="color:var(--text-secondary); font-style:italic; cursor:default;">No ${activityName.toLowerCase()} logs yet</span>`;
+                    container.appendChild(li);
+                    return;
+                }
+
+                const li = document.createElement('li');
+                li.className = 'nav-item mnt-dynamic-gantt';
+                if (state.activeViewType === 'maintenance_gantt' && state.maintGanttFilter === activityName) {
+                    li.classList.add('active');
+                }
+                const a = document.createElement('a');
+                a.href = '#';
+                a.className = 'nav-link';
+                a.innerHTML = `📊 Gantt Chart`;
+                a.onclick = (ev) => {
+                    ev.preventDefault();
+                    state.maintGanttFilter = activityName;
+                    if (!years.includes(state.maintYear)) state.maintYear = years[0];
+                    state.activeViewType = 'maintenance_gantt';
+                    renderSidebar();
+                    renderTable();
+                };
+                li.appendChild(a);
+                container.appendChild(li);
+            };
+            renderActivityGantt('sidebar-spraying-sub', 'Spraying');
+            renderActivityGantt('sidebar-manuring-sub', 'Manuring');
+            renderActivityGantt('sidebar-slashing-sub', 'Slashing');
+            renderActivityGantt('sidebar-pruning-sub', 'Pruning');
 
 
             // Render Performance Navigation
@@ -2270,7 +2517,56 @@ document.addEventListener('DOMContentLoaded', () => {
             renderMonthNav('sidebar-current-prev-list', 'current_prev');
         };
 
+        // --- Global navigation history (back button) ---
+        const _viewSnapshot = () => ({
+            type: state.activeViewType,
+            value: state.activeViewValue,
+            year: state.selectedReportYear,
+            ganttFilter: state.maintGanttFilter
+        });
+        const _sameView = (a, b) => {
+            if (!a || !b) return false;
+            return a.type === b.type && a.value === b.value &&
+                   a.year === b.year && a.ganttFilter === b.ganttFilter;
+        };
+        const updateGlobalBackButton = () => {
+            const btn = document.getElementById('global-back-btn');
+            if (!btn) return;
+            const stack = state._navStack || [];
+            btn.style.display = stack.length ? '' : 'none';
+        };
+        if (!Array.isArray(state._navStack)) state._navStack = [];
+        const _navBackBtn = document.getElementById('global-back-btn');
+        if (_navBackBtn && !_navBackBtn._wired) {
+            _navBackBtn._wired = true;
+            _navBackBtn.addEventListener('click', () => {
+                const stack = state._navStack || [];
+                if (!stack.length) return;
+                const prev = stack.pop();
+                state._navigatingBack = true;
+                state.activeViewType = prev.type;
+                state.activeViewValue = prev.value;
+                if (prev.year != null) state.selectedReportYear = prev.year;
+                state.maintGanttFilter = prev.ganttFilter;
+                renderSidebar();
+                renderTable();
+            });
+        }
+
         const renderTable = () => {
+            // Record navigation history: push the previous view when the view changes,
+            // unless we are currently navigating back.
+            const _curView = _viewSnapshot();
+            if (state._navigatingBack) {
+                state._navigatingBack = false;
+            } else if (state._lastView && !_sameView(state._lastView, _curView)) {
+                state._navStack = state._navStack || [];
+                state._navStack.push(state._lastView);
+                if (state._navStack.length > 50) state._navStack.shift();
+            }
+            state._lastView = _curView;
+            updateGlobalBackButton();
+
             tableBody.innerHTML = '';
             perfWrapper.innerHTML = ''; // Clear dynamically appended performance widgets
             intervalWrapper.innerHTML = ''; // Clear dynamically appended interval widgets
@@ -2287,6 +2583,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const ihAssetsWrapper    = document.getElementById('ironhorse-assets-wrapper');
             const ihExpensesWrapper  = document.getElementById('ironhorse-expenses-wrapper');
             const ihCostPerHaWrapper = document.getElementById('ironhorse-costperha-wrapper');
+            const gangOverviewWrapper = document.getElementById('gang-overview-wrapper');
+            const mntGangsWrapper    = document.getElementById('maintenance-gangs-wrapper');
+            const mntWorklogWrapper  = document.getElementById('maintenance-worklog-wrapper');
+            const mntGanttWrapper    = document.getElementById('maintenance-gantt-wrapper');
             if (ffbWrapper) ffbWrapper.innerHTML = ''; // Clear FFB budget widgets
             if (rainfallWrapper) rainfallWrapper.innerHTML = ''; // Clear Rainfall widgets
             if (ytdWrapper) ytdWrapper.innerHTML = '';
@@ -2297,6 +2597,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (ihAssetsWrapper)    ihAssetsWrapper.innerHTML = '';
             if (ihExpensesWrapper)  ihExpensesWrapper.innerHTML = '';
             if (ihCostPerHaWrapper) ihCostPerHaWrapper.innerHTML = '';
+            if (gangOverviewWrapper) { gangOverviewWrapper.innerHTML = ''; gangOverviewWrapper.classList.add('hidden'); }
+            if (mntGangsWrapper)    { mntGangsWrapper.innerHTML = '';   mntGangsWrapper.classList.add('hidden'); }
+            if (mntWorklogWrapper)  { mntWorklogWrapper.innerHTML = ''; mntWorklogWrapper.classList.add('hidden'); }
+            if (mntGanttWrapper)    { mntGanttWrapper.innerHTML = '';   mntGanttWrapper.classList.add('hidden'); }
             if (userMgmtWrapper) { userMgmtWrapper.innerHTML = ''; userMgmtWrapper.classList.add('hidden'); }
             if (excelReportsWrapper) { excelReportsWrapper.innerHTML = ''; excelReportsWrapper.classList.add('hidden'); }
             const auditLogWrapper = document.getElementById('audit-log-wrapper');
@@ -2485,6 +2789,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     alw.classList.remove('hidden');
                     if (typeof window.renderAuditLog === 'function') window.renderAuditLog();
                 }
+            } else if (state.activeViewType === 'gang_overview') {
+                mainReportWrapper.classList.add('hidden');
+                perfWrapper.classList.add('hidden');
+                intervalWrapper.classList.add('hidden');
+                tableContainer.classList.add('hidden');
+                if (gangOverviewWrapper) {
+                    gangOverviewWrapper.classList.remove('hidden');
+                    renderGangOverview();
+                    if (typeof window._applyReadOnly === 'function') window._applyReadOnly(gangOverviewWrapper, 'gangs');
+                }
             } else if (state.activeViewType === 'maintenance_coming_soon') {
                 mainReportWrapper.classList.add('hidden');
                 perfWrapper.classList.add('hidden');
@@ -2501,6 +2815,33 @@ document.addEventListener('DOMContentLoaded', () => {
                         <p style="color:var(--text-secondary); font-size:1rem;">This feature is under development.<br>Please check back later.</p>
                     </div>
                 `;
+                }
+            } else if (state.activeViewType === 'maintenance_gangs') {
+                mainReportWrapper.classList.add('hidden');
+                perfWrapper.classList.add('hidden');
+                intervalWrapper.classList.add('hidden');
+                tableContainer.classList.add('hidden');
+                if (mntGangsWrapper) {
+                    mntGangsWrapper.classList.remove('hidden');
+                    if (typeof window.renderMaintenanceGangs === 'function') window.renderMaintenanceGangs();
+                }
+            } else if (state.activeViewType === 'maintenance_worklog') {
+                mainReportWrapper.classList.add('hidden');
+                perfWrapper.classList.add('hidden');
+                intervalWrapper.classList.add('hidden');
+                tableContainer.classList.add('hidden');
+                if (mntWorklogWrapper) {
+                    mntWorklogWrapper.classList.remove('hidden');
+                    if (typeof window.renderMaintenanceWorkLog === 'function') window.renderMaintenanceWorkLog();
+                }
+            } else if (state.activeViewType === 'maintenance_gantt') {
+                mainReportWrapper.classList.add('hidden');
+                perfWrapper.classList.add('hidden');
+                intervalWrapper.classList.add('hidden');
+                tableContainer.classList.add('hidden');
+                if (mntGanttWrapper) {
+                    mntGanttWrapper.classList.remove('hidden');
+                    if (typeof window.renderMaintenanceGantt === 'function') window.renderMaintenanceGantt();
                 }
             } else {
                 perfWrapper.classList.add('hidden');
@@ -4003,17 +4344,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 }
 
-                const globalAddYearGangBtn = document.getElementById('global-add-year-gang-btn');
-                if (globalAddYearGangBtn) {
-                    console.log("Binding Add Year (Duplicate) listener (addEventListener)");
-                    globalAddYearGangBtn.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        console.log("Add Year (Duplicate) clicked");
-                        handleDuplicateGangYear(e);
-                    });
-                } else {
-                    console.warn("Add Year (Duplicate) button NOT found in DOM");
-                }
+                // Add Year (Duplicate) button is rendered dynamically in renderSidebar
+                // (its onclick is bound inline there), so no static binding is needed here.
 
                 const deleteYearBtn = document.getElementById('delete-year-btn');
                 if (deleteYearBtn) {
@@ -4317,27 +4649,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 // ── End Iron Horse nav handlers ─────────────────────────
 
-                const sidebarSlashing = document.getElementById('sidebar-slashing');
-                if (sidebarSlashing) {
-                    sidebarSlashing.onclick = (e) => {
+                // Slashing / Pruning are now expandable menus; their activity-specific
+                // Gantt sub-links are rendered dynamically in renderSidebar.
+
+                const sidebarHarvestingGangs = document.getElementById('sidebar-harvesting-gangs');
+                if (sidebarHarvestingGangs) {
+                    sidebarHarvestingGangs.onclick = (e) => {
                         e.preventDefault();
-                        state.activeViewType = 'maintenance_coming_soon';
-                        state.activeViewValue = '🔪 Slashing — Coming Soon';
+                        state.activeViewType = 'gang_overview';
                         renderSidebar();
                         renderTable();
                     };
                 }
 
-                const sidebarPruning = document.getElementById('sidebar-pruning');
-                if (sidebarPruning) {
-                    sidebarPruning.onclick = (e) => {
+                const sidebarMntGangs = document.getElementById('sidebar-mnt-gangs');
+                if (sidebarMntGangs) {
+                    sidebarMntGangs.onclick = (e) => {
                         e.preventDefault();
-                        state.activeViewType = 'maintenance_coming_soon';
-                        state.activeViewValue = '✂️ Pruning — Coming Soon';
+                        state.activeViewType = 'maintenance_gangs';
                         renderSidebar();
                         renderTable();
                     };
                 }
+
+                const sidebarMntWorklog = document.getElementById('sidebar-mnt-worklog');
+                if (sidebarMntWorklog) {
+                    sidebarMntWorklog.onclick = (e) => {
+                        e.preventDefault();
+                        state.activeViewType = 'maintenance_worklog';
+                        renderSidebar();
+                        renderTable();
+                    };
+                }
+
+                // The standalone Maintenance → Gantt Chart item was removed; the Gantt is
+                // now reached via the activity menus (Slashing / Pruning → Gantt Chart).
                 // ── End Maintenance nav handlers ────────────────────────
 
                 // Bind Global Save button for Planting Phase Record
@@ -4612,6 +4958,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (e) {
                     console.warn("Could not load Iron Horse data:", e.message);
                     if (!state.ironHorse) state.ironHorse = { assets: {}, expenses: {} };
+                }
+
+                // Load Maintenance data (gangs, work log, gantt — shared across all users)
+                window._maintenanceDb = db;
+                try {
+                    const mntSnap = await db.ref('shared/maintenance_data').once('value');
+                    const mntData = mntSnap.val();
+                    if (mntData) {
+                        state.maintenance = JSON.parse(mntData);
+                        console.log("Maintenance data loaded from cloud.");
+                    } else if (!state.maintenance) {
+                        state.maintenance = {};
+                    }
+                } catch (e) {
+                    console.warn("Could not load Maintenance data:", e.message);
+                    if (!state.maintenance) state.maintenance = {};
                 }
 
                 // Sync backup settings from Firebase so all devices share the same policy

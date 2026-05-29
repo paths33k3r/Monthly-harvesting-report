@@ -22,6 +22,7 @@ or open with VS Code Live Server (right-click index.html → Open with Live Serv
 | `render_manuring.js` | Manuring section UI |
 | `render_ytd_report.js` | YTD report UI |
 | `render_ironhorse.js` | Iron Horse section UI — Assets, Expenses, template download, import |
+| `render_maintenance.js` | Maintenance Gangs, Work Log & Gantt Chart (digitises the hand-written Gantt sheets) |
 | `Report samples/` | Excel templates used as base for downloads |
 
 ## Cache busting
@@ -34,6 +35,43 @@ Feature branches are named by timestamp (e.g. `2026-05-29_08-51-21`), branched o
 - Main branch: `main`
 - Remote: https://github.com/paths33k3r/Monthly-harvesting-report.git
 - `git pull` then open with Live Server — no build step needed
+
+---
+
+## Maintenance module (render_maintenance.js)
+
+### Overview
+Sub-items under the **Maintenance** sidebar menu (alongside Spraying/Manuring/Slashing/Pruning):
+- **👥 Gangs** — create maintenance gangs; headcount + members stored **per month** so editing one month never touches earlier months.
+- **📝 Work Log** — daily work entries: gang, activity, block, date range, persons, round/method. Supervisor verification toggle in the first column: `–` unverified / `✓` verified (gated by `window._canEdit('maintenance')`). Editing a verified entry resets it to unverified.
+- **📊 Gantt Chart** — bars across the days of the selected month, grouped by **block + gang + activity**. Striped bar = unverified, solid = verified. Bottom `Manpower / day` row sums persons per day. Activity filter dropdown.
+
+### View types & wiring
+- `state.activeViewType`: `maintenance_gangs` | `maintenance_worklog` | `maintenance_gantt`
+- Sidebar ids: `sidebar-mnt-gangs` / `-worklog` / `-gantt` (handlers in script.js)
+- Wrappers: `maintenance-gangs-wrapper` / `-worklog-wrapper` / `-gantt-wrapper` (index.html)
+- Render fns: `window.renderMaintenanceGangs/WorkLog/Gantt`
+- Active year/month: `state.maintYear` / `state.maintMonth`
+
+### Data structure (`state.maintenance`)
+```js
+{
+  "2026": {
+    activityTypes: ["Spraying","Slashing","Manuring","Pruning"], // configurable per year
+    gangs: { "Anwar gang": { months: { "APR": { headcount:4, members:["Anwar","Jono"] } } } },
+    entries: [ { id, gang, activity, block, dateStart, dateEnd, persons, round, method, verified, verifiedBy, createdBy } ]
+  }
+}
+```
+- Saved to Firebase `shared/maintenance_data` via `saveMaintenanceData(silent)` (`window._maintenanceDb`); loaded in `init()`.
+- **Blocks** come from `state.reports[year]` (Planting Phase Record) — dropdown, falls back to free text if a year has no blocks.
+- Maintenance gangs are a **separate list** from harvesting `gangsByYear`.
+
+### Excel template & import (Work Log toolbar)
+- **⬇️ Template** (`downloadMaintenanceTemplate(yearStr)`) — available to everyone (read-only too). ExcelJS workbook, sheet `Work Log {year}`: title row 1, instructions row 2, header row 4 (`Gang, Activity, Block, Date Start, Date End, Persons, Round, Method`), example row, and a hidden **Lists** sheet (A=Gangs, B=Activities, C=Blocks) feeding list data-validation dropdowns on rows 5..204. Date cols use `yyyy-mm-dd`. Downloads `Maintenance_Work_Log_Template_{year}.xlsx`.
+- **📥 Import** (`importMaintenanceWorkLog(file, yearStr)`) — edit-gated (`window._canEdit('maintenance')`). Scans **every** worksheet, detects header rows (cell normalises to `GANG`), builds a column map via `mntHeaderField`, and infers activity from the Activity column, a one-cell section-title row (e.g. "SLASHING MAINTENANCE"), or the sheet name — so it also reads the user's existing multi-section "Spraying List / Slashing List" sheets. Requires gang + dateStart + block per row; appends to `entries` (existing kept), confirms count, saves, logs audit, re-renders.
+- **⚙️ Activities** (`mntManageActivities`) — add/remove activity types for the year.
+- Import helpers: `mntLoadExcelJS` (CDN on-demand), `mntNormHeader`, `mntHeaderField`, `mntActivityFromText` (SPRAY/SLASH/MANUR/PRUN keyword detection), `mntCleanBlock` (strips `Blk`/`Block` prefix), `mntToISO` (Date / ISO string / Excel serial → `YYYY-MM-DD`).
 
 ---
 
