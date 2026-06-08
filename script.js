@@ -3033,9 +3033,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     tableBody.appendChild(trHeader);
 
                     // 2. Render Nested Block Rows
-                    groupBlocks.forEach((block) => {
+                    groupBlocks.forEach((block, blockIdx) => {
                         const trBlock = document.createElement('tr');
-                        trBlock.className = 'row-block';
+                        trBlock.className = 'row-block' + (blockIdx % 2 ? ' zebra' : '');
 
                         // Block ID
                         const tdBlockId = document.createElement('td');

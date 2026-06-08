@@ -431,7 +431,10 @@ main {
 }
 
 .table-container {
-    overflow-x: auto;
+    overflow: auto;
+    /* Constrain height so the table scrolls internally and the sticky
+       header (below) actually pins instead of the whole page scrolling. */
+    max-height: calc(100vh - 16rem);
 }
 
 .grouped-table {
@@ -460,6 +463,23 @@ main {
     font-weight: 600;
     font-size: 0.875rem;
     text-transform: uppercase;
+}
+
+/* Phase 2: keep column headers visible while scrolling long tables */
+.grouped-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    box-shadow: inset 0 -1px 0 var(--border-color);
+}
+
+/* Subtle zebra striping + clearer row hover for easier row tracking */
+.grouped-table .row-block.zebra td {
+    background: #fafbfd;
+}
+
+.grouped-table .row-block:hover td {
+    background: #eef4ff;
 }
 
 /* O/P Group Row Styling */
