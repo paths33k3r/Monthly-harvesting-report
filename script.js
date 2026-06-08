@@ -2805,6 +2805,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const ihCostPerHaWrapper = document.getElementById('ironhorse-costperha-wrapper');
             const gangOverviewWrapper = document.getElementById('gang-overview-wrapper');
             const selectorWrapper = document.getElementById('selector-wrapper');
+            const dashboardWrapper = document.getElementById('dashboard-wrapper');
             const mntGangsWrapper    = document.getElementById('maintenance-gangs-wrapper');
             const mntWorklogWrapper  = document.getElementById('maintenance-worklog-wrapper');
             const mntGanttWrapper    = document.getElementById('maintenance-gantt-wrapper');
@@ -2856,7 +2857,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 ihAssetsWrapper, ihExpensesWrapper, ihCostPerHaWrapper,
                 gangOverviewWrapper, selectorWrapper,
                 mntGangsWrapper, mntWorklogWrapper, mntGanttWrapper,
-                userMgmtWrapper, excelReportsWrapper, auditLogWrapper
+                userMgmtWrapper, excelReportsWrapper, auditLogWrapper,
+                dashboardWrapper
             ];
             const showView = (targetEl, renderFn, menuKey) => {
                 _switchableWrappers.forEach(w => { if (w && w !== targetEl) w.classList.add('hidden'); });
@@ -2866,6 +2868,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (typeof renderFn === 'function') renderFn();
                 if (menuKey && typeof window._applyReadOnly === 'function') window._applyReadOnly(targetEl, menuKey);
             };
+
+            // Dashboard home
+            if (state.activeViewType === 'dashboard') {
+                showView(dashboardWrapper, () => {
+                    if (typeof window.renderDashboard === 'function') window.renderDashboard();
+                });
+                return;
+            }
 
             // User Management view
             if (state.activeViewType === 'user_mgmt') {
@@ -4859,6 +4869,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     };
                 }
 
+                // Generic programmatic navigation used by in-panel section tabs
+                // (e.g. Maintenance Work Log <-> Gantt). Sets state then re-renders.
+                window._navTo = (viewType, patch) => {
+                    if (patch) Object.assign(state, patch);
+                    state.activeViewType = viewType;
+                    renderSidebar();
+                    renderTable();
+                };
+
+                // Dashboard home nav handler
+                const sidebarDashboard = document.getElementById('sidebar-dashboard');
+                if (sidebarDashboard) {
+                    sidebarDashboard.onclick = (e) => {
+                        e.preventDefault();
+                        state.activeViewType = 'dashboard';
+                        renderSidebar();
+                        renderTable();
+                    };
+                }
+
                 // The standalone Maintenance → Gantt Chart item was removed; the Gantt is
                 // now reached via the activity menus (Slashing / Pruning → Gantt Chart).
                 // ── End Maintenance nav handlers ────────────────────────
@@ -4941,6 +4971,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     });
 
+                    // Land on the Dashboard home by default. Deep links via the
+                    // URL hash (handled just below) still override this.
+                    if (!window.location.hash) state.activeViewType = 'dashboard';
+
                     renderSidebar();
                     renderTable();
                     recalculateTotals();
@@ -4965,7 +4999,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     loadingEl.classList.add('hidden');
-                    tableContainer.classList.remove('hidden');
+                    // renderTable owns table visibility; only the report views show
+                    // the table container (dashboard and others keep it hidden).
+                    if (state.activeViewType === 'report_year' || state.activeViewType === 'gang') {
+                        tableContainer.classList.remove('hidden');
+                    }
 
                     // Load user role and apply permissions
                     loadUserRole(auth.currentUser.uid).then(() => {

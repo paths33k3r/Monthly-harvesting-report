@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Grouped Harvesting Report</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=12">
+    <link rel="stylesheet" href="style.css?v=14">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     
@@ -76,6 +76,14 @@
             </div>
             <nav class="sidebar-nav">
                 <ul class="nav-menu">
+                    <li class="nav-group-label">Overview</li>
+
+                    <li class="nav-item">
+                        <a href="#" id="sidebar-dashboard" class="nav-link">
+                            <span class="nav-icon">🏠</span><span class="nav-label">Dashboard</span>
+                        </a>
+                    </li>
+
                     <li class="nav-group-label">Planning</li>
 
                     <li class="nav-item" data-menu-key="ffbBudget">
@@ -351,6 +359,11 @@
             </header>
 
             <main>
+                <div id="dashboard-wrapper" class="report-wrapper hidden"
+                    style="max-width: 1500px; padding: 0; background: transparent; border: none; box-shadow: none;">
+                    <!-- JS: Dashboard home (KPI cards + quick links) -->
+                </div>
+
                 <div id="main-report-wrapper" class="report-wrapper">
                     <div class="toolbar">
                         <div class="toolbar-left">
@@ -502,18 +515,19 @@
     </div>
 
     <script src="templates.js"></script>
+    <script src="render_dashboard.js?v=1"></script>
     <script src="ffbData.js"></script>
     <script src="rainfallData.js"></script>
     <script src="render_rainfall.js"></script>
     <script src="render_ytd_report.js"></script>
     <script src="render_current_vs_prev.js"></script>
     <script src="render_audit.js?v=2"></script>
-    <script src="render_ironhorse.js?v=32"></script>
-    <script src="render_maintenance.js?v=3"></script>
+    <script src="render_ironhorse.js?v=33"></script>
+    <script src="render_maintenance.js?v=4"></script>
     <script src="render_spraying.js?v=11"></script>
     <script src="render_manuring.js?v=11"></script>
     <script src="render_reports.js?v=22"></script>
-    <script src="script.js?v=52"></script>
+    <script src="script.js?v=54"></script>
     <script>
         // Vertical sidebar accordion: expand/collapse groups. Clicking a header
         // toggles its submenu and closes sibling groups at the same level. The

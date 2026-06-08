@@ -334,12 +334,38 @@ function mntShowRosterModal(yearStr, month, gang, onSave) {
 }
 
 // =====================================================================
+// Section tabs (Work Log / Gantt) — navigate via the global helper so
+// the two sibling maintenance views switch with one click.
+// =====================================================================
+function mntRenderTabs(activeKey) {
+    const tabs = [
+        { key: 'worklog', label: '📝 Work Log',    view: 'maintenance_worklog' },
+        { key: 'gantt',   label: '📊 Gantt Chart', view: 'maintenance_gantt' },
+    ];
+    const strip = document.createElement('div');
+    strip.className = 'section-tabs';
+    tabs.forEach(t => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'section-tab' + (t.key === activeKey ? ' active' : '');
+        b.textContent = t.label;
+        b.onclick = () => {
+            if (t.key === activeKey) return;
+            if (typeof window._navTo === 'function') window._navTo(t.view);
+        };
+        strip.appendChild(b);
+    });
+    return strip;
+}
+
+// =====================================================================
 // VIEW 2 — Work Log
 // =====================================================================
 function renderMaintenanceWorkLog() {
     const wrapper = document.getElementById('maintenance-worklog-wrapper');
     if (!wrapper) return;
     wrapper.innerHTML = '';
+    wrapper.appendChild(mntRenderTabs('worklog'));
 
     const year = mntActiveYear();
     const month = mntActiveMonth();
@@ -613,6 +639,7 @@ function renderMaintenanceGantt() {
     const wrapper = document.getElementById('maintenance-gantt-wrapper');
     if (!wrapper) return;
     wrapper.innerHTML = '';
+    wrapper.appendChild(mntRenderTabs('gantt'));
 
     const year = mntActiveYear();
     const month = mntActiveMonth();

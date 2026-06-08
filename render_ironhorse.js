@@ -185,12 +185,40 @@ let _ihAssetsSort = { col: 'assetNo', dir: 'asc' };
 let _ihAssetsFilter = '';
 
 // ─────────────────────────────────────────────────────────────────────
+// Section tabs (Assets / Expenses / Cost) — delegate to the existing
+// sidebar nav handlers so all navigation logic stays in one place.
+// ─────────────────────────────────────────────────────────────────────
+function ihRenderTabs(activeKey) {
+    const tabs = [
+        { key: 'assets',   label: '🔧 Asset Numbers',  sidebarId: 'sidebar-ironhorse-assets' },
+        { key: 'expenses', label: '💰 Expenses',        sidebarId: 'sidebar-ironhorse-expenses' },
+        { key: 'cost',     label: '📊 Cost per FFB MT', sidebarId: 'sidebar-ironhorse-costperha' },
+    ];
+    const strip = document.createElement('div');
+    strip.className = 'section-tabs';
+    tabs.forEach(t => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'section-tab' + (t.key === activeKey ? ' active' : '');
+        b.textContent = t.label;
+        b.onclick = () => {
+            if (t.key === activeKey) return;
+            const el = document.getElementById(t.sidebarId);
+            if (el) el.click();
+        };
+        strip.appendChild(b);
+    });
+    return strip;
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Asset Numbers View
 // ─────────────────────────────────────────────────────────────────────
 const renderIronHorseAssets = () => {
     const wrapper = document.getElementById('ironhorse-assets-wrapper');
     if (!wrapper) return;
     wrapper.innerHTML = '';
+    wrapper.appendChild(ihRenderTabs('assets'));
 
     if (!window.state.ironHorse)          window.state.ironHorse = {};
     if (!window.state.ironHorse.assets)   window.state.ironHorse.assets = {};
@@ -523,6 +551,7 @@ const renderIronHorseExpenses = () => {
     const wrapper = document.getElementById('ironhorse-expenses-wrapper');
     if (!wrapper) return;
     wrapper.innerHTML = '';
+    wrapper.appendChild(ihRenderTabs('expenses'));
 
     if (!window.state.ironHorse)          window.state.ironHorse = {};
     if (!window.state.ironHorse.expenses) window.state.ironHorse.expenses = {};
@@ -1213,6 +1242,7 @@ const renderIronHorseCostPerHa = () => {
     const wrapper = document.getElementById('ironhorse-costperha-wrapper');
     if (!wrapper) return;
     wrapper.innerHTML = '';
+    wrapper.appendChild(ihRenderTabs('cost'));
 
     if (!window.state.ironHorse) window.state.ironHorse = {};
 
