@@ -31,6 +31,40 @@
         </button>`;
     }
 
+    const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    function monthIndex(key) {
+        const k = String(key).slice(0, 3).toLowerCase();
+        return MONTHS.findIndex(m => m.toLowerCase() === k);
+    }
+    // Total FFB tonnage (sum of r1..r4 across every gang/block) per month for one year.
+    // Mirrors the actual-total logic in render_current_vs_prev.js.
+    function monthlyFfbTotals(perfYearObj) {
+        const arr = new Array(12).fill(0);
+        let any = false;
+        if (perfYearObj && typeof perfYearObj === 'object') {
+            Object.keys(perfYearObj).forEach(mKey => {
+                const idx = monthIndex(mKey);
+                if (idx < 0) return;
+                const monthObj = perfYearObj[mKey];
+                if (!monthObj || typeof monthObj !== 'object') return;
+                let sum = 0;
+                Object.keys(monthObj).forEach(gang => {
+                    if (gang === 'gangAssignments') return;
+                    const blocks = monthObj[gang] && monthObj[gang].blocks;
+                    if (!blocks || typeof blocks !== 'object') return;
+                    Object.keys(blocks).forEach(bId => {
+                        const pd = blocks[bId] || {};
+                        sum += (parseFloat(pd.r1) || 0) + (parseFloat(pd.r2) || 0) +
+                               (parseFloat(pd.r3) || 0) + (parseFloat(pd.r4) || 0);
+                    });
+                });
+                arr[idx] = sum;
+                if (sum) any = true;
+            });
+        }
+        return { arr: arr, any: any };
+    }
+
     window.renderDashboard = function () {
         const wrapper = document.getElementById('dashboard-wrapper');
         if (!wrapper) return;
@@ -58,6 +92,15 @@
 
         const suffix = (y) => (y ? ` (${y})` : '');
 
+        // ---- FFB year-over-year comparison (two most recent years with data) ----
+        const perf = s.performance || {};
+        const perfYears = Object.keys(perf).filter(k => /^\d{4}$/.test(k)).sort();
+        const yrCurr = perfYears.length ? perfYears[perfYears.length - 1] : '2026';
+        const yrPrev = perfYears.length > 1 ? perfYears[perfYears.length - 2] : String(Number(yrCurr) - 1);
+        const currTotals = monthlyFfbTotals(perf[yrCurr]);
+        const prevTotals = monthlyFfbTotals(perf[yrPrev]);
+        const hasFfbData = currTotals.any || prevTotals.any;
+
         wrapper.innerHTML = `
             <div class="dash-head">
                 <h1>Dashboard</h1>
@@ -68,6 +111,16 @@
                 ${kpiCard('📋', '#eff4ff', blockCount, 'Blocks' + suffix(ryear))}
                 ${kpiCard('🐴', '#f5f3ff', machines, 'Iron Horse Machines' + suffix(ihYear))}
                 ${kpiCard('🌿', '#fffbeb', maintLogs, 'Maintenance Logs' + suffix(mYear))}
+            </div>
+            <h3 class="dash-section">FFB Production — ${yrPrev} vs ${yrCurr}</h3>
+            <div style="background:var(--bg-primary,#fff); border:1px solid var(--border-color,#e5e7eb); border-radius:12px; padding:1rem 1.25rem 1.25rem; margin-bottom:1.5rem;">
+                <div style="position:relative; height:320px;">
+                    <canvas id="ffbCompareChart"></canvas>
+                </div>
+                <div id="ffbCompareEmpty" style="display:none; text-align:center; color:var(--text-muted,#6b7280); padding:2.5rem 1rem;">
+                    No harvest figures captured yet for ${yrPrev} or ${yrCurr}.<br>
+                    Import the Harvesting Interval files to populate this chart.
+                </div>
             </div>
             <h3 class="dash-section">Quick access</h3>
             <div class="quick-grid">
@@ -86,5 +139,67 @@
                 if (el) el.click();
             };
         });
+
+        // ---- Draw FFB year-over-year comparison chart ----
+        const canvas = document.getElementById('ffbCompareChart');
+        const emptyEl = document.getElementById('ffbCompareEmpty');
+        // Always tear down any prior instance so re-renders don't error on a reused canvas.
+        if (window._ffbCompareChart) {
+            try { window._ffbCompareChart.destroy(); } catch (e) {}
+            window._ffbCompareChart = null;
+        }
+        if (canvas && typeof Chart !== 'undefined') {
+            if (!hasFfbData) {
+                canvas.style.display = 'none';
+                if (emptyEl) emptyEl.style.display = 'block';
+            } else {
+                canvas.style.display = 'block';
+                if (emptyEl) emptyEl.style.display = 'none';
+                window._ffbCompareChart = new Chart(canvas.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: MONTHS,
+                        datasets: [
+                            {
+                                label: yrPrev,
+                                data: prevTotals.arr,
+                                borderColor: '#f59e0b',
+                                backgroundColor: 'rgba(245,158,11,0.12)',
+                                borderWidth: 2, tension: 0.3, fill: true,
+                                pointRadius: 3, pointHoverRadius: 5
+                            },
+                            {
+                                label: yrCurr,
+                                data: currTotals.arr,
+                                borderColor: '#10b981',
+                                backgroundColor: 'rgba(16,185,129,0.12)',
+                                borderWidth: 2, tension: 0.3, fill: true,
+                                pointRadius: 3, pointHoverRadius: 5
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { position: 'top' },
+                            tooltip: {
+                                callbacks: {
+                                    label: (ctx) => `${ctx.dataset.label}: ${fmt(ctx.parsed.y)} MT`
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: { display: true, text: 'FFB (MT)' },
+                                ticks: { callback: (v) => Number(v).toLocaleString('en-MY') }
+                            }
+                        }
+                    }
+                });
+            }
+        }
     };
 })();
