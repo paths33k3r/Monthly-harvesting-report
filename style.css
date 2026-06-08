@@ -269,7 +269,9 @@ header {
 }
 
 .header-content {
-    max-width: 800px;
+    /* Match the widest content wrapper so the title/stat-badge align with the
+       panels below instead of being centred in a narrow 800px column. */
+    max-width: 1600px;
     margin: 0 auto;
     display: flex;
     justify-content: space-between;

@@ -289,7 +289,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Disable action buttons (allow download/template/export)
             const ALLOW = /download|template|export|⬇|📊/i;
-            const BLOCK = /save|delete|add|clear|remove|import|edit|create|💾|🗑|➕|📤|✕|⚗/i;
+            const BLOCK = /save|delete|add|clear|remove|import|edit|create|assign|💾|🗑|➕|📤|✕|⚗|✏/i;
             wrapper.querySelectorAll('button').forEach(btn => {
                 if (btn.disabled) return;
                 const text = btn.textContent.trim();
@@ -828,7 +828,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 { key: 'planting', label: 'Planting Phase Record' },
                 { key: 'gangs', label: 'Harvesting Gangs' },
                 { key: 'performance', label: 'Harvesting Performance' },
+                { key: 'ironhorse', label: 'Iron Horse' },
                 { key: 'rainfall', label: 'Rainfall Record' },
+                { key: 'maintenance', label: 'Maintenance' },
+                { key: 'reports', label: 'Reports' },
                 { key: 'dataManagement', label: 'Data Management' }
             ];
 
@@ -2840,41 +2843,51 @@ document.addEventListener('DOMContentLoaded', () => {
             if (ihExpensesWrapper)  ihExpensesWrapper.classList.add('hidden');
             if (ihCostPerHaWrapper) ihCostPerHaWrapper.classList.add('hidden');
 
+            // ── Central view switcher ────────────────────────────────────
+            // Hides every switchable view wrapper, shows the target, runs its
+            // render fn, then applies read-only gating. Replaces the repeated
+            // "hide these four + show one + render + applyReadOnly" boilerplate
+            // in the branches below so a new view can't accidentally leave an
+            // old panel visible.
+            const _switchableWrappers = [
+                mainReportWrapper, perfWrapper, intervalWrapper,
+                ffbWrapper, rainfallWrapper, ytdWrapper, currentPrevWrapper,
+                sprayingWrapper, manuringWrapper, maintenanceComingSoonWrapper,
+                ihAssetsWrapper, ihExpensesWrapper, ihCostPerHaWrapper,
+                gangOverviewWrapper, selectorWrapper,
+                mntGangsWrapper, mntWorklogWrapper, mntGanttWrapper,
+                userMgmtWrapper, excelReportsWrapper, auditLogWrapper
+            ];
+            const showView = (targetEl, renderFn, menuKey) => {
+                _switchableWrappers.forEach(w => { if (w && w !== targetEl) w.classList.add('hidden'); });
+                tableContainer.classList.add('hidden');
+                if (!targetEl) return;
+                targetEl.classList.remove('hidden');
+                if (typeof renderFn === 'function') renderFn();
+                if (menuKey && typeof window._applyReadOnly === 'function') window._applyReadOnly(targetEl, menuKey);
+            };
+
             // User Management view
             if (state.activeViewType === 'user_mgmt') {
-                mainReportWrapper.classList.add('hidden');
-                perfWrapper.classList.add('hidden');
-                intervalWrapper.classList.add('hidden');
-                tableContainer.classList.add('hidden');
-                renderUserManagementPanel();
+                showView(userMgmtWrapper, renderUserManagementPanel);
                 return;
             }
 
             // Excel Reports view
             if (state.activeViewType === 'excel_reports') {
-                mainReportWrapper.classList.add('hidden');
-                perfWrapper.classList.add('hidden');
-                intervalWrapper.classList.add('hidden');
-                tableContainer.classList.add('hidden');
-                if (excelReportsWrapper) {
-                    excelReportsWrapper.classList.remove('hidden');
+                showView(excelReportsWrapper, () => {
                     if (typeof window.renderReportsPanel === 'function') window.renderReportsPanel();
-                }
+                });
                 return;
             }
 
             // Generic selector landing view (year + month/year picker)
             if (state.activeViewType === 'selector') {
-                mainReportWrapper.classList.add('hidden');
-                perfWrapper.classList.add('hidden');
-                intervalWrapper.classList.add('hidden');
-                tableContainer.classList.add('hidden');
-                if (selectorWrapper) {
-                    selectorWrapper.classList.remove('hidden');
+                showView(selectorWrapper, () => {
                     renderSelectorView();
                     const _cfg = SELECTOR_CONFIG[state.selectorTarget || state.activeViewValue];
                     if (_cfg) window._applyReadOnly(selectorWrapper, _cfg.menuKey);
-                }
+                });
                 return;
             }
 
@@ -2897,190 +2910,81 @@ document.addEventListener('DOMContentLoaded', () => {
             const isCurrentPrevView = state.activeViewType === 'current_prev';
 
             if (isPerfView) {
-                mainReportWrapper.classList.add('hidden');
-                intervalWrapper.classList.add('hidden');
-                perfWrapper.classList.remove('hidden');
-                renderPerformanceTable();
-                window._applyReadOnly(perfWrapper, 'performance');
+                showView(perfWrapper, renderPerformanceTable, 'performance');
             } else if (isIntervalView) {
-                mainReportWrapper.classList.add('hidden');
-                perfWrapper.classList.add('hidden');
-                intervalWrapper.classList.remove('hidden');
-                if (typeof renderIntervalTable === 'function') {
-                    renderIntervalTable();
-                }
-                window._applyReadOnly(intervalWrapper, 'performance');
+                showView(intervalWrapper, () => {
+                    if (typeof renderIntervalTable === 'function') renderIntervalTable();
+                }, 'performance');
             } else if (isFfbBudgetView) {
-                mainReportWrapper.classList.add('hidden');
-                perfWrapper.classList.add('hidden');
-                intervalWrapper.classList.add('hidden');
-                if (ffbWrapper) {
-                    ffbWrapper.classList.remove('hidden');
-                    renderFfbBudgetTable();
-                    window._applyReadOnly(ffbWrapper, 'ffbBudget');
-                }
-                tableContainer.classList.add('hidden');
+                showView(ffbWrapper, renderFfbBudgetTable, 'ffbBudget');
             } else if (isRainfallView) {
-                mainReportWrapper.classList.add('hidden');
-                perfWrapper.classList.add('hidden');
-                intervalWrapper.classList.add('hidden');
-                tableContainer.classList.add('hidden');
-                if (rainfallWrapper) {
-                    rainfallWrapper.classList.remove('hidden');
-                    if (typeof renderRainfallTable === 'function') {
-                        renderRainfallTable();
-                    }
-                    window._applyReadOnly(rainfallWrapper, 'rainfall');
+                showView(rainfallWrapper, () => {
+                    if (typeof renderRainfallTable === 'function') renderRainfallTable();
                     // Snapshot rainfall data for this year so we can diff on save
                     const rfYear = state.activeViewValue;
                     if (rfYear && state.rainfall && state.rainfall[rfYear]) {
                         window._auditSnapshot(`rainfall_${rfYear}`, state.rainfall[rfYear]);
                     }
-                }
+                }, 'rainfall');
             } else if (isYtdView) {
-                mainReportWrapper.classList.add('hidden');
-                perfWrapper.classList.add('hidden');
-                intervalWrapper.classList.add('hidden');
-                tableContainer.classList.add('hidden');
-                if (ytdWrapper) {
-                    ytdWrapper.classList.remove('hidden');
-                    if (typeof renderYtdReport === 'function') {
-                        renderYtdReport();
-                    }
-                    window._applyReadOnly(ytdWrapper, 'performance');
-                }
+                showView(ytdWrapper, () => {
+                    if (typeof renderYtdReport === 'function') renderYtdReport();
+                }, 'performance');
             } else if (isCurrentPrevView) {
-                mainReportWrapper.classList.add('hidden');
-                perfWrapper.classList.add('hidden');
-                intervalWrapper.classList.add('hidden');
-                tableContainer.classList.add('hidden');
-                if (currentPrevWrapper) {
-                    currentPrevWrapper.classList.remove('hidden');
-                    if (typeof renderCurrentPrevReport === 'function') {
-                        renderCurrentPrevReport();
-                    }
-                    window._applyReadOnly(currentPrevWrapper, 'performance');
-                }
+                showView(currentPrevWrapper, () => {
+                    if (typeof renderCurrentPrevReport === 'function') renderCurrentPrevReport();
+                }, 'performance');
             } else if (state.activeViewType === 'spraying') {
-                mainReportWrapper.classList.add('hidden');
-                perfWrapper.classList.add('hidden');
-                intervalWrapper.classList.add('hidden');
-                tableContainer.classList.add('hidden');
-                const sw = document.getElementById('spraying-wrapper');
-                if (sw) {
-                    sw.classList.remove('hidden');
+                showView(sprayingWrapper, () => {
                     if (typeof renderSprayingReport === 'function') renderSprayingReport();
-                    window._applyReadOnly(sw, 'maintenance');
-                }
+                }, 'maintenance');
             } else if (state.activeViewType === 'manuring') {
-                mainReportWrapper.classList.add('hidden');
-                perfWrapper.classList.add('hidden');
-                intervalWrapper.classList.add('hidden');
-                tableContainer.classList.add('hidden');
-                const mw = document.getElementById('manuring-wrapper');
-                if (mw) {
-                    mw.classList.remove('hidden');
+                showView(manuringWrapper, () => {
                     if (typeof window.renderManuringReport === 'function') window.renderManuringReport();
-                    window._applyReadOnly(mw, 'maintenance');
-                }
+                }, 'maintenance');
             } else if (state.activeViewType === 'ironhorse_assets') {
-                mainReportWrapper.classList.add('hidden');
-                perfWrapper.classList.add('hidden');
-                intervalWrapper.classList.add('hidden');
-                tableContainer.classList.add('hidden');
-                const ihAW = document.getElementById('ironhorse-assets-wrapper');
-                if (ihAW) {
-                    ihAW.classList.remove('hidden');
+                showView(ihAssetsWrapper, () => {
                     if (typeof renderIronHorseAssets === 'function') renderIronHorseAssets();
-                }
+                }, 'ironhorse');
             } else if (state.activeViewType === 'ironhorse_expenses') {
-                mainReportWrapper.classList.add('hidden');
-                perfWrapper.classList.add('hidden');
-                intervalWrapper.classList.add('hidden');
-                tableContainer.classList.add('hidden');
-                const ihEW = document.getElementById('ironhorse-expenses-wrapper');
-                if (ihEW) {
-                    ihEW.classList.remove('hidden');
+                showView(ihExpensesWrapper, () => {
                     if (typeof renderIronHorseExpenses === 'function') renderIronHorseExpenses();
-                }
+                }, 'ironhorse');
             } else if (state.activeViewType === 'ironhorse_costperha') {
-                mainReportWrapper.classList.add('hidden');
-                perfWrapper.classList.add('hidden');
-                intervalWrapper.classList.add('hidden');
-                tableContainer.classList.add('hidden');
-                const ihCW = document.getElementById('ironhorse-costperha-wrapper');
-                if (ihCW) {
-                    ihCW.classList.remove('hidden');
+                showView(ihCostPerHaWrapper, () => {
                     if (typeof renderIronHorseCostPerHa === 'function') renderIronHorseCostPerHa();
-                }
+                }, 'ironhorse');
             } else if (state.activeViewType === 'audit_log') {
-                mainReportWrapper.classList.add('hidden');
-                perfWrapper.classList.add('hidden');
-                intervalWrapper.classList.add('hidden');
-                tableContainer.classList.add('hidden');
-                const alw = document.getElementById('audit-log-wrapper');
-                if (alw) {
-                    alw.classList.remove('hidden');
+                showView(auditLogWrapper, () => {
                     if (typeof window.renderAuditLog === 'function') window.renderAuditLog();
-                }
+                });
             } else if (state.activeViewType === 'gang_overview') {
-                mainReportWrapper.classList.add('hidden');
-                perfWrapper.classList.add('hidden');
-                intervalWrapper.classList.add('hidden');
-                tableContainer.classList.add('hidden');
-                if (gangOverviewWrapper) {
-                    gangOverviewWrapper.classList.remove('hidden');
-                    renderGangOverview();
-                    if (typeof window._applyReadOnly === 'function') window._applyReadOnly(gangOverviewWrapper, 'gangs');
-                }
+                showView(gangOverviewWrapper, renderGangOverview, 'gangs');
             } else if (state.activeViewType === 'maintenance_coming_soon') {
-                mainReportWrapper.classList.add('hidden');
-                perfWrapper.classList.add('hidden');
-                intervalWrapper.classList.add('hidden');
-                tableContainer.classList.add('hidden');
-                const csw = document.getElementById('maintenance-coming-soon-wrapper');
-                if (csw) {
-                    csw.classList.remove('hidden');
+                showView(maintenanceComingSoonWrapper, () => {
                     const label = state.activeViewValue || 'Feature';
-                    csw.innerHTML = `
+                    maintenanceComingSoonWrapper.innerHTML = `
                     <div style="padding:3rem 2rem; text-align:center;">
                         <div style="font-size:4rem; margin-bottom:1rem;">🚧</div>
                         <h2 style="margin-top:0; color:var(--text-primary);">${label}</h2>
                         <p style="color:var(--text-secondary); font-size:1rem;">This feature is under development.<br>Please check back later.</p>
                     </div>
                 `;
-                }
+                });
             } else if (state.activeViewType === 'maintenance_gangs') {
-                mainReportWrapper.classList.add('hidden');
-                perfWrapper.classList.add('hidden');
-                intervalWrapper.classList.add('hidden');
-                tableContainer.classList.add('hidden');
-                if (mntGangsWrapper) {
-                    mntGangsWrapper.classList.remove('hidden');
+                showView(mntGangsWrapper, () => {
                     if (typeof window.renderMaintenanceGangs === 'function') window.renderMaintenanceGangs();
-                }
+                });
             } else if (state.activeViewType === 'maintenance_worklog') {
-                mainReportWrapper.classList.add('hidden');
-                perfWrapper.classList.add('hidden');
-                intervalWrapper.classList.add('hidden');
-                tableContainer.classList.add('hidden');
-                if (mntWorklogWrapper) {
-                    mntWorklogWrapper.classList.remove('hidden');
+                showView(mntWorklogWrapper, () => {
                     if (typeof window.renderMaintenanceWorkLog === 'function') window.renderMaintenanceWorkLog();
-                }
+                });
             } else if (state.activeViewType === 'maintenance_gantt') {
-                mainReportWrapper.classList.add('hidden');
-                perfWrapper.classList.add('hidden');
-                intervalWrapper.classList.add('hidden');
-                tableContainer.classList.add('hidden');
-                if (mntGanttWrapper) {
-                    mntGanttWrapper.classList.remove('hidden');
+                showView(mntGanttWrapper, () => {
                     if (typeof window.renderMaintenanceGantt === 'function') window.renderMaintenanceGantt();
-                }
+                });
             } else {
-                perfWrapper.classList.add('hidden');
-                intervalWrapper.classList.add('hidden');
-                mainReportWrapper.classList.remove('hidden');
+                showView(mainReportWrapper);
                 tableContainer.classList.remove('hidden');
 
                 const isYearView = state.activeViewType === 'report_year';
