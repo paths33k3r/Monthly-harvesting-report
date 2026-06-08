@@ -46,6 +46,136 @@
             </div>`;
     }
 
+    // =================================================================
+    // Quick Access — per-user customizable shortcuts (toggle on/off).
+    // The enabled set is saved to Firebase under user_prefs/<uid>/quickAccess
+    // so it follows the account across devices. Cards always render in the
+    // fixed catalog order below (no reordering). Falls back to localStorage
+    // when logged out.
+    // =================================================================
+    const QA_CATALOG = [
+        { id: 'planting',           icon: '📋', title: 'Planting Phase Record', desc: 'Blocks & planted area',        target: 'sidebar-planting' },
+        { id: 'interval',           icon: '📐', title: 'Harvesting Interval',    desc: 'Monthly interval entry',       target: 'sidebar-interval' },
+        { id: 'perf',               icon: '📈', title: 'Harvesting Performance', desc: 'Performance by gang & block',  target: 'sidebar-perf' },
+        { id: 'current-prev',       icon: '🔁', title: 'Current vs Previous',    desc: 'Month-over-month compare',     target: 'sidebar-current-prev' },
+        { id: 'ytd',                icon: '📅', title: 'YTD Performance',        desc: 'Year-to-date figures',         target: 'sidebar-ytd' },
+        { id: 'ffb-budget',         icon: '🎯', title: 'FFB Budget',             desc: 'Budget estimate',              target: 'sidebar-ffb-budget' },
+        { id: 'harvesting-gangs',   icon: '🧑‍🌾', title: 'Harvesting Gangs',      desc: 'Gang overview',                target: 'sidebar-harvesting-gangs' },
+        { id: 'ironhorse-assets',   icon: '🐴', title: 'Iron Horse Assets',      desc: 'Machines & gang assignment',   target: 'sidebar-ironhorse-assets' },
+        { id: 'ironhorse-expenses', icon: '💰', title: 'Iron Horse Expenses',    desc: 'Monthly expense tracking',     target: 'sidebar-ironhorse-expenses' },
+        { id: 'ironhorse-costperha',icon: '📊', title: 'Iron Horse Cost / HA',   desc: 'Cost per hectare',             target: 'sidebar-ironhorse-costperha' },
+        { id: 'rainfall',           icon: '🌧️', title: 'Rainfall Record',        desc: 'Monthly rainfall',             target: 'sidebar-rainfall' },
+        { id: 'spraying',           icon: '💧', title: 'Spraying',               desc: 'Spraying maintenance',         target: 'sidebar-spraying' },
+        { id: 'manuring',           icon: '🧪', title: 'Manuring',               desc: 'Manuring records',             target: 'sidebar-manuring' },
+        { id: 'mnt-worklog',        icon: '🌿', title: 'Field Maintenance',      desc: 'Work log & Gantt',             target: 'sidebar-mnt-worklog' },
+        { id: 'mnt-gangs',          icon: '👥', title: 'Maintenance Gangs',      desc: 'Gang setup',                   target: 'sidebar-mnt-gangs' },
+        { id: 'excel-reports',      icon: '📊', title: 'Reports',                desc: 'Download Excel reports',       target: 'sidebar-excel-reports' },
+        { id: 'audit-log',          icon: '🧾', title: 'Audit Log',              desc: 'Activity history',             target: 'sidebar-audit-log' },
+        { id: 'user-mgmt',          icon: '🔐', title: 'User Management',        desc: 'Roles & access',               target: 'sidebar-user-mgmt' }
+    ];
+    const QA_DEFAULT = ['planting', 'perf', 'ironhorse-expenses', 'mnt-worklog', 'rainfall', 'excel-reports'];
+    const QA_BY_ID = {};
+    QA_CATALOG.forEach(c => { QA_BY_ID[c.id] = c; });
+
+    function qaGetUid() {
+        try { return (firebase.auth().currentUser && firebase.auth().currentUser.uid) || null; } catch (e) { return null; }
+    }
+    function qaGetDb() {
+        try { return window._ironHorseDb || (window.firebase && firebase.database()) || null; } catch (e) { return null; }
+    }
+    // A shortcut is usable only if its sidebar target exists and isn't access-hidden.
+    function qaUsable(target) {
+        const el = document.getElementById(target);
+        if (!el) return false;
+        let n = el;
+        while (n) { if (n.classList && n.classList.contains('hidden')) return false; n = n.parentElement; }
+        return true;
+    }
+    // Set of enabled ids (ignores unknown ids).
+    function qaEnabledSet(order) {
+        const set = {};
+        (order || []).forEach(id => { if (QA_BY_ID[id]) set[id] = 1; });
+        return set;
+    }
+    // Load this user's preference once, cache on window._qaPref, then re-render.
+    function qaLoadInto(done) {
+        const uid = qaGetUid();
+        const db = qaGetDb();
+        if (!uid || !db) {
+            let order = null;
+            try { const raw = localStorage.getItem('qa_pref_anon'); if (raw) order = JSON.parse(raw); } catch (e) {}
+            window._qaPref = { uid: uid || 'anon', order: (Array.isArray(order) && order.length) ? order : QA_DEFAULT.slice() };
+            done();
+            return;
+        }
+        db.ref('user_prefs/' + uid + '/quickAccess').once('value')
+            .then(snap => {
+                const val = snap.val();
+                window._qaPref = { uid: uid, order: (Array.isArray(val) && val.length) ? val : QA_DEFAULT.slice() };
+                done();
+            })
+            .catch(() => { window._qaPref = { uid: uid, order: QA_DEFAULT.slice() }; done(); });
+    }
+    function qaSave(order) {
+        const uid = qaGetUid();
+        const db = qaGetDb();
+        window._qaPref = { uid: uid || 'anon', order: order.slice() };
+        if (uid && db) {
+            db.ref('user_prefs/' + uid + '/quickAccess').set(order).catch(e => console.error('quickAccess save failed:', e));
+        } else {
+            try { localStorage.setItem('qa_pref_anon', JSON.stringify(order)); } catch (e) {}
+        }
+    }
+
+    function qaOpenModal() {
+        const pref = (window._qaPref && window._qaPref.order) ? window._qaPref.order : QA_DEFAULT;
+        const enabledSet = qaEnabledSet(pref);
+
+        const rowsHtml = QA_CATALOG.map(c => {
+            const checked = enabledSet[c.id] ? 'checked' : '';
+            const usable = qaUsable(c.target);
+            const note = usable ? '' : ' <span style="font-size:.7rem; color:#b91c1c;">(no access)</span>';
+            return `<li style="margin-bottom:.4rem;">
+                <label style="display:flex; align-items:center; gap:.6rem; padding:.5rem .6rem; border:1px solid var(--border-color,#e5e7eb); border-radius:8px; background:var(--bg-primary,#fff); cursor:pointer; ${usable ? '' : 'opacity:.55;'}">
+                    <input type="checkbox" class="qa-check" data-id="${c.id}" ${checked} style="width:16px; height:16px; flex:none;">
+                    <span style="font-size:1.2rem;">${c.icon}</span>
+                    <span style="flex:1; min-width:0;"><span style="font-weight:600;">${c.title}</span>${note}<br><span style="font-size:.78rem; color:var(--text-muted,#6b7280);">${c.desc}</span></span>
+                </label>
+            </li>`;
+        }).join('');
+
+        const overlay = document.createElement('div');
+        overlay.id = 'qa-modal-overlay';
+        overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.45); display:flex; align-items:center; justify-content:center; z-index:9999;';
+        overlay.innerHTML = `
+            <div style="background:var(--bg-primary,#fff); width:min(480px,92vw); max-height:85vh; display:flex; flex-direction:column; border-radius:14px; box-shadow:0 10px 40px rgba(0,0,0,.25); overflow:hidden;">
+                <div style="padding:1rem 1.25rem; border-bottom:1px solid var(--border-color,#e5e7eb);">
+                    <h3 style="margin:0; font-size:1.05rem; color:var(--text-primary,#111827);">Customize Quick Access</h3>
+                    <p style="margin:.25rem 0 0; font-size:.82rem; color:var(--text-muted,#6b7280);">Tick the shortcuts you want on your dashboard. Saved to your account.</p>
+                </div>
+                <ul style="list-style:none; margin:0; padding:1rem 1.25rem; overflow:auto;">${rowsHtml}</ul>
+                <div style="padding:.85rem 1.25rem; border-top:1px solid var(--border-color,#e5e7eb); display:flex; justify-content:flex-end; gap:.6rem;">
+                    <button type="button" id="qa-cancel" style="padding:.5rem 1rem; border:1px solid var(--border-color,#e5e7eb); background:var(--bg-secondary,#f3f4f6); border-radius:8px; cursor:pointer;">Cancel</button>
+                    <button type="button" id="qa-save" style="padding:.5rem 1.1rem; border:none; background:#10b981; color:#fff; border-radius:8px; cursor:pointer; font-weight:600;">Save</button>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+
+        overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+        overlay.querySelector('#qa-cancel').onclick = () => overlay.remove();
+        overlay.querySelector('#qa-save').onclick = () => {
+            const checkedIds = {};
+            Array.prototype.slice.call(overlay.querySelectorAll('.qa-check')).forEach(cb => {
+                if (cb.checked) checkedIds[cb.getAttribute('data-id')] = 1;
+            });
+            // Persist in fixed catalog order so display order stays stable.
+            const order = QA_CATALOG.map(c => c.id).filter(id => checkedIds[id]);
+            qaSave(order);
+            overlay.remove();
+            window.renderDashboard();
+        };
+    }
+
     const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     function monthIndex(key) {
         const k = String(key).slice(0, 3).toLowerCase();
@@ -179,6 +309,16 @@
         const yieldPrev = prevTotals.arr.map(v => (haPrev > 0 ? v / haPrev : 0));
         const hasYield = (haCurr > 0 && currTotals.any) || (haPrev > 0 && prevTotals.any);
 
+        // ---- Quick Access: resolve this user's saved shortcut preference ----
+        const curUid = qaGetUid() || 'anon';
+        const prefLoaded = window._qaPref && window._qaPref.uid === curUid;
+        const qaOrder = prefLoaded ? window._qaPref.order : QA_DEFAULT;
+        const qaEnabled = qaEnabledSet(qaOrder);
+        const qaCards = QA_CATALOG.filter(c => qaEnabled[c.id] && qaUsable(c.target));
+        const qaCardsHtml = qaCards.length
+            ? qaCards.map(c => quickCard(c.icon, c.title, c.desc, c.target)).join('')
+            : `<p style="grid-column:1/-1; color:var(--text-muted,#6b7280); padding:1rem 0;">No shortcuts selected yet — click <strong>Customize</strong> to add some.</p>`;
+
         const ffbEmptyMsg = `No harvest figures captured yet for ${yrPrev} or ${yrCurr}.<br>Import the Harvesting Interval files to populate this chart.`;
         const budgetEmptyMsg = `No actual or budget figures for ${yrCurr} yet.`;
         const yieldEmptyMsg = `Need harvest data and planted HA to compute yield.`;
@@ -204,14 +344,12 @@
                 ${chartCard('Yield (MT / HA)', `${yrPrev} vs ${yrCurr}`, 'ffbYieldChart', 'ffbYieldEmpty', yieldEmptyMsg, 280)}
             </div>
 
-            <h3 class="dash-section">Quick access</h3>
-            <div class="quick-grid">
-                ${quickCard('📋', 'Planting Phase Record', 'Blocks &amp; planted area', 'sidebar-planting')}
-                ${quickCard('📈', 'Harvesting Performance', 'Interval, YTD &amp; charts', 'sidebar-perf')}
-                ${quickCard('🐴', 'Iron Horse', 'Assets, expenses &amp; cost', 'sidebar-ironhorse-expenses')}
-                ${quickCard('🌿', 'Field Maintenance', 'Work log &amp; Gantt', 'sidebar-mnt-worklog')}
-                ${quickCard('🌧️', 'Rainfall Record', 'Monthly rainfall', 'sidebar-rainfall')}
-                ${quickCard('📊', 'Reports', 'Download Excel reports', 'sidebar-excel-reports')}
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-top:1.5rem;">
+                <h3 class="dash-section" style="margin:0;">Quick access</h3>
+                <button type="button" id="qa-customize-btn" style="display:inline-flex; align-items:center; gap:.4rem; padding:.4rem .8rem; border:1px solid var(--border-color,#e5e7eb); background:var(--bg-secondary,#f3f4f6); border-radius:8px; cursor:pointer; font-size:.85rem; color:var(--text-primary,#111827);">⚙️ Customize</button>
+            </div>
+            <div class="quick-grid" id="qa-grid">
+                ${qaCardsHtml}
             </div>
         `;
 
@@ -221,6 +359,14 @@
                 if (el) el.click();
             };
         });
+
+        // Quick Access customize button + first-load of the saved preference.
+        const qaBtn = document.getElementById('qa-customize-btn');
+        if (qaBtn) qaBtn.onclick = qaOpenModal;
+        if (!prefLoaded) {
+            // Renders once with defaults, then re-renders with the synced preference.
+            qaLoadInto(() => window.renderDashboard());
+        }
 
         // ---- Chart 1: FFB total tonnage, year vs year (line) ----
         drawChart('ffbCompareChart', 'ffbCompareEmpty', hasFfbData, {
