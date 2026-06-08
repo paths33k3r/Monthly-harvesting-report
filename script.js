@@ -147,7 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             loginOverlay.style.display = 'none';
-            appLayout.style.display = 'flex';
+            appLayout.style.display = 'grid';
             startIdleTimer();
             if (!isAppRunning) {
                 isAppRunning = true;

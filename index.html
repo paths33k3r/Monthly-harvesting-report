@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Grouped Harvesting Report</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=10">
+    <link rel="stylesheet" href="style.css?v=11">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     
@@ -70,96 +70,102 @@
     <div id="app-layout-main" class="app-layout" style="display:none;">
         <aside class="sidebar">
             <div class="sidebar-header">
-                <h2>Menu</h2>
+                <div class="sidebar-logo">🌴</div>
+                <h2>AntiGravity<small>Harvesting Report</small></h2>
+                <button id="sidebar-collapse-btn" class="sidebar-collapse-btn" title="Collapse sidebar">«</button>
             </div>
             <nav class="sidebar-nav">
                 <ul class="nav-menu">
+                    <li class="nav-group-label">Planning</li>
+
                     <li class="nav-item" data-menu-key="ffbBudget">
-                        <div class="nav-item-header" id="nav-header-budget" style="cursor:pointer;">
-                            <span class="nav-icon">🌴💰</span>
-                            <a href="#" id="sidebar-ffb-budget" class="nav-link" style="text-decoration:none; color:inherit; font-weight:500;">FFB Budget Estimate</a>
-                        </div>
+                        <a href="#" id="sidebar-ffb-budget" class="nav-link">
+                            <span class="nav-icon">💰</span><span class="nav-label">FFB Budget Estimate</span>
+                        </a>
                     </li>
                     <li class="nav-item" data-menu-key="planting">
-                        <div class="nav-item-header" style="cursor:pointer;">
-                            <span class="nav-icon">📊</span>
-                            <a href="#" id="sidebar-planting" class="nav-link" style="text-decoration:none; color:inherit; font-weight:500;">Planting Phase Record</a>
-                        </div>
+                        <a href="#" id="sidebar-planting" class="nav-link">
+                            <span class="nav-icon">📋</span><span class="nav-label">Planting Phase Record</span>
+                        </a>
                     </li>
+
+                    <li class="nav-group-label">Operations</li>
+
                     <li class="nav-item">
                         <div class="nav-item-header has-children">
-                            <span class="nav-icon">👥</span>
-                            <span class="nav-label">Gang</span>
+                            <span class="nav-icon">👥</span><span class="nav-label">Gang</span>
                             <span class="nav-chevron">▼</span>
                         </div>
                         <ul class="nav-submenu">
                             <li class="nav-item" data-menu-key="gangs">
                                 <a href="#" id="sidebar-harvesting-gangs" class="nav-link">
-                                    🌴 Harvesting Gang
+                                    <span class="nav-icon">🌴</span><span class="nav-label">Harvesting Gang</span>
                                 </a>
                             </li>
                             <li class="nav-item" data-menu-key="maintenance">
                                 <a href="#" id="sidebar-mnt-gangs" class="nav-link">
-                                    🔧 Maintenance Gang
+                                    <span class="nav-icon">🔧</span><span class="nav-label">Maintenance Gang</span>
                                 </a>
                             </li>
                         </ul>
                     </li>
+
                     <li class="nav-item" data-menu-key="performance">
                         <div class="nav-item-header has-children">
-                            <span class="nav-icon">📈</span>
-                            <span class="nav-label">Harvesting Performance</span>
+                            <span class="nav-icon">📈</span><span class="nav-label">Harvesting Performance</span>
                             <span class="nav-chevron">▼</span>
                         </div>
                         <ul class="nav-submenu">
                             <li class="nav-item">
-                                <a href="#" id="sidebar-interval" class="nav-link">Harvesting Interval</a>
+                                <a href="#" id="sidebar-interval" class="nav-link"><span class="nav-label">Harvesting Interval</span></a>
                             </li>
                             <li class="nav-item">
-                                <a href="#" id="sidebar-perf" class="nav-link">Harvester Performance Chart</a>
+                                <a href="#" id="sidebar-perf" class="nav-link"><span class="nav-label">Harvester Performance Chart</span></a>
                             </li>
                             <li class="nav-item">
-                                <a href="#" id="sidebar-current-prev" class="nav-link">Current vs Previous Month</a>
+                                <a href="#" id="sidebar-current-prev" class="nav-link"><span class="nav-label">Current vs Previous Month</span></a>
                             </li>
                             <li class="nav-item">
-                                <a href="#" id="sidebar-ytd" class="nav-link">Harvesting YTD</a>
+                                <a href="#" id="sidebar-ytd" class="nav-link"><span class="nav-label">Harvesting YTD</span></a>
                             </li>
                         </ul>
                     </li>
+
                     <li class="nav-item" data-menu-key="ironhorse">
                         <div class="nav-item-header has-children">
-                            <span class="nav-icon">🐴</span>
-                            <span class="nav-label">Iron Horse</span>
+                            <span class="nav-icon">🐴</span><span class="nav-label">Iron Horse</span>
                             <span class="nav-chevron">▼</span>
                         </div>
                         <ul class="nav-submenu">
                             <li class="nav-item">
                                 <a href="#" id="sidebar-ironhorse-assets" class="nav-link">
-                                    🔧 Asset Numbers
+                                    <span class="nav-icon">🔧</span><span class="nav-label">Asset Numbers</span>
                                 </a>
                             </li>
                             <li class="nav-item">
                                 <a href="#" id="sidebar-ironhorse-expenses" class="nav-link">
-                                    💰 Expenses
+                                    <span class="nav-icon">💰</span><span class="nav-label">Expenses</span>
                                 </a>
                             </li>
                             <li class="nav-item">
                                 <a href="#" id="sidebar-ironhorse-costperha" class="nav-link">
-                                    📊 Cost per FFB MT
+                                    <span class="nav-icon">📊</span><span class="nav-label">Cost per FFB MT</span>
                                 </a>
                             </li>
                         </ul>
                     </li>
+
                     <li class="nav-item" data-menu-key="rainfall">
-                        <div class="nav-item-header" style="cursor:pointer;">
-                            <span class="nav-icon">🌧️</span>
-                            <a href="#" id="sidebar-rainfall" class="nav-link" style="text-decoration:none; color:inherit; font-weight:500;">Rainfall Record</a>
-                        </div>
+                        <a href="#" id="sidebar-rainfall" class="nav-link">
+                            <span class="nav-icon">🌧️</span><span class="nav-label">Rainfall Record</span>
+                        </a>
                     </li>
+
+                    <li class="nav-group-label">Maintenance</li>
+
                     <li class="nav-item" data-menu-key="maintenance">
                         <div class="nav-item-header has-children">
-                            <span class="nav-icon">🌿🔧</span>
-                            <span class="nav-label">Maintenance</span>
+                            <span class="nav-icon">🌿</span><span class="nav-label">Field Maintenance</span>
                             <span class="nav-chevron">▼</span>
                         </div>
                         <ul class="nav-submenu">
@@ -170,7 +176,7 @@
                                 </div>
                                 <ul class="nav-submenu" id="sidebar-spraying-sub">
                                     <li class="nav-item">
-                                        <a href="#" id="sidebar-spraying" class="nav-link">📋 Record</a>
+                                        <a href="#" id="sidebar-spraying" class="nav-link"><span class="nav-label">📋 Record</span></a>
                                     </li>
                                     <!-- JS: 📊 Gantt Chart when spraying logs exist -->
                                 </ul>
@@ -182,7 +188,7 @@
                                 </div>
                                 <ul class="nav-submenu" id="sidebar-manuring-sub">
                                     <li class="nav-item">
-                                        <a href="#" id="sidebar-manuring" class="nav-link">📋 Record</a>
+                                        <a href="#" id="sidebar-manuring" class="nav-link"><span class="nav-label">📋 Record</span></a>
                                     </li>
                                     <!-- JS: 📊 Gantt Chart when manuring logs exist -->
                                 </ul>
@@ -206,155 +212,117 @@
                                 </ul>
                             </li>
                             <li class="nav-item">
-                                <a href="#" id="sidebar-mnt-worklog" class="nav-link"
-                                    style="border-top:1px solid var(--border-color); margin-top:0.35rem; padding-top:0.5rem;">
-                                    📝 Work Log
-                                </a>
+                                <a href="#" id="sidebar-mnt-worklog" class="nav-link"><span class="nav-label">📝 Work Log</span></a>
                             </li>
                         </ul>
                     </li>
+
+                    <li class="nav-group-label">System</li>
+
                     <li class="nav-item" data-menu-key="reports">
-                        <div class="nav-item-header" id="sidebar-excel-reports" style="cursor:pointer;">
-                            <span class="nav-icon">📊</span>
-                            <span class="nav-label">Reports</span>
+                        <div class="nav-item-header" id="sidebar-excel-reports">
+                            <span class="nav-icon">📊</span><span class="nav-label">Reports</span>
                         </div>
                     </li>
                     <li class="nav-item" id="nav-audit-log-item" data-menu-key="auditLog" style="display:none;">
-                        <div class="nav-item-header">
-                            <span class="nav-icon">📋</span>
-                            <a href="#" id="sidebar-audit-log" class="nav-link" style="text-decoration:none; color:inherit; font-weight:500;">Audit Log</a>
-                        </div>
+                        <a href="#" id="sidebar-audit-log" class="nav-link">
+                            <span class="nav-icon">📋</span><span class="nav-label">Audit Log</span>
+                        </a>
                     </li>
-                <li class="nav-item" data-menu-key="dataManagement">
-                    <div class="nav-item-header has-children">
-                        <span class="nav-icon">⚙️</span>
-                        <span class="nav-label">Data Management</span>
-                        <span class="nav-chevron">▼</span>
-                    </div>
-                    <ul class="nav-submenu">
-                        <li class="nav-item">
-                            <div class="nav-item-header has-children">
-                                <span class="nav-icon" style="margin-right:0.5rem;">📄</span>
-                                <span class="nav-label">Download Template</span>
-                                <span class="nav-chevron">▼</span>
-                            </div>
-                            <ul class="nav-submenu">
-                                <li class="nav-item">
-                                    <a href="#" id="sidebar-download-template" class="nav-link">
-                                        Harvesting Interval Template
-                                    </a>
-                                </li>
-                                <li class="nav-item">
-                                    <a href="#" id="sidebar-download-ffb-template" class="nav-link">
-                                        FFB Budget Template
-                                    </a>
-                                </li>
-                                <li class="nav-item">
-                                    <a href="#" id="sidebar-download-spray-template" class="nav-link">
-                                        Spraying Maintenance Template
-                                    </a>
-                                </li>
-                                <li class="nav-item">
-                                    <a href="#" id="sidebar-download-manuring-template" class="nav-link">
-                                        Manuring Template
-                                    </a>
-                                </li>
-                                <li class="nav-item">
-                                    <a href="#" id="sidebar-download-ironhorse-template" class="nav-link">
-                                        Iron Horse Expenses Template
-                                    </a>
-                                </li>
-                            </ul>
-                        </li>
-                        <li class="nav-item">
-                            <div class="nav-item-header has-children">
-                                <span class="nav-icon" style="margin-right:0.5rem;">📥</span>
-                                <span class="nav-label">Import Excel</span>
-                                <span class="nav-chevron">▼</span>
-                            </div>
-                            <ul class="nav-submenu">
-                                <li class="nav-item">
-                                    <a href="#" id="sidebar-import-excel" class="nav-link">
-                                        Harvesting Interval
-                                    </a>
-                                    <input type="file" id="sidebar-import-input" accept=".xlsx, .xls"
-                                        style="display: none;" />
-                                </li>
-                                <li class="nav-item">
-                                    <a href="#" id="sidebar-import-ffb" class="nav-link">
-                                        FFB Budget
-                                    </a>
-                                    <input type="file" id="sidebar-import-ffb-input" accept=".xlsx, .xls"
-                                        style="display: none;" />
-                                </li>
-                                <li class="nav-item">
-                                    <a href="#" id="sidebar-import-spray" class="nav-link">
-                                        Spraying Maintenance
-                                    </a>
-                                    <input type="file" id="sidebar-import-spray-input" accept=".xlsx"
-                                        style="display: none;" />
-                                </li>
-                                <li class="nav-item">
-                                    <a href="#" id="sidebar-import-manuring" class="nav-link">
-                                        Manuring
-                                    </a>
-                                    <input type="file" id="sidebar-import-manuring-input" accept=".xlsx"
-                                        style="display: none;" />
-                                </li>
-                                <li class="nav-item">
-                                    <a href="#" id="sidebar-import-ironhorse-expenses" class="nav-link">
-                                        Iron Horse Expenses
-                                    </a>
-                                    <input type="file" id="sidebar-import-ironhorse-input" accept=".xlsx,.xls"
-                                        style="display: none;" />
-                                </li>
-                            </ul>
-                        </li>
-                        <li class="nav-item">
-                            <div class="nav-item-header has-children">
-                                <span class="nav-icon" style="margin-right:0.5rem;">💾</span>
-                                <span class="nav-label">Backup & Restore</span>
-                                <span class="nav-chevron">▼</span>
-                            </div>
-                            <ul class="nav-submenu">
-                                <li class="nav-item">
-                                    <a href="#" id="sidebar-export-backup" class="nav-link">
-                                        Export Backup
-                                    </a>
-                                </li>
-                                <li class="nav-item">
-                                    <a href="#" id="sidebar-import-backup" class="nav-link">
-                                        Restore Backup
-                                    </a>
-                                    <input type="file" id="sidebar-import-backup-input" accept=".json" style="display:none;" />
-                                </li>
-                                <li class="nav-item">
-                                    <a href="#" id="sidebar-backup-settings" class="nav-link">
-                                        Backup Settings
-                                    </a>
-                                </li>
-                            </ul>
-                        </li>
-                    </ul>
-                </li>
-                    </ul>
-                </nav>
-                <div class="sidebar-right">
-                    <div id="nav-user-mgmt-item" class="sidebar-right-item" style="display:none;">
-                        <a href="#" id="sidebar-user-mgmt" class="nav-link sidebar-right-link">
-                            <span class="nav-icon">👤</span>
-                            <span class="nav-label">User Management</span>
-                        </a>
-                    </div>
-                    <div class="sidebar-right-item">
-                        <a href="#" id="sidebar-logout" class="nav-link sidebar-right-link" style="color: var(--danger); font-weight: 600;">
-                            <span class="nav-icon">🚪</span>
-                            <span class="nav-label">Logout</span>
-                        </a>
-                    </div>
-                    <div class="sidebar-right-version">v1.7.2</div>
+
+                    <li class="nav-item" data-menu-key="dataManagement">
+                        <div class="nav-item-header has-children">
+                            <span class="nav-icon">⚙️</span><span class="nav-label">Data Management</span>
+                            <span class="nav-chevron">▼</span>
+                        </div>
+                        <ul class="nav-submenu">
+                            <li class="nav-item">
+                                <div class="nav-item-header has-children">
+                                    <span class="nav-label">📄 Download Template</span>
+                                    <span class="nav-chevron">▼</span>
+                                </div>
+                                <ul class="nav-submenu">
+                                    <li class="nav-item">
+                                        <a href="#" id="sidebar-download-template" class="nav-link"><span class="nav-label">Harvesting Interval Template</span></a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a href="#" id="sidebar-download-ffb-template" class="nav-link"><span class="nav-label">FFB Budget Template</span></a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a href="#" id="sidebar-download-spray-template" class="nav-link"><span class="nav-label">Spraying Maintenance Template</span></a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a href="#" id="sidebar-download-manuring-template" class="nav-link"><span class="nav-label">Manuring Template</span></a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a href="#" id="sidebar-download-ironhorse-template" class="nav-link"><span class="nav-label">Iron Horse Expenses Template</span></a>
+                                    </li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <div class="nav-item-header has-children">
+                                    <span class="nav-label">📥 Import Excel</span>
+                                    <span class="nav-chevron">▼</span>
+                                </div>
+                                <ul class="nav-submenu">
+                                    <li class="nav-item">
+                                        <a href="#" id="sidebar-import-excel" class="nav-link"><span class="nav-label">Harvesting Interval</span></a>
+                                        <input type="file" id="sidebar-import-input" accept=".xlsx, .xls" style="display: none;" />
+                                    </li>
+                                    <li class="nav-item">
+                                        <a href="#" id="sidebar-import-ffb" class="nav-link"><span class="nav-label">FFB Budget</span></a>
+                                        <input type="file" id="sidebar-import-ffb-input" accept=".xlsx, .xls" style="display: none;" />
+                                    </li>
+                                    <li class="nav-item">
+                                        <a href="#" id="sidebar-import-spray" class="nav-link"><span class="nav-label">Spraying Maintenance</span></a>
+                                        <input type="file" id="sidebar-import-spray-input" accept=".xlsx" style="display: none;" />
+                                    </li>
+                                    <li class="nav-item">
+                                        <a href="#" id="sidebar-import-manuring" class="nav-link"><span class="nav-label">Manuring</span></a>
+                                        <input type="file" id="sidebar-import-manuring-input" accept=".xlsx" style="display: none;" />
+                                    </li>
+                                    <li class="nav-item">
+                                        <a href="#" id="sidebar-import-ironhorse-expenses" class="nav-link"><span class="nav-label">Iron Horse Expenses</span></a>
+                                        <input type="file" id="sidebar-import-ironhorse-input" accept=".xlsx,.xls" style="display: none;" />
+                                    </li>
+                                </ul>
+                            </li>
+                            <li class="nav-item">
+                                <div class="nav-item-header has-children">
+                                    <span class="nav-label">💾 Backup &amp; Restore</span>
+                                    <span class="nav-chevron">▼</span>
+                                </div>
+                                <ul class="nav-submenu">
+                                    <li class="nav-item">
+                                        <a href="#" id="sidebar-export-backup" class="nav-link"><span class="nav-label">Export Backup</span></a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a href="#" id="sidebar-import-backup" class="nav-link"><span class="nav-label">Restore Backup</span></a>
+                                        <input type="file" id="sidebar-import-backup-input" accept=".json" style="display:none;" />
+                                    </li>
+                                    <li class="nav-item">
+                                        <a href="#" id="sidebar-backup-settings" class="nav-link"><span class="nav-label">Backup Settings</span></a>
+                                    </li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </li>
+                </ul>
+            </nav>
+            <div class="sidebar-right">
+                <div id="nav-user-mgmt-item" class="sidebar-right-item" style="display:none;">
+                    <a href="#" id="sidebar-user-mgmt" class="nav-link sidebar-right-link">
+                        <span class="nav-icon">👤</span><span class="nav-label">User Management</span>
+                    </a>
                 </div>
-            </aside>
+                <div class="sidebar-right-item">
+                    <a href="#" id="sidebar-logout" class="nav-link sidebar-right-link" style="color:#fca5a5; font-weight:600;">
+                        <span class="nav-icon">🚪</span><span class="nav-label">Logout</span>
+                    </a>
+                </div>
+                <div class="sidebar-right-version">v1.7.2</div>
+            </div>
+        </aside>
 
         <div class="app-container">
             <header>
@@ -545,60 +513,44 @@
     <script src="render_spraying.js?v=11"></script>
     <script src="render_manuring.js?v=11"></script>
     <script src="render_reports.js?v=22"></script>
-    <script src="script.js?v=50"></script>
+    <script src="script.js?v=51"></script>
     <script>
-        // Use event delegation for topnav toggle interactions to support dynamically added items
+        // Vertical sidebar accordion: expand/collapse groups. Clicking a header
+        // toggles its submenu and closes sibling groups at the same level. The
+        // menu stays open while navigating content (persistent left rail).
         document.addEventListener('click', (e) => {
             const header = e.target.closest('.nav-item-header.has-children');
-            
-            if (header) {
-                e.preventDefault();
-                e.stopPropagation();
-                
-                const wasOpen = header.classList.contains('open');
-                
-                // If this is a top-level nav-item, close other top-level items
-                const isTopLevel = header.parentElement && header.parentElement.parentElement && header.parentElement.parentElement.classList.contains('nav-menu');
-                if (isTopLevel) {
-                    document.querySelectorAll('.nav-menu > .nav-item > .nav-item-header').forEach(h => {
-                        if (h !== header) h.classList.remove('open');
-                    });
-                } else {
-                    // For nested items, you might want to close sibling nested items
-                    if (header.parentElement && header.parentElement.parentElement) {
-                        const siblings = header.parentElement.parentElement.querySelectorAll(':scope > .nav-item > .nav-item-header');
-                        siblings.forEach(h => {
-                            if (h !== header) h.classList.remove('open');
-                        });
-                    }
-                }
+            if (!header) return;
+            e.preventDefault();
 
-                if (!wasOpen) {
-                    header.classList.add('open');
-                } else {
-                    header.classList.remove('open');
-                }
-            } else if (!e.target.closest('.nav-submenu')) {
-                // Clicking outside of any header or submenu closes all dropdowns
-                document.querySelectorAll('.nav-item-header.open').forEach(h => {
-                    h.classList.remove('open');
+            const wasOpen = header.classList.contains('open');
+
+            // Close sibling headers at the same nesting level (accordion).
+            const isTopLevel = header.parentElement
+                && header.parentElement.parentElement
+                && header.parentElement.parentElement.classList.contains('nav-menu')
+                && !header.parentElement.parentElement.classList.contains('nav-submenu');
+            if (isTopLevel) {
+                document.querySelectorAll('.nav-menu > .nav-item > .nav-item-header').forEach(h => {
+                    if (h !== header) h.classList.remove('open');
                 });
+            } else if (header.parentElement && header.parentElement.parentElement) {
+                header.parentElement.parentElement
+                    .querySelectorAll(':scope > .nav-item > .nav-item-header')
+                    .forEach(h => { if (h !== header) h.classList.remove('open'); });
             }
+
+            header.classList.toggle('open', !wasOpen);
         });
 
-        // Keep dropdowns open if clicking inside them, but allow links to close them
+        // Collapse / expand the whole sidebar to an icon rail.
         document.addEventListener('click', (e) => {
-            const submenu = e.target.closest('.nav-submenu');
-            if (submenu) {
-                if (!e.target.closest('a')) {
-                    e.stopPropagation();
-                } else {
-                    // It's a link, close everything
-                    document.querySelectorAll('.nav-item-header.open').forEach(h => {
-                        h.classList.remove('open');
-                    });
-                }
-            }
+            const btn = e.target.closest('#sidebar-collapse-btn');
+            if (!btn) return;
+            const layout = document.getElementById('app-layout-main');
+            const collapsed = layout.classList.toggle('sidebar-collapsed');
+            btn.textContent = collapsed ? '»' : '«';
+            btn.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
         });
     </script>
 
