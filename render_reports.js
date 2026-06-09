@@ -881,6 +881,7 @@
         const sprayYears   = Object.keys(window.state.spraying    || {}).sort((a, b) => parseInt(b) - parseInt(a));
         const manuringYears = Object.keys(window.state.manuring  || {}).filter(k => /^\d{4}$/.test(k)).sort((a, b) => parseInt(b) - parseInt(a));
         if (!manuringYears.includes('2025')) manuringYears.unshift('2025');
+        const ironHorseYears = Object.keys((window.state.ironHorse || {}).assets || {}).filter(k => /^\d{4}$/.test(k)).sort((a, b) => parseInt(b) - parseInt(a));
 
         const yearOpts  = years => years.map(y => `<option value="${y}">${y}</option>`).join('');
         const monthOpts = () => MONTHS.map(m => `<option value="${m}">${m}</option>`).join('');
@@ -913,6 +914,12 @@
                <select id="sel-manuring-mo" style="${SS}">${monthOpts()}</select>
                <button id="btn-dl-manuring" class="btn-primary" style="padding:0.4rem 1rem;">⬇ Download Excel</button>
                <span id="rep-manuring-status" style="font-size:0.82rem;color:var(--text-secondary);"></span>`;
+
+        const ironHorseControls = ironHorseYears.length
+            ? `<select id="sel-ih-cpmt-yr" style="${SS}">${yearOpts(ironHorseYears)}</select>
+               <button id="btn-dl-ih-cpmt" class="btn-primary" style="padding:0.4rem 1rem;">⬇ Download Excel</button>
+               <span id="rep-ih-cpmt-status" style="font-size:0.82rem;color:var(--text-secondary);"></span>`
+            : noDataMsg;
 
         wrapper.innerHTML = `
         <div style="padding:1.5rem;max-width:680px;">
@@ -965,6 +972,17 @@
             </div>
           </div>
 
+          <div style="${CARD}">
+            <h3 style="margin:0 0 0.35rem;font-size:0.97rem;">🐎 Iron Horse — Expenses by Cost per FFB MT</h3>
+            <p style="margin:0 0 1rem;color:var(--text-secondary);font-size:0.82rem;">
+              Full-year cost per FFB MT (RM/MT) per gang and asset, with FFB MT and total
+              expenses sub-rows. Combines Iron Horse expenses with harvesting performance.
+            </p>
+            <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">
+              ${ironHorseControls}
+            </div>
+          </div>
+
           <p style="color:var(--text-secondary);font-size:0.78rem;margin-top:0.5rem;">
             ℹ️ Reports use the official Excel templates from "Report samples/" as the base.
             The app must be served via HTTP (not file://) for template loading to work.
@@ -1007,6 +1025,25 @@
             } finally {
                 btnManuring.disabled = false;
                 btnManuring.textContent = '⬇ Download Excel';
+            }
+        };
+
+        const btnIhCpmt = document.getElementById('btn-dl-ih-cpmt');
+        if (btnIhCpmt) btnIhCpmt.onclick = async () => {
+            const yr = document.getElementById('sel-ih-cpmt-yr').value;
+            if (!yr) return;
+            const statusEl = document.getElementById('rep-ih-cpmt-status');
+            if (statusEl) statusEl.textContent = '';
+            btnIhCpmt.disabled = true;
+            btnIhCpmt.textContent = '⏳ Generating...';
+            try {
+                await window.downloadIronHorseCostPerFFBMt(yr);
+                if (statusEl) { statusEl.textContent = '✅ Downloaded!'; setTimeout(() => { statusEl.textContent = ''; }, 3000); }
+            } catch (e) {
+                if (statusEl) statusEl.textContent = '❌ ' + e.message;
+            } finally {
+                btnIhCpmt.disabled = false;
+                btnIhCpmt.textContent = '⬇ Download Excel';
             }
         };
     };
