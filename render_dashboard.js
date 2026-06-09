@@ -97,33 +97,52 @@
         (order || []).forEach(id => { if (QA_BY_ID[id]) set[id] = 1; });
         return set;
     }
+    // localStorage key for a given uid (anon users included). Used as a fallback
+    // so the preference survives a refresh even when the Firebase write/read of
+    // user_prefs is blocked by security rules.
+    function qaLsKey(uid) { return 'qa_pref_' + (uid || 'anon'); }
+    function qaReadLs(uid) {
+        try {
+            const raw = localStorage.getItem(qaLsKey(uid));
+            if (raw) { const o = JSON.parse(raw); if (Array.isArray(o) && o.length) return o; }
+        } catch (e) {}
+        return null;
+    }
     // Load this user's preference once, cache on window._qaPref, then re-render.
     function qaLoadInto(done) {
         const uid = qaGetUid();
         const db = qaGetDb();
         if (!uid || !db) {
-            let order = null;
-            try { const raw = localStorage.getItem('qa_pref_anon'); if (raw) order = JSON.parse(raw); } catch (e) {}
-            window._qaPref = { uid: uid || 'anon', order: (Array.isArray(order) && order.length) ? order : QA_DEFAULT.slice() };
+            window._qaPref = { uid: uid || 'anon', order: qaReadLs(uid) || QA_DEFAULT.slice() };
             done();
             return;
         }
         db.ref('user_prefs/' + uid + '/quickAccess').once('value')
             .then(snap => {
                 const val = snap.val();
-                window._qaPref = { uid: uid, order: (Array.isArray(val) && val.length) ? val : QA_DEFAULT.slice() };
+                let order;
+                if (Array.isArray(val) && val.length) {
+                    order = val;
+                    try { localStorage.setItem(qaLsKey(uid), JSON.stringify(order)); } catch (e) {}
+                } else {
+                    // Nothing in the cloud (or write was blocked) — fall back to the
+                    // last choice saved locally before defaulting.
+                    order = qaReadLs(uid) || QA_DEFAULT.slice();
+                }
+                window._qaPref = { uid: uid, order: order };
                 done();
             })
-            .catch(() => { window._qaPref = { uid: uid, order: QA_DEFAULT.slice() }; done(); });
+            .catch(() => { window._qaPref = { uid: uid, order: qaReadLs(uid) || QA_DEFAULT.slice() }; done(); });
     }
     function qaSave(order) {
         const uid = qaGetUid();
         const db = qaGetDb();
         window._qaPref = { uid: uid || 'anon', order: order.slice() };
+        // Always mirror to localStorage so the choice survives a refresh even if the
+        // Firebase write is denied (user_prefs may not be covered by DB rules).
+        try { localStorage.setItem(qaLsKey(uid), JSON.stringify(order)); } catch (e) {}
         if (uid && db) {
             db.ref('user_prefs/' + uid + '/quickAccess').set(order).catch(e => console.error('quickAccess save failed:', e));
-        } else {
-            try { localStorage.setItem('qa_pref_anon', JSON.stringify(order)); } catch (e) {}
         }
     }
 
