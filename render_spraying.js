@@ -834,12 +834,19 @@ async function downloadSprayingTemplate(yearStr) {
         const ws = wb.addWorksheet('Spraying Data');
 
         const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+        const ydForHdr = (window.state.spraying && window.state.spraying[yearStr]) || {};
+        const extraChemicals = Array.isArray(ydForHdr.extraChemicals) ? ydForHdr.extraChemicals : [];
+
         const HEADERS = ['Year','Phase','Block','Ha Previous','Ha Present','Month',
                          'Round GLY','Litres GLY','Ha GLY','Round ALY','GM ALY','Ha ALY'];
+        extraChemicals.forEach(c => {
+            HEADERS.push(`Round ${c.name}`, `${c.uom || 'LITRE'} ${c.name}`, `Ha ${c.name}`);
+        });
 
         ws.columns = [
             {width:8},{width:12},{width:8},{width:13},{width:13},
-            {width:8},{width:12},{width:12},{width:12},{width:10},{width:10},{width:10}
+            {width:8},{width:12},{width:12},{width:12},{width:10},{width:10},{width:10},
+            ...extraChemicals.flatMap(() => [{width:12},{width:12},{width:12}])
         ];
 
         const hdr = ws.getRow(1);
@@ -858,18 +865,25 @@ async function downloadSprayingTemplate(yearStr) {
                 for (const block of phase.blocks) {
                     for (const month of MONTHS) {
                         const md = (block.months && block.months[month]) || {};
+                        const ex = md.extras || {};
+                        const cleanV = v => (v !== '' && v != null ? v : '');
                         const row = ws.getRow(rowIdx);
                         row.values = [
                             yearStr, phase.phaseName, block.blockNo,
                             block.haPrevious != null ? block.haPrevious : '',
                             block.haPresent  != null ? block.haPresent  : '',
                             month,
-                            md.roundGly  !== '' && md.roundGly  != null ? md.roundGly  : '',
-                            md.litresGly !== '' && md.litresGly != null ? md.litresGly : '',
-                            md.haGly     !== '' && md.haGly     != null ? md.haGly     : '',
-                            md.roundAly  !== '' && md.roundAly  != null ? md.roundAly  : '',
-                            md.gmAly     !== '' && md.gmAly     != null ? md.gmAly     : '',
-                            md.haAly     !== '' && md.haAly     != null ? md.haAly     : ''
+                            cleanV(md.roundGly),
+                            cleanV(md.litresGly),
+                            cleanV(md.haGly),
+                            cleanV(md.roundAly),
+                            cleanV(md.gmAly),
+                            cleanV(md.haAly),
+                            ...extraChemicals.flatMap(c => [
+                                cleanV(ex[c.name + '_round']),
+                                cleanV(ex[c.name]),
+                                cleanV(ex[c.name + '_ha'])
+                            ])
                         ];
                         if (yd.phases.indexOf(phase) % 2 === 1) {
                             row.eachCell(cell => {
@@ -882,7 +896,9 @@ async function downloadSprayingTemplate(yearStr) {
             }
         }
 
-        ws.autoFilter = { from:'A1', to:'L1' };
+        const lastColNum = 12 + extraChemicals.length * 3;
+        const colLetter = ws.getColumn(lastColNum).letter;
+        ws.autoFilter = { from:'A1', to:`${colLetter}1` };
 
         const buf = await wb.xlsx.writeBuffer();
         const blob = new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -912,22 +928,84 @@ async function importSprayingFromExcel(file, yearStr) {
 
         const yd = window.state.spraying && window.state.spraying[yearStr];
         if (!yd) { alert(`No spraying data for year ${yearStr}. Add year first.`); return; }
+        if (!Array.isArray(yd.extraChemicals)) yd.extraChemicals = [];
+
+        // ── Header-driven column mapping ──────────────────────────────
+        // Read row 1 and map each column by its header NAME (not a fixed
+        // position) so extra chemicals (e.g. EMB) are routed correctly
+        // instead of spilling into the ALY columns.
+        const headerVals = ws.getRow(1).values; // 1-indexed
+        const norm = s => String(s == null ? '' : s).trim().toLowerCase().replace(/\s+/g, ' ');
+        // Units that mark a chemical's "amount" column (vs Round / Ha).
+        const UNIT_WORDS = { litre: 'LITRE', litres: 'LITRE', l: 'LITRE', ml: 'ML',
+                             gm: 'GM', g: 'GM', kg: 'KG', cc: 'CC', pkt: 'PKT',
+                             packet: 'PKT', sachet: 'SACHET', bottle: 'BTL' };
+
+        const colMap = {};        // base field -> column index
+        const extraCols = {};     // chemical name (display) -> { round, amount, ha, uom }
+        for (let c = 1; c < headerVals.length; c++) {
+            const raw = headerVals[c];
+            const h = norm(raw);
+            if (!h) continue;
+            switch (h) {
+                case 'year':        colMap.year = c; break;
+                case 'phase':       colMap.phase = c; break;
+                case 'block':       colMap.block = c; break;
+                case 'ha previous': colMap.haPrev = c; break;
+                case 'ha present':  colMap.haPresent = c; break;
+                case 'month':       colMap.month = c; break;
+                case 'round gly':   colMap.roundGly = c; break;
+                case 'litres gly':
+                case 'litre gly':   colMap.litresGly = c; break;
+                case 'ha gly':      colMap.haGly = c; break;
+                case 'round aly':   colMap.roundAly = c; break;
+                case 'gm aly':      colMap.gmAly = c; break;
+                case 'ha aly':      colMap.haAly = c; break;
+                default: {
+                    // "<prefix> <chemical>" → extra chemical column.
+                    const sp = h.indexOf(' ');
+                    if (sp <= 0) break;
+                    const prefix = h.slice(0, sp);
+                    const restRaw = String(raw).trim().slice(String(raw).trim().indexOf(' ') + 1).trim();
+                    if (!restRaw) break;
+                    const key = restRaw; // preserve user's chemical name/case
+                    if (!extraCols[key]) extraCols[key] = { round: null, amount: null, ha: null, uom: '' };
+                    if (prefix === 'round')      extraCols[key].round = c;
+                    else if (prefix === 'ha')     extraCols[key].ha = c;
+                    else if (UNIT_WORDS[prefix]) { extraCols[key].amount = c; extraCols[key].uom = UNIT_WORDS[prefix]; }
+                    // unknown prefix → leave column unmapped (never misassign)
+                }
+            }
+        }
+
+        if (colMap.phase == null || colMap.block == null || colMap.month == null) {
+            alert('Could not find the "Phase", "Block" and "Month" header columns in row 1. Please keep the header row intact.');
+            return;
+        }
+
+        // Register any new extra chemicals discovered in the file so their
+        // columns render in the on-screen table.
+        let newChemicals = [];
+        Object.keys(extraCols).forEach(name => {
+            if (!yd.extraChemicals.some(ec => ec.name.toLowerCase() === name.toLowerCase())) {
+                yd.extraChemicals.push({ name, uom: extraCols[name].uom || 'LITRE' });
+                newChemicals.push(name);
+            }
+        });
+
+        const num = v => (v != null && v !== '' ? v : undefined);
 
         let updated = 0, skipped = 0;
         ws.eachRow((row, rowNum) => {
             if (rowNum === 1) return;
             const vals = row.values; // 1-indexed in ExcelJS
-            const phaseName = vals[2] != null ? String(vals[2]).trim() : '';
-            const blockNo   = vals[3] != null ? String(vals[3]).trim() : '';
-            const haPrev    = vals[4];
-            const haPresent = vals[5];
-            const month     = vals[6] != null ? String(vals[6]).trim().toUpperCase() : '';
-            const roundGly  = vals[7];
-            const litresGly = vals[8];
-            const haGly     = vals[9];
-            const roundAly  = vals[10];
-            const gmAly     = vals[11];
-            const haAly     = vals[12];
+            const at = i => (i != null ? vals[i] : undefined);
+
+            const phaseName = at(colMap.phase) != null ? String(at(colMap.phase)).trim() : '';
+            const blockNo   = at(colMap.block) != null ? String(at(colMap.block)).trim() : '';
+            const month     = at(colMap.month) != null ? String(at(colMap.month)).trim().toUpperCase() : '';
+            const haPrev    = at(colMap.haPrev);
+            const haPresent = at(colMap.haPresent);
 
             if (!phaseName || !blockNo || !month) { skipped++; return; }
 
@@ -941,21 +1019,35 @@ async function importSprayingFromExcel(file, yearStr) {
 
             if (!block.months) block.months = {};
             const existing = block.months[month] || {};
+            const extras = Object.assign({}, existing.extras || {});
+
+            // Extra chemicals (EMB, etc.) → extras[name], extras[name+'_round'], extras[name+'_ha']
+            Object.keys(extraCols).forEach(name => {
+                const ec = extraCols[name];
+                const rv = num(at(ec.round));
+                const av = num(at(ec.amount));
+                const hv = num(at(ec.ha));
+                if (rv !== undefined) extras[name + '_round'] = rv;
+                if (av !== undefined) extras[name]            = av;
+                if (hv !== undefined) extras[name + '_ha']    = hv;
+            });
+
             block.months[month] = {
-                roundGly:  roundGly  != null && roundGly  !== '' ? roundGly  : existing.roundGly  || '',
-                litresGly: litresGly != null && litresGly !== '' ? litresGly : existing.litresGly || '',
-                roundAly:  roundAly  != null && roundAly  !== '' ? roundAly  : existing.roundAly  || '',
-                gmAly:     gmAly     != null && gmAly     !== '' ? gmAly     : existing.gmAly     || '',
-                haGly:     haGly     != null && haGly     !== '' ? haGly     : existing.haGly     || '',
-                haAly:     haAly     != null && haAly     !== '' ? haAly     : existing.haAly     || '',
-                extras:    existing.extras || {}
+                roundGly:  num(at(colMap.roundGly))  ?? (existing.roundGly  || ''),
+                litresGly: num(at(colMap.litresGly)) ?? (existing.litresGly || ''),
+                roundAly:  num(at(colMap.roundAly))  ?? (existing.roundAly  || ''),
+                gmAly:     num(at(colMap.gmAly))     ?? (existing.gmAly     || ''),
+                haGly:     num(at(colMap.haGly))     ?? (existing.haGly     || ''),
+                haAly:     num(at(colMap.haAly))     ?? (existing.haAly     || ''),
+                extras:    extras
             };
             updated++;
         });
 
         saveSprayingData(false);
         renderSprayingReport();
-        alert(`Import complete: ${updated} rows updated, ${skipped} skipped.`);
+        const extraNote = newChemicals.length ? `\nAdded chemical column(s): ${newChemicals.join(', ')}.` : '';
+        alert(`Import complete: ${updated} rows updated, ${skipped} skipped.${extraNote}`);
     } catch (err) {
         alert('Import error: ' + err.message);
     }
