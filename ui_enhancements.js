@@ -338,6 +338,62 @@
     }
 
     /* ----------------------------------------------------------
+       Deep links — open any view in a new tab via #nav=<sidebar-id>
+       Gives every sidebar link a real href so the browser's native
+       "Open link in new tab" / middle-click work, and replays the
+       click on that link once the app has finished initialising.
+    ---------------------------------------------------------- */
+    // action links (downloads, imports, backup, logout) are not views
+    const DEEPLINK_EXCLUDE = /^sidebar-(logout|download-|import-|export-|backup-)/;
+
+    function initDeepLinks() {
+        document.querySelectorAll('.sidebar .nav-link[id], .sidebar .nav-item-header[id]').forEach(el => {
+            if (DEEPLINK_EXCLUDE.test(el.id)) return;
+            const hash = '#nav=' + el.id;
+            if (el.tagName === 'A') el.setAttribute('href', hash);
+            // also enables the app's own right-click "Open in New Tab" menu
+            el.setAttribute('data-view-hash', hash);
+        });
+        // keep the URL in sync on normal clicks so a refresh restores the view
+        document.addEventListener('click', (e) => {
+            const link = e.target.closest('.sidebar .nav-link[id], .sidebar .nav-item-header[id]');
+            if (link && !DEEPLINK_EXCLUDE.test(link.id)) {
+                history.replaceState(null, '', '#nav=' + link.id);
+            }
+        });
+    }
+
+    function replayDeepLink() {
+        const m = window.location.hash.match(/[#&]nav=([\w-]+)/);
+        if (!m) return;
+        const target = document.getElementById(m[1]);
+        if (!target || DEEPLINK_EXCLUDE.test(m[1])) return;
+        // wait until login is done and init has finished loading data
+        const t0 = Date.now();
+        const timer = setInterval(() => {
+            const layout = document.getElementById('app-layout-main');
+            const loading = document.getElementById('loading');
+            const ready = layout && layout.style.display !== 'none' &&
+                (!loading || loading.classList.contains('hidden'));
+            if (ready) {
+                clearInterval(timer);
+                // expand ancestor groups so the sidebar shows the location
+                let sub = target.closest('.nav-submenu');
+                while (sub) {
+                    const head = sub.previousElementSibling;
+                    if (head && head.classList.contains('nav-item-header')) {
+                        head.classList.add('open');
+                        sub = head.closest('.nav-submenu');
+                    } else break;
+                }
+                setTimeout(() => target.click(), 80);
+            } else if (Date.now() - t0 > 600000) {
+                clearInterval(timer); // never logged in — give up quietly
+            }
+        }, 250);
+    }
+
+    /* ----------------------------------------------------------
        Global key bindings
     ---------------------------------------------------------- */
     document.addEventListener('keydown', (e) => {
@@ -369,6 +425,8 @@
         initMobileNav();
         initScrollTop();
         initTooltips();
+        initDeepLinks();
+        replayDeepLink();
     }
 
     if (document.readyState === 'loading') {
