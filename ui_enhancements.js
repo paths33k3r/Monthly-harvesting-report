@@ -1,0 +1,379 @@
+/* ============================================================
+   UI enhancement layer — self-contained; builds on the existing
+   sidebar by simulating clicks on its links. No app logic touched.
+
+   Features:
+   - Command palette (Ctrl+K) to jump to any sidebar destination
+   - Sidebar quick-filter box
+   - Mobile off-canvas navigation (hamburger + backdrop)
+   - window.notify(msg, type) toast API
+   - Scroll-to-top button
+   - Keyboard shortcut help (?)
+   - Tooltips for the collapsed icon rail
+   ============================================================ */
+(function () {
+    'use strict';
+
+    /* ----------------------------------------------------------
+       Toasts — window.notify(message, type, durationMs)
+       type: 'info' | 'success' | 'error' | 'warn'
+    ---------------------------------------------------------- */
+    function ensureToastHost() {
+        let host = document.getElementById('toast-host');
+        if (!host) {
+            host = document.createElement('div');
+            host.id = 'toast-host';
+            document.body.appendChild(host);
+        }
+        return host;
+    }
+
+    window.notify = function (message, type = 'info', duration = 3200) {
+        const icons = { info: 'ℹ️', success: '✅', error: '⚠️', warn: '⚠️' };
+        const t = document.createElement('div');
+        t.className = 'toast toast-' + type;
+        const ico = document.createElement('span');
+        ico.className = 'toast-ico';
+        ico.textContent = icons[type] || icons.info;
+        const msg = document.createElement('span');
+        msg.textContent = message;
+        t.append(ico, msg);
+        ensureToastHost().appendChild(t);
+        requestAnimationFrame(() => t.classList.add('toast-in'));
+        setTimeout(() => {
+            t.classList.remove('toast-in');
+            setTimeout(() => t.remove(), 350);
+        }, duration);
+    };
+
+    /* ----------------------------------------------------------
+       Command palette (Ctrl+K)
+    ---------------------------------------------------------- */
+    let paletteOverlay = null;
+    let paletteResults = [];
+    let paletteSel = 0;
+
+    function collectNavTargets() {
+        const out = [];
+        const els = document.querySelectorAll(
+            '.sidebar .nav-link:not(#sidebar-logout), .sidebar .nav-item-header[id]:not(.has-children)');
+        els.forEach(el => {
+            // skip permission-hidden entries (display:none inline on a parent)
+            for (let p = el; p && p !== document.body; p = p.parentElement) {
+                if (p.style && p.style.display === 'none') return;
+            }
+            const labelEl = el.querySelector('.nav-label');
+            const label = (labelEl ? labelEl.textContent : el.textContent).trim();
+            if (!label) return;
+            // breadcrumb from ancestor accordion headers
+            const crumbs = [];
+            let sub = el.closest('.nav-submenu');
+            while (sub) {
+                const head = sub.previousElementSibling;
+                if (head && head.classList.contains('nav-item-header')) {
+                    const hl = head.querySelector('.nav-label');
+                    if (hl) crumbs.unshift(hl.textContent.trim());
+                    sub = head.closest('.nav-submenu');
+                } else break;
+            }
+            const iconEl = el.querySelector('.nav-icon');
+            out.push({
+                label,
+                path: crumbs.join(' › '),
+                icon: iconEl ? iconEl.textContent.trim() : '',
+                el
+            });
+        });
+        return out;
+    }
+
+    function scoreMatch(hay, needle) {
+        hay = hay.toLowerCase();
+        const idx = hay.indexOf(needle);
+        if (idx === 0) return 100;
+        if (idx > 0) return 60 - Math.min(idx, 30);
+        // subsequence fallback (e.g. "hgang" -> "Harvesting Gang")
+        let i = 0;
+        for (const ch of hay) {
+            if (ch === needle[i]) i++;
+            if (i === needle.length) return 20;
+        }
+        return -1;
+    }
+
+    function navigateTo(target) {
+        // expand ancestor groups so the sidebar reflects the destination
+        let sub = target.el.closest('.nav-submenu');
+        while (sub) {
+            const head = sub.previousElementSibling;
+            if (head && head.classList.contains('nav-item-header')) {
+                head.classList.add('open');
+                sub = head.closest('.nav-submenu');
+            } else break;
+        }
+        closePalette();
+        closeMobileNav();
+        target.el.click();
+    }
+
+    function renderPaletteList(query) {
+        const list = paletteOverlay.querySelector('#cmd-palette-list');
+        const all = collectNavTargets();
+        const q = query.trim().toLowerCase();
+        paletteResults = !q ? all : all
+            .map(t => ({ t, s: Math.max(scoreMatch(t.label, q), scoreMatch(t.path + ' ' + t.label, q) - 5) }))
+            .filter(x => x.s >= 0)
+            .sort((a, b) => b.s - a.s)
+            .map(x => x.t);
+        paletteSel = 0;
+        list.innerHTML = '';
+        if (!paletteResults.length) {
+            const empty = document.createElement('div');
+            empty.className = 'cp-empty';
+            empty.textContent = 'No matching section';
+            list.appendChild(empty);
+            return;
+        }
+        paletteResults.forEach((t, i) => {
+            const li = document.createElement('li');
+            if (i === paletteSel) li.classList.add('sel');
+            const ico = document.createElement('span');
+            ico.className = 'cp-ico';
+            ico.textContent = t.icon || '·';
+            const lbl = document.createElement('span');
+            lbl.textContent = t.label;
+            li.append(ico, lbl);
+            if (t.path) {
+                const path = document.createElement('span');
+                path.className = 'cp-path';
+                path.textContent = t.path;
+                li.appendChild(path);
+            }
+            li.addEventListener('mouseenter', () => setPaletteSel(i));
+            li.addEventListener('click', () => navigateTo(t));
+            list.appendChild(li);
+        });
+    }
+
+    function setPaletteSel(i) {
+        paletteSel = i;
+        const items = paletteOverlay.querySelectorAll('#cmd-palette-list li');
+        items.forEach((li, j) => li.classList.toggle('sel', j === paletteSel));
+        const sel = items[paletteSel];
+        if (sel) sel.scrollIntoView({ block: 'nearest' });
+    }
+
+    function openPalette() {
+        // not useful before login
+        const login = document.getElementById('login-overlay');
+        if (login && login.style.display !== 'none') return;
+        if (paletteOverlay) { closePalette(); return; }
+
+        paletteOverlay = document.createElement('div');
+        paletteOverlay.id = 'cmd-palette-overlay';
+        paletteOverlay.innerHTML =
+            '<div id="cmd-palette">' +
+            '  <input type="text" placeholder="Jump to a section…" aria-label="Search sections" />' +
+            '  <ul id="cmd-palette-list"></ul>' +
+            '  <div id="cmd-palette-foot">' +
+            '    <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>' +
+            '    <span><kbd>Enter</kbd> open</span>' +
+            '    <span><kbd>Esc</kbd> close</span>' +
+            '  </div>' +
+            '</div>';
+        document.body.appendChild(paletteOverlay);
+
+        const input = paletteOverlay.querySelector('input');
+        input.addEventListener('input', () => renderPaletteList(input.value));
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown') { e.preventDefault(); if (paletteResults.length) setPaletteSel((paletteSel + 1) % paletteResults.length); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); if (paletteResults.length) setPaletteSel((paletteSel - 1 + paletteResults.length) % paletteResults.length); }
+            else if (e.key === 'Enter') { e.preventDefault(); if (paletteResults[paletteSel]) navigateTo(paletteResults[paletteSel]); }
+        });
+        paletteOverlay.addEventListener('mousedown', (e) => {
+            if (e.target === paletteOverlay) closePalette();
+        });
+        renderPaletteList('');
+        input.focus();
+    }
+
+    function closePalette() {
+        if (paletteOverlay) { paletteOverlay.remove(); paletteOverlay = null; }
+    }
+
+    /* ----------------------------------------------------------
+       Header search button (palette discoverability)
+    ---------------------------------------------------------- */
+    function initHeaderSearch() {
+        const right = document.querySelector('.header-right');
+        if (!right || document.getElementById('global-search-btn')) return;
+        const btn = document.createElement('button');
+        btn.id = 'global-search-btn';
+        btn.title = 'Search sections (Ctrl+K)';
+        btn.innerHTML = '<span>🔍</span><span class="gsb-label">Search</span><kbd>Ctrl K</kbd>';
+        btn.addEventListener('click', openPalette);
+        right.insertBefore(btn, right.firstChild);
+    }
+
+    /* ----------------------------------------------------------
+       Sidebar quick filter
+    ---------------------------------------------------------- */
+    function initSidebarFilter() {
+        const nav = document.querySelector('.sidebar-nav');
+        if (!nav || document.querySelector('.nav-filter-wrap')) return;
+        const wrap = document.createElement('div');
+        wrap.className = 'nav-filter-wrap';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'nav-filter-input';
+        input.placeholder = '🔍 Filter menu…';
+        input.setAttribute('aria-label', 'Filter menu');
+        wrap.appendChild(input);
+        nav.parentElement.insertBefore(wrap, nav);
+
+        const sidebar = document.querySelector('.sidebar');
+        input.addEventListener('input', () => {
+            const q = input.value.toLowerCase().trim();
+            sidebar.classList.toggle('nav-filtering', !!q);
+            sidebar.querySelectorAll('.nav-item').forEach(li => {
+                li.classList.toggle('nav-filter-hide', !!q && !li.textContent.toLowerCase().includes(q));
+            });
+        });
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                e.stopPropagation();
+                input.value = '';
+                input.dispatchEvent(new Event('input'));
+                input.blur();
+            }
+        });
+    }
+
+    /* ----------------------------------------------------------
+       Mobile off-canvas navigation
+    ---------------------------------------------------------- */
+    function initMobileNav() {
+        const headerLeft = document.querySelector('.header-left');
+        if (!headerLeft || document.getElementById('mobile-nav-btn')) return;
+        const btn = document.createElement('button');
+        btn.id = 'mobile-nav-btn';
+        btn.title = 'Menu';
+        btn.textContent = '☰';
+        headerLeft.insertBefore(btn, headerLeft.firstChild);
+
+        const backdrop = document.createElement('div');
+        backdrop.id = 'mobile-nav-backdrop';
+        document.body.appendChild(backdrop);
+
+        btn.addEventListener('click', () => {
+            document.getElementById('app-layout-main')?.classList.remove('sidebar-collapsed');
+            document.body.classList.toggle('mobile-nav-open');
+        });
+        backdrop.addEventListener('click', closeMobileNav);
+        document.addEventListener('click', (e) => {
+            if (document.body.classList.contains('mobile-nav-open') && e.target.closest('.sidebar .nav-link')) {
+                closeMobileNav();
+            }
+        });
+    }
+
+    function closeMobileNav() {
+        document.body.classList.remove('mobile-nav-open');
+    }
+
+    /* ----------------------------------------------------------
+       Scroll-to-top button
+    ---------------------------------------------------------- */
+    function initScrollTop() {
+        if (document.getElementById('scroll-top-btn')) return;
+        const b = document.createElement('button');
+        b.id = 'scroll-top-btn';
+        b.title = 'Back to top';
+        b.textContent = '↑';
+        document.body.appendChild(b);
+        window.addEventListener('scroll', () => {
+            b.classList.toggle('show', window.scrollY > 400);
+        }, { passive: true });
+        b.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+    }
+
+    /* ----------------------------------------------------------
+       Keyboard shortcut help (?)
+    ---------------------------------------------------------- */
+    let helpOverlay = null;
+
+    function toggleHelp() {
+        if (helpOverlay) { closeHelp(); return; }
+        helpOverlay = document.createElement('div');
+        helpOverlay.id = 'help-overlay';
+        helpOverlay.innerHTML =
+            '<div class="help-modal">' +
+            '  <h3>⌨️ Keyboard shortcuts</h3>' +
+            '  <div class="help-row"><span>Search / jump to a section</span><span><kbd>Ctrl</kbd> + <kbd>K</kbd></span></div>' +
+            '  <div class="help-row"><span>Move through search results</span><span><kbd>↑</kbd> <kbd>↓</kbd> then <kbd>Enter</kbd></span></div>' +
+            '  <div class="help-row"><span>Close dialogs / menu</span><span><kbd>Esc</kbd></span></div>' +
+            '  <div class="help-row"><span>Show this help</span><span><kbd>?</kbd></span></div>' +
+            '  <div class="help-row"><span>Filter the sidebar menu</span><span>type in the 🔍 box</span></div>' +
+            '</div>';
+        helpOverlay.addEventListener('mousedown', (e) => {
+            if (e.target === helpOverlay) closeHelp();
+        });
+        document.body.appendChild(helpOverlay);
+    }
+
+    function closeHelp() {
+        if (helpOverlay) { helpOverlay.remove(); helpOverlay = null; }
+    }
+
+    /* ----------------------------------------------------------
+       Tooltips for the collapsed icon rail
+    ---------------------------------------------------------- */
+    function initTooltips() {
+        document.querySelectorAll('.sidebar .nav-link, .sidebar .nav-item-header').forEach(el => {
+            if (!el.title) {
+                const l = el.querySelector('.nav-label');
+                if (l) el.title = l.textContent.trim();
+            }
+        });
+    }
+
+    /* ----------------------------------------------------------
+       Global key bindings
+    ---------------------------------------------------------- */
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+            e.preventDefault();
+            openPalette();
+            return;
+        }
+        if (e.key === 'Escape') {
+            closePalette();
+            closeHelp();
+            closeMobileNav();
+            return;
+        }
+        const tag = (e.target.tagName || '').toLowerCase();
+        const typing = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
+        if (!typing && e.key === '?') {
+            e.preventDefault();
+            toggleHelp();
+        }
+    });
+
+    /* ----------------------------------------------------------
+       Init
+    ---------------------------------------------------------- */
+    function init() {
+        initHeaderSearch();
+        initSidebarFilter();
+        initMobileNav();
+        initScrollTop();
+        initTooltips();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
