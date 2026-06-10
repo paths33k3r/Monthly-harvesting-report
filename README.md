@@ -62,4 +62,20 @@ python -m http.server 8001
 - [x] Implement robust persistent storage (LocalStorage)
 - [x] Automatic manpower retrieval from interval data
 - [x] Historical monthly gang data preservation
+- [x] UI enhancement layer: Ctrl+K command palette, sidebar filter, mobile off-canvas nav, scroll-to-top, `?` shortcut help, `window.notify()` toast API, print stylesheet (`ui_enhancements.js`)
+- [x] "Open in New Tab" deep links — every sidebar view has a real `#nav=<sidebar-id>` URL; refresh restores the current view
 - [ ] Print/Export to PDF reports
+
+## 🔧 Planned Enhancements (prioritized — continue from here)
+Work in phases, one commit each, so the app stays working at every step.
+See **CLAUDE.md → "Enhancement roadmap"** for technical notes per phase.
+
+1. **Unsaved-changes warning + Save indicator** (small) — `beforeunload` guard + visible "unsaved" dot; investigation notes in CLAUDE.md
+2. **Replace ~98 `alert()` calls with toasts** (medium, mechanical) — use the `window.notify(msg, type)` API from `ui_enhancements.js`
+3. **Firebase security rules** (small to write, deploy in Firebase console) — permissions are currently client-side only; anyone logged in can write via the browser console
+4. **PWA / offline support** (medium) — service worker caching app shell + CDN libs; Firebase offline persistence + pending-sync badge (field users have patchy signal)
+5. **Undo for deletes** (medium) — 5-second "Deleted — Undo" toast instead of permanent immediate deletion
+6. **PDF export buttons** (medium) — print stylesheet already produces clean Ctrl+P output; add per-report export
+7. **Dashboard alerts** (medium) — e.g. "Block X not harvested in 21 days" derived from interval data
+8. **Dark mode** (large) — many render files hardcode inline colors; needs care
+9. **Split `script.js` (~291 KB) into modules** (large, riskiest — do alone with nothing else in flight)

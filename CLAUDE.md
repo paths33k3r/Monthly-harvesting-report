@@ -283,6 +283,48 @@ Extra chemical Round and Ha inputs use keys `extras[name_round]` and `extras[nam
 
 ---
 
+## Enhancement roadmap (agreed 2026-06-10 — continue in order, one commit per phase)
+
+Companion file: `ui_enhancements.js` (self-contained UI layer; loaded last in index.html).
+It already provides `window.notify(msg, type, ms)` toasts ('info'|'success'|'error'|'warn'),
+the Ctrl+K command palette, sidebar filter, mobile nav, and `#nav=<sidebar-id>` deep links.
+
+### Phase 1 — Unsaved-changes warning + Save indicator (small) ← NEXT
+Investigation notes (already verified):
+- `saveState()` (script.js ~1131, `window.saveState`) writes `JSON.stringify(state)` → `shared/app_state`. Manual: global 💾 `#save-main-btn` and FFB `#save-ffb-btn`.
+- Module saves (mostly **silent autosaves** on each edit, so dirty-tracking must clear on them too):
+  `window.saveMaintenanceData` → `shared/maintenance_data`; `window.saveWeeklyActivityData` → `shared/weekly_activity_data`; `saveIronHorseData` → `shared/ironhorse_data` (module-local const); `saveSprayingData` → `shared/spraying_data` (module-local); `saveManuringToFirebase` → `shared/manuring_data` (module-local).
+- Since several save fns are module-local, the reliable choke point is patching the compat-SDK
+  Reference prototype: clear the dirty flag on any `.set()` whose `ref.toString()` contains `/shared/`.
+- Mark dirty on `input` events on `.edit-input, .ha-input` inside `main` only; exclude
+  `#login-overlay`, `#forgot-pw-overlay`, `#first-login-overlay`, `.nav-filter-input`, palette input.
+- False-dirty is acceptable (one extra confirm); false-clean = today's behavior, no regression.
+- Add `beforeunload` guard + an "● unsaved" badge near `#header-user-info`.
+
+### Phase 2 — Replace ~98 `alert()` calls with `window.notify` toasts (mechanical)
+Spread: script.js (43), render_ironhorse (16), render_spraying (12), render_maintenance (12),
+render_weekly (9), render_manuring (6). Keep `confirm()` dialogs — only replace notifications.
+Success messages → 'success', failures → 'error'. Bump each file's `?v=` in index.html.
+
+### Phase 3 — Firebase Realtime DB security rules (write rules file + USER deploys in console)
+Today: enforcement is client-side only (`_canEdit`); any authenticated user can write via console.
+Data layout: `shared/*` (see paths above, plus `shared/audit_log`, `shared/backup_settings`,
+`shared/weekly_images/<year>/<weekId>/<id>`), `user_roles/<uid>` = `{ role: 'admin'|'user',
+allowedMenus, editableMenus, firstLogin }`. Rules sketch: reads require auth; `user_roles` writes
+admin-only (mind the first-ever-user bootstrap in `loadUserRole`, script.js ~210 — it writes its
+own role record when `user_roles` is empty); `shared/*` writes require matching `editableMenus`
+entry or admin role.
+
+### Phase 4 — PWA/offline: service worker caches app shell + CDN libs (ExcelJS, JSZip, Leaflet,
+Chart.js, docx); Firebase offline persistence; visible pending-sync indicator.
+### Phase 5 — Undo for deletes: 5s "Deleted — Undo" toast before committing the removal.
+### Phase 6 — PDF export per report (print CSS already produces clean Ctrl+P output).
+### Phase 7 — Dashboard alerts (e.g. block overdue for harvest, from interval data).
+### Phase 8 — Dark mode (hard: many hardcoded inline colors in render_*.js).
+### Phase 9 — Split script.js (~291 KB) into modules. Do alone; riskiest.
+
+---
+
 ## Dependencies
 ```bash
 npm install          # installs jszip (used in test scripts)
