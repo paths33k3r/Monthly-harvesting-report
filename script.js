@@ -203,7 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // =====================================================================
         let currentUserRole = null; // { role, allowedMenus, firstLogin, email, ... }
 
-        const ALL_MENU_KEYS = ['ffbBudget', 'planting', 'gangs', 'performance', 'rainfall', 'maintenance', 'dataManagement'];
+        const ALL_MENU_KEYS = ['ffbBudget', 'planting', 'gangs', 'performance', 'rainfall', 'maintenance', 'weekly', 'dataManagement'];
 
         const loadUserRole = async (uid) => {
             try {
@@ -830,6 +830,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 { key: 'performance', label: 'Harvesting Performance' },
                 { key: 'ironhorse', label: 'Iron Horse' },
                 { key: 'rainfall', label: 'Rainfall Record' },
+                { key: 'weekly', label: 'Weekly Activity' },
                 { key: 'maintenance', label: 'Maintenance' },
                 { key: 'reports', label: 'Reports' },
                 { key: 'dataManagement', label: 'Data Management' }
@@ -2809,6 +2810,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const mntGangsWrapper    = document.getElementById('maintenance-gangs-wrapper');
             const mntWorklogWrapper  = document.getElementById('maintenance-worklog-wrapper');
             const mntGanttWrapper    = document.getElementById('maintenance-gantt-wrapper');
+            const weeklyWrapper      = document.getElementById('weekly-activity-wrapper');
             if (ffbWrapper) ffbWrapper.innerHTML = ''; // Clear FFB budget widgets
             if (rainfallWrapper) rainfallWrapper.innerHTML = ''; // Clear Rainfall widgets
             if (ytdWrapper) ytdWrapper.innerHTML = '';
@@ -2824,6 +2826,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (mntGangsWrapper)    { mntGangsWrapper.innerHTML = '';   mntGangsWrapper.classList.add('hidden'); }
             if (mntWorklogWrapper)  { mntWorklogWrapper.innerHTML = ''; mntWorklogWrapper.classList.add('hidden'); }
             if (mntGanttWrapper)    { mntGanttWrapper.innerHTML = '';   mntGanttWrapper.classList.add('hidden'); }
+            if (weeklyWrapper)      { weeklyWrapper.innerHTML = '';     weeklyWrapper.classList.add('hidden'); }
             if (userMgmtWrapper) { userMgmtWrapper.innerHTML = ''; userMgmtWrapper.classList.add('hidden'); }
             if (excelReportsWrapper) { excelReportsWrapper.innerHTML = ''; excelReportsWrapper.classList.add('hidden'); }
             const auditLogWrapper = document.getElementById('audit-log-wrapper');
@@ -2857,6 +2860,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ihAssetsWrapper, ihExpensesWrapper, ihCostPerHaWrapper,
                 gangOverviewWrapper, selectorWrapper,
                 mntGangsWrapper, mntWorklogWrapper, mntGanttWrapper,
+                weeklyWrapper,
                 userMgmtWrapper, excelReportsWrapper, auditLogWrapper,
                 dashboardWrapper
             ];
@@ -2964,6 +2968,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 showView(ihCostPerHaWrapper, () => {
                     if (typeof renderIronHorseCostPerHa === 'function') renderIronHorseCostPerHa();
                 }, 'ironhorse');
+            } else if (state.activeViewType === 'weekly_activity') {
+                showView(weeklyWrapper, () => {
+                    if (typeof window.renderWeeklyActivity === 'function') window.renderWeeklyActivity();
+                }, 'weekly');
             } else if (state.activeViewType === 'audit_log') {
                 showView(auditLogWrapper, () => {
                     if (typeof window.renderAuditLog === 'function') window.renderAuditLog();
@@ -4767,6 +4775,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     };
                 }
 
+                // ── Weekly Activity nav handler ─────────────────────────
+                const sidebarWeekly = document.getElementById('sidebar-weekly');
+                if (sidebarWeekly) {
+                    sidebarWeekly.onclick = (e) => {
+                        e.preventDefault();
+                        if (!state.weekly) state.weekly = {};
+                        state.activeViewType = 'weekly_activity';
+                        renderSidebar(); renderTable();
+                    };
+                }
+
                 // ── Audit Log nav handler ───────────────────────────────
                 const sidebarAuditLog = document.getElementById('sidebar-audit-log');
                 if (sidebarAuditLog) {
@@ -5173,6 +5192,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (e) {
                     console.warn("Could not load Iron Horse data:", e.message);
                     if (!state.ironHorse) state.ironHorse = { assets: {}, expenses: {} };
+                }
+
+                // Load Weekly Activity data (track-driven field reports — shared).
+                // Images live separately under shared/weekly_images and are loaded
+                // lazily by render_weekly.js (no Firebase Storage — Blaze-only now).
+                window._weeklyDb = db;
+                try {
+                    const wkSnap = await db.ref('shared/weekly_activity_data').once('value');
+                    const wkData = wkSnap.val();
+                    if (wkData) {
+                        state.weekly = JSON.parse(wkData);
+                        console.log("Weekly Activity data loaded from cloud.");
+                    } else if (!state.weekly) {
+                        state.weekly = {};
+                    }
+                } catch (e) {
+                    console.warn("Could not load Weekly Activity data:", e.message);
+                    if (!state.weekly) state.weekly = {};
                 }
 
                 // Load Maintenance data (gangs, work log, gantt — shared across all users)

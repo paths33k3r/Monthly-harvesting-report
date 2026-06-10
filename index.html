@@ -163,6 +163,12 @@
                         </ul>
                     </li>
 
+                    <li class="nav-item" data-menu-key="weekly">
+                        <a href="#" id="sidebar-weekly" class="nav-link">
+                            <span class="nav-icon">🗺️</span><span class="nav-label">Weekly Activity</span>
+                        </a>
+                    </li>
+
                     <li class="nav-item" data-menu-key="rainfall">
                         <a href="#" id="sidebar-rainfall" class="nav-link">
                             <span class="nav-icon">🌧️</span><span class="nav-label">Rainfall Record</span>
@@ -466,6 +472,11 @@
                     <!-- JS will generate Iron Horse Cost per Ha report here -->
                 </div>
 
+                <div id="weekly-activity-wrapper" class="report-wrapper hidden"
+                    style="max-width: 1300px; padding: 0; background: transparent; border: none; box-shadow: none;">
+                    <!-- JS will generate the Weekly Activity report here -->
+                </div>
+
                 <div id="maintenance-coming-soon-wrapper" class="report-wrapper hidden"
                     style="max-width: 600px;">
                     <!-- Coming Soon for Slashing / Pruning -->
@@ -524,10 +535,11 @@
     <script src="render_audit.js?v=2"></script>
     <script src="render_ironhorse.js?v=34"></script>
     <script src="render_maintenance.js?v=4"></script>
+    <script src="render_weekly.js?v=14"></script>
     <script src="render_spraying.js?v=12"></script>
     <script src="render_manuring.js?v=11"></script>
     <script src="render_reports.js?v=23"></script>
-    <script src="script.js?v=54"></script>
+    <script src="script.js?v=56"></script>
     <script>
         // Vertical sidebar accordion: expand/collapse groups. Clicking a header
         // toggles its submenu and closes sibling groups at the same level. The

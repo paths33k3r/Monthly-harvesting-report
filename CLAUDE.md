@@ -23,6 +23,7 @@ or open with VS Code Live Server (right-click index.html → Open with Live Serv
 | `render_ytd_report.js` | YTD report UI |
 | `render_ironhorse.js` | Iron Horse section UI — Assets, Expenses, template download, import |
 | `render_maintenance.js` | Maintenance Gangs, Work Log & Gantt Chart (digitises the hand-written Gantt sheets) |
+| `render_weekly.js` | **Weekly Activity** — track-driven field report: KMZ/KML/GPX import, Leaflet satellite map, photo storage, Word `.docx` export |
 | `Report samples/` | Excel templates used as base for downloads |
 
 ## Cache busting
@@ -72,6 +73,53 @@ Sub-items under the **Maintenance** sidebar menu (alongside Spraying/Manuring/Sl
 - **📥 Import** (`importMaintenanceWorkLog(file, yearStr)`) — edit-gated (`window._canEdit('maintenance')`). Scans **every** worksheet, detects header rows (cell normalises to `GANG`), builds a column map via `mntHeaderField`, and infers activity from the Activity column, a one-cell section-title row (e.g. "SLASHING MAINTENANCE"), or the sheet name — so it also reads the user's existing multi-section "Spraying List / Slashing List" sheets. Requires gang + dateStart + block per row; appends to `entries` (existing kept), confirms count, saves, logs audit, re-renders.
 - **⚙️ Activities** (`mntManageActivities`) — add/remove activity types for the year.
 - Import helpers: `mntLoadExcelJS` (CDN on-demand), `mntNormHeader`, `mntHeaderField`, `mntActivityFromText` (SPRAY/SLASH/MANUR/PRUN keyword detection), `mntCleanBlock` (strips `Blk`/`Block` prefix), `mntToISO` (Date / ISO string / Excel serial → `YYYY-MM-DD`).
+
+---
+
+## Weekly Activity module (render_weekly.js)
+
+### Overview
+Top-level sidebar menu **🗺️ Weekly Activity** (id `sidebar-weekly`, after Iron Horse, before Rainfall). Digitises the user's weekly field report: they import the **KMZ** (or KML/GPX) their GPS app exports — the module draws the **track** on a satellite map, pins geotagged **photos** along it, and pulls embedded photos/coordinates/captions into **observations**. The user adds narrative (Main Activity, Others, per-block notes) and exports a Word `.docx` matching their hand-made report.
+
+### View wiring
+- `state.activeViewType === 'weekly_activity'`; wrapper `weekly-activity-wrapper` (index.html); registered in `_switchableWrappers` + hide/clear lists; view branch beside the `ironhorse_*` branches; sidebar handler near the Iron Horse handlers. All in `script.js`.
+- Active year `state.weeklyYear`; selected week `state.weeklyWeekId`.
+- Edit-gated by menu key **`weekly`** (`window._canEdit('weekly')`, in `ALL_MENU_KEYS` + the user-management `allMenuOptions`).
+
+### Data structure (`state.weekly`) → Firebase `shared/weekly_activity_data` (`window._weeklyDb`)
+```js
+{ "2026": { weeks: [ {
+  id, date:"2026-04-24", day:"Friday",
+  mainActivity:[...], others:[...],
+  track:{ coords:[[lng,lat],...], source },
+  mapImage:{ path, type, mode:"auto"|"uploaded" },   // path under shared/weekly_images
+  observations:[ { id, block, caption, notes, lat, lng, photoPath, photoType } ],
+  blockSections:[ { block, title, notes:[] } ],
+  archive:{ archivedToDrive, driveFileLink, archivedAt },
+  createdBy, createdAt
+} ] } }
+```
+- Blocks dropdown from `state.reports[year]` (Planting Phase Record), free-text fallback — like Maintenance.
+
+### Image storage (Realtime Database — NOT Firebase Storage)
+- **Firebase Storage was avoided** because Google now requires the paid **Blaze** plan to enable it. Photos + the rendered map image are instead stored as **data URLs in the Realtime Database**, under a **separate path** `shared/weekly_images/<year>/<weekId>/<id>` — kept OUT of the main `shared/weekly_activity_data` record so every save stays tiny (real import: 6 obs + 5 photos → main record ~1 KB). Records store only the **path** (`observation.photoPath`, `mapImage.path`), never bytes.
+- A module-level **in-memory cache** `_wkImageCache` (path → data URL) is never serialised into `state.weekly`. `wkUploadBlob(year,weekId,name,blob)` writes the data URL to the DB + cache and returns `{path,type}`; `wkLoadImage(path)` resolves from cache then DB (lazy — old weeks don't load images until viewed); `wkDeleteStorage(path)` removes both.
+- **Photos are downscaled before storing** (`wkResizeImage`, ~1600px/JPEG q0.82) — KMZ camera originals are 6–10 MB; this brings them to ~0.5 MB, keeping the DB small and the exported `.docx` small (real Block 4 KMZ: 40 MB doc → 3 MB). NB: JSZip-extracted blobs have an empty MIME type, so `wkResizeImage` decodes rather than gating on `blob.type`. Writes are wrapped in `wkWithTimeout` (30 s) and the observation is saved **before** its photo so a stuck write never loses the caption/coords.
+- **Import is two-file friendly:** the user's GPS app (AlpineQuest) exports the **track** and the **geotagged photos** as *separate* KMZ files; importing both into the same week appends correctly (track has `LineString` only; photos are `Placemark>Point` with `ExtendedData/Data[name=wptPhotos]` + an `<img>` in the description).
+- **No auto-expiry:** images persist in the DB until a week is deleted. `wkIsArchivedAge()` now only flags a week once it's explicitly archived to Drive (`archive.archivedToDrive`). The exported `.docx` (images embedded) is the permanent **Google Drive** backup (manual save now; automated "Connect Drive" upload + an optional 30-day DB cleanup are deferred enhancements).
+- **No out-of-band console setup needed** — uses the existing Realtime DB. (Realtime DB security rules should still restrict writes by role, same caveat as the rest of the app.)
+
+### Key functions (all `wk`-prefixed; module-internal unless noted)
+| Function | Purpose |
+|---|---|
+| `renderWeeklyActivity()` (window) | Toolbar (year, New Week), week list + editor pane |
+| `wkRenderWeekEditor(host,year,week)` | Date/day, export/save/delete, import bar, map, narrative, observations |
+| `wkImportTrackFile(file,year,week)` | KMZ(JSZip)/KML/GPX → `wkParseKML`/`wkParseGPX`; extracts embedded photos → DB images; appends observations |
+| `wkRenderMap(id,week)` / `wkRasterizeMap(id)` | Leaflet + Esri World Imagery; track polyline + numbered `circleMarker` dots; waits for tile `load` then `html-to-image` → PNG (behind `wkWithTimeout`). NB: `leaflet-image` was dropped — it silently hangs under Leaflet 1.9 |
+| `wkUploadBlob` / `wkLoadImage` / `wkDeleteStorage` | Store data URL → `shared/weekly_images` (+cache, returns `{path,type}`) / lazy-load path → data URL / delete |
+| `downloadWeeklyActivityDoc(year,id)` (window) | Lazy-loads `docx` UMD; title→Main→Others→track map→per-block photos w/ caption + Google Maps coord link; deferred-anchor download |
+| `saveWeeklyActivityData(silent)` (window) | `JSON.stringify(state.weekly)` → `shared/weekly_activity_data` |
+- Lazy CDN loaders: `wkEnsureJSZip`, `wkEnsureLeaflet` (Leaflet), `wkEnsureHtmlToImage` (global `htmlToImage`), `wkEnsureDocx` (global `window.docx`).
 
 ---
 
