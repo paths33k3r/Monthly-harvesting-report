@@ -605,6 +605,14 @@ window._initUserMgmt = function ({ auth, db }) {
             const wrapper = document.getElementById('user-mgmt-wrapper');
             if (!wrapper) return;
 
+            // the sidebar entry is hidden for non-admins, but the view can
+            // still be reached directly (e.g. #nav= deep link) — hard gate it
+            if (!currentUserRole || currentUserRole.role !== 'admin') {
+                wrapper.classList.remove('hidden');
+                wrapper.innerHTML = '<div style="padding:2.5rem; text-align:center; color:var(--text-secondary);">🔒 User Management requires an admin account.</div>';
+                return;
+            }
+
             // Hide all other wrappers
             ['main-report-wrapper', 'interval-wrapper', 'performance-wrapper',
                 'ytd-wrapper', 'current-prev-wrapper', 'ffb-budget-wrapper', 'rainfall-wrapper']

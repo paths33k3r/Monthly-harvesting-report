@@ -495,6 +495,16 @@
         });
     }
 
+    // an element hidden by the permission system (display:none / .hidden on
+    // any ancestor) must never be reachable through deep links or the palette
+    function navTargetHidden(el) {
+        for (let p = el; p && p !== document.body; p = p.parentElement) {
+            if (p.style && p.style.display === 'none') return true;
+            if (p.classList && p.classList.contains('hidden')) return true;
+        }
+        return false;
+    }
+
     function replayDeepLink() {
         const m = window.location.hash.match(/[#&]nav=([\w-]+)/);
         if (!m) return;
@@ -509,6 +519,7 @@
                 (!loading || loading.classList.contains('hidden'));
             if (ready) {
                 clearInterval(timer);
+                if (navTargetHidden(target)) return; // permission-hidden view
                 // expand ancestor groups so the sidebar shows the location
                 let sub = target.closest('.nav-submenu');
                 while (sub) {

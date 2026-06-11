@@ -19,11 +19,14 @@
     // everything not matched below is denied by default
 
     "user_roles": {
-      // any signed-in user may read (the app reads its own record at login and
-      // checks whether user_roles is empty for the first-user bootstrap)
-      ".read": "auth != null",
+      // listing ALL users (emails!) is admin-only; the one exception is the
+      // first-user bootstrap, which must check whether user_roles is empty
+      ".read": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || !root.child('user_roles').exists())",
 
       "$uid": {
+        // everyone may read their own record (login role lookup)
+        ".read": "auth != null && auth.uid === $uid",
+
         // writes allowed for:
         //  1. admins (User Management create/edit/delete)
         //  2. the first-ever user bootstrapping their own admin record while
