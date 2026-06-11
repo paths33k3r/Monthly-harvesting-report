@@ -917,5 +917,9 @@ window._initUserMgmt = function ({ auth, db }) {
                     msgEl.textContent = 'Error: ' + e.message;
                 });
         };
-        return { loadUserRole, applyRolePermissions, renderUserManagementPanel };
+        return {
+            loadUserRole, applyRolePermissions, renderUserManagementPanel,
+            checkFirstLogin, autoBackupCheck, setupActivityBackupListener,
+            syncBackupSettingsFromFirebase, renderBackupSettingsPanel, triggerBackup
+        };
 };

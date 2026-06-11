@@ -46,7 +46,11 @@ const runMainApplication = () => {
         // =====================================================================
         // USER MANAGEMENT & ROLES — extracted to app_user_mgmt.js (Phase 9)
         // =====================================================================
-        const { loadUserRole, applyRolePermissions, renderUserManagementPanel } = window._initUserMgmt({ auth, db });
+        const {
+            loadUserRole, applyRolePermissions, renderUserManagementPanel,
+            checkFirstLogin, autoBackupCheck, setupActivityBackupListener,
+            syncBackupSettingsFromFirebase, renderBackupSettingsPanel, triggerBackup
+        } = window._initUserMgmt({ auth, db });
         // END USER MANAGEMENT
         // =====================================================================
 
