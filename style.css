@@ -1078,6 +1078,72 @@ select.edit-input:focus {
 
 .toast-undo-btn:hover { background: rgba(255, 255, 255, 0.25); }
 
+/* ---------- recently-deleted tray ---------- */
+#undo-tray-chip {
+    position: fixed;
+    bottom: 22px;
+    right: 76px;
+    border: 1px solid #f59e0b;
+    background: #78350f;
+    color: #fef3c7;
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-family: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 6px 18px -6px rgba(15, 23, 42, 0.45);
+    z-index: 9001;
+}
+
+#undo-tray-chip:hover { background: #92400e; }
+
+#undo-tray-panel {
+    position: fixed;
+    bottom: 64px;
+    right: 76px;
+    width: min(380px, 92vw);
+    max-height: 50vh;
+    overflow: auto;
+    background: #1e293b;
+    color: #f1f5f9;
+    border-radius: 12px;
+    box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.5);
+    padding: 12px 14px;
+    z-index: 9002;
+    font-size: 0.85rem;
+}
+
+#undo-tray-panel .utp-head { font-weight: 700; margin-bottom: 2px; }
+
+#undo-tray-panel .utp-hint {
+    font-size: 0.74rem;
+    color: #94a3b8;
+    margin-bottom: 8px;
+}
+
+#undo-tray-panel .utp-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 0;
+    border-top: 1px dashed rgba(255, 255, 255, 0.12);
+}
+
+#undo-tray-panel .utp-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#undo-tray-panel .utp-age {
+    flex-shrink: 0;
+    font-size: 0.72rem;
+    color: #94a3b8;
+}
+
 /* ---------- command palette ---------- */
 #cmd-palette-overlay {
     position: fixed;
@@ -1432,6 +1498,8 @@ select.edit-input:focus {
     #mobile-nav-btn,
     #unsaved-badge,
     #offline-badge,
+    #undo-tray-chip,
+    #undo-tray-panel,
     #toast-host { display: none !important; }
 
     .app-layout { display: block; }

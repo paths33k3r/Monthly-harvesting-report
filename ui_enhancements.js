@@ -47,15 +47,109 @@
     };
 
     /* ----------------------------------------------------------
-       Undo toast (roadmap Phase 5) — window.notifyUndo(msg, onUndo)
-       Shows "msg [Undo]" for `duration` ms; clicking Undo runs the
-       callback (once) and dismisses. Delete sites call this AFTER
-       removing + saving; onUndo restores the snapshot + saves again.
-       Optional onExpire runs only if the user did NOT undo — for
-       irreversible cleanup deferred past the undo window (e.g.
-       deleting a stored photo).
+       Undo for deletes (roadmap Phase 5) — window.notifyUndo(msg,
+       onUndo, toastMs, onExpire)
+       Delete sites call this AFTER removing + saving; onUndo
+       restores the snapshot + saves again. The toast is only the
+       prompt — every deletion also lands in the "Recently deleted"
+       tray (↩ chip, bottom-right) and stays restorable for the
+       whole page session. Restore closures are live code, so the
+       tray cannot survive a reload/close; `onExpire` (irreversible
+       cleanup, e.g. purging a stored photo) runs when an entry is
+       evicted by the cap or on pagehide (best-effort).
     ---------------------------------------------------------- */
-    window.notifyUndo = function (message, onUndo, duration = 5000, onExpire) {
+    const undoStack = []; // newest first
+    const UNDO_STACK_MAX = 50;
+    let undoPanel = null;
+
+    function undoEvict(entry) {
+        if (entry.done) return;
+        entry.done = true;
+        if (entry.onExpire) {
+            try { entry.onExpire(); } catch (e) { console.error('post-undo cleanup failed:', e); }
+        }
+    }
+
+    function undoRestore(entry) {
+        if (entry.done) return;
+        entry.done = true;
+        const i = undoStack.indexOf(entry);
+        if (i > -1) undoStack.splice(i, 1);
+        try { entry.onUndo(); } catch (e) { console.error('undo failed:', e); }
+        updateUndoTray();
+    }
+
+    function undoAge(ts) {
+        const m = Math.floor((Date.now() - ts) / 60000);
+        if (m < 1) return 'just now';
+        if (m < 60) return m + ' min ago';
+        return Math.floor(m / 60) + ' h ago';
+    }
+
+    function closeUndoPanel() {
+        if (undoPanel) { undoPanel.remove(); undoPanel = null; }
+    }
+
+    function openUndoPanel() {
+        closeUndoPanel();
+        if (!undoStack.length) return;
+        undoPanel = document.createElement('div');
+        undoPanel.id = 'undo-tray-panel';
+        const head = document.createElement('div');
+        head.className = 'utp-head';
+        head.textContent = 'Recently deleted';
+        const hint = document.createElement('div');
+        hint.className = 'utp-hint';
+        hint.textContent = 'Restorable until you close or reload this page.';
+        undoPanel.append(head, hint);
+        undoStack.forEach(entry => {
+            const row = document.createElement('div');
+            row.className = 'utp-row';
+            const txt = document.createElement('span');
+            txt.className = 'utp-label';
+            txt.textContent = entry.label;
+            const age = document.createElement('span');
+            age.className = 'utp-age';
+            age.textContent = undoAge(entry.time);
+            const btn = document.createElement('button');
+            btn.className = 'toast-undo-btn';
+            btn.textContent = 'Restore';
+            btn.addEventListener('click', () => { undoRestore(entry); });
+            row.append(txt, age, btn);
+            undoPanel.appendChild(row);
+        });
+        document.body.appendChild(undoPanel);
+    }
+
+    function updateUndoTray() {
+        let chip = document.getElementById('undo-tray-chip');
+        if (!undoStack.length) {
+            if (chip) chip.remove();
+            closeUndoPanel();
+            return;
+        }
+        if (!chip) {
+            chip = document.createElement('button');
+            chip.id = 'undo-tray-chip';
+            chip.title = 'Recently deleted — click to restore items';
+            chip.addEventListener('click', () => {
+                if (undoPanel) closeUndoPanel(); else openUndoPanel();
+            });
+            document.body.appendChild(chip);
+        }
+        chip.textContent = '↩ Deleted (' + undoStack.length + ')';
+        if (undoPanel) openUndoPanel(); // refresh open panel
+    }
+
+    // best-effort irreversible cleanup when the page is going away
+    window.addEventListener('pagehide', () => { undoStack.forEach(undoEvict); });
+
+    window.notifyUndo = function (message, onUndo, duration = 7000, onExpire) {
+        const entry = { label: message, time: Date.now(), onUndo: onUndo, onExpire: onExpire, done: false };
+        undoStack.unshift(entry);
+        while (undoStack.length > UNDO_STACK_MAX) undoEvict(undoStack.pop());
+        updateUndoTray();
+
         const t = document.createElement('div');
         t.className = 'toast toast-warn toast-undo';
         const ico = document.createElement('span');
@@ -68,25 +162,20 @@
         btn.textContent = 'Undo';
         t.append(ico, msg, btn);
 
-        let done = false;
+        let dismissed = false;
         const dismiss = () => {
+            if (dismissed) return;
+            dismissed = true;
             t.classList.remove('toast-in');
             setTimeout(() => t.remove(), 350);
         };
-        btn.addEventListener('click', () => {
-            if (done) return;
-            done = true;
-            dismiss();
-            try { onUndo(); } catch (e) { console.error('undo failed:', e); }
-        });
+        btn.addEventListener('click', () => { undoRestore(entry); dismiss(); });
+        // hovering pauses auto-dismiss; the entry stays in the tray either way
+        let timer = setTimeout(dismiss, duration);
+        t.addEventListener('mouseenter', () => clearTimeout(timer));
+        t.addEventListener('mouseleave', () => { timer = setTimeout(dismiss, 2500); });
         ensureToastHost().appendChild(t);
         requestAnimationFrame(() => t.classList.add('toast-in'));
-        setTimeout(() => {
-            if (done) return;
-            done = true;
-            dismiss();
-            if (onExpire) { try { onExpire(); } catch (e) { console.error('post-undo cleanup failed:', e); } }
-        }, duration);
     };
 
     /* ----------------------------------------------------------
@@ -614,6 +703,7 @@
             closePalette();
             closeHelp();
             closeMobileNav();
+            closeUndoPanel();
             return;
         }
         const tag = (e.target.tagName || '').toLowerCase();

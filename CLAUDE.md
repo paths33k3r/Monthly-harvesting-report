@@ -332,9 +332,12 @@ header badge + reconnect toasts (navigator online/offline). `manifest.json` adde
 NB: the RTDB **web** SDK has no disk persistence — queued offline writes flush on reconnect but
 are lost if the page reloads while offline; the badge tooltip warns to keep the page open.
 ### Phase 5 — Undo for deletes ✅ DONE
-`window.notifyUndo(msg, onUndo, duration=5000, onExpire?)` in ui_enhancements.js — delete sites
-remove + save immediately, then show a 5 s "Deleted — Undo" toast; Undo restores the snapshot and
-saves again; optional `onExpire` runs irreversible cleanup only after the window passes.
+`window.notifyUndo(msg, onUndo, toastMs=7000, onExpire?)` in ui_enhancements.js — delete sites
+remove + save immediately, then show an undo toast (hover pauses dismissal). Every deletion also
+lands in a session-long **"Recently deleted" tray** (↩ chip bottom-right, panel with Restore per
+item, max 50): restorable until the page is closed or reloaded (restore closures are live code,
+so they can't survive a reload). `onExpire` (irreversible cleanup, e.g. purging a weekly photo)
+runs on cap-eviction or `pagehide` (best-effort — a force-killed tab may orphan photo bytes).
 Converted (confirm() removed): maintenance gang + work-log entry, Iron Horse asset + gang
 assignment, spraying block, FFB Budget block, weekly observation (photo bytes purged via
 onExpire so Undo keeps the photo). Kept confirm() (undo impossible/misleading): backup
