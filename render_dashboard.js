@@ -272,6 +272,68 @@
         return ha;
     }
 
+    // =================================================================
+    // Harvest-interval alerts (roadmap Phase 7)
+    // A block's "last harvested" date is the latest non-empty cell in
+    // its per-day interval grid (performance[year][month][gang].blocks
+    // [id].days). Blocks past ALERT_OVERDUE_DAYS show as alerts.
+    // =================================================================
+    const ALERT_OVERDUE_DAYS = 21;
+
+    function lastHarvestByBlock(perfYearObj, yearNum) {
+        const last = {}; // blockId -> Date of most recent harvest mark
+        if (!perfYearObj || typeof perfYearObj !== 'object') return last;
+        Object.keys(perfYearObj).forEach(mKey => {
+            const mIdx = monthIndex(mKey);
+            if (mIdx < 0) return;
+            const monthObj = perfYearObj[mKey];
+            if (!monthObj || typeof monthObj !== 'object') return;
+            Object.keys(monthObj).forEach(gang => {
+                if (gang === 'gangAssignments') return;
+                const blocks = monthObj[gang] && monthObj[gang].blocks;
+                if (!blocks || typeof blocks !== 'object') return;
+                Object.keys(blocks).forEach(bId => {
+                    const days = blocks[bId] && blocks[bId].days;
+                    if (!Array.isArray(days)) return;
+                    for (let d = days.length - 1; d >= 0; d--) {
+                        if (String(days[d] == null ? '' : days[d]).trim() !== '') {
+                            const dt = new Date(yearNum, mIdx, d + 1);
+                            if (!last[bId] || dt > last[bId]) last[bId] = dt;
+                            break;
+                        }
+                    }
+                });
+            });
+        });
+        return last;
+    }
+
+    function buildHarvestAlerts(s, yrCurr) {
+        const perfYear = s.performance && s.performance[yrCurr];
+        const last = lastHarvestByBlock(perfYear, Number(yrCurr));
+        const harvestedIds = Object.keys(last);
+        if (!harvestedIds.length) return null; // no interval data yet — stay quiet
+
+        const today = new Date();
+        const overdue = [];
+        harvestedIds.forEach(bId => {
+            const days = Math.floor((today - last[bId]) / 86400000);
+            if (days > ALERT_OVERDUE_DAYS) overdue.push({ bId, days });
+        });
+        overdue.sort((a, b) => b.days - a.days);
+
+        // blocks in the planting record that have never appeared in the grid
+        const known = {};
+        harvestedIds.forEach(id => { known[String(id).trim()] = 1; });
+        let neverCount = 0;
+        if (Array.isArray(s.reports && s.reports[yrCurr])) {
+            s.reports[yrCurr].forEach(b => {
+                if (!known[String(b.block_id).trim()]) neverCount++;
+            });
+        }
+        return { overdue, neverCount };
+    }
+
     // Central chart registry so every re-render tears down its prior instance
     // (prevents "canvas already in use" and frees memory).
     const CHART_REG = window._dashCharts = window._dashCharts || {};
@@ -362,6 +424,28 @@
             ? qaCards.map(c => quickCard(c.icon, c.title, c.desc, c.target)).join('')
             : `<p style="grid-column:1/-1; color:var(--text-muted,#6b7280); padding:1rem 0;">No shortcuts selected yet — click <strong>Customize</strong> to add some.</p>`;
 
+        // ---- Harvest-interval alerts ----
+        const alerts = buildHarvestAlerts(s, yrCurr);
+        let alertsHtml = '';
+        if (alerts && (alerts.overdue.length || alerts.neverCount)) {
+            const MAX_CHIPS = 10;
+            const chip = (a) => `<button type="button" class="dash-alert-chip" data-target="sidebar-interval" title="Open Harvesting Interval" style="display:inline-flex; align-items:center; gap:.45rem; border:1px solid ${a.days > 2 * ALERT_OVERDUE_DAYS ? '#fca5a5' : '#fcd34d'}; background:${a.days > 2 * ALERT_OVERDUE_DAYS ? '#fef2f2' : '#fffbeb'}; color:${a.days > 2 * ALERT_OVERDUE_DAYS ? '#991b1b' : '#92400e'}; border-radius:999px; padding:.35rem .8rem; font-size:.82rem; cursor:pointer;">
+                <strong>Blk ${a.bId}</strong> ${a.days} days</button>`;
+            const shown = alerts.overdue.slice(0, MAX_CHIPS);
+            const moreCount = alerts.overdue.length - shown.length;
+            alertsHtml = `
+                <h3 class="dash-section">⚠️ Harvest alerts <span style="font-weight:400; font-size:.8rem; color:var(--text-muted,#6b7280);">— blocks past ${ALERT_OVERDUE_DAYS} days since last recorded harvest (${yrCurr})</span></h3>
+                <div style="display:flex; flex-wrap:wrap; gap:.5rem; margin-bottom:1.25rem;">
+                    ${shown.map(chip).join('')}
+                    ${moreCount > 0 ? `<button type="button" class="dash-alert-chip" data-target="sidebar-interval" style="border:1px solid var(--border-color,#e5e7eb); background:var(--bg-secondary,#f3f4f6); color:var(--text-secondary,#4b5563); border-radius:999px; padding:.35rem .8rem; font-size:.82rem; cursor:pointer;">+${moreCount} more…</button>` : ''}
+                    ${alerts.neverCount ? `<span style="display:inline-flex; align-items:center; border-radius:999px; padding:.35rem .8rem; font-size:.82rem; color:var(--text-muted,#6b7280); border:1px dashed var(--border-color,#e5e7eb);">${alerts.neverCount} block(s) with no harvest recorded yet</span>` : ''}
+                </div>`;
+        } else if (alerts) {
+            alertsHtml = `
+                <h3 class="dash-section">⚠️ Harvest alerts</h3>
+                <p style="margin:0 0 1.25rem; font-size:.88rem; color:#065f46;">✅ All harvested blocks are within ${ALERT_OVERDUE_DAYS} days.</p>`;
+        }
+
         const ffbEmptyMsg = `No harvest figures captured yet for ${yrPrev} or ${yrCurr}.<br>Import the Harvesting Interval files to populate this chart.`;
         const budgetEmptyMsg = `No actual or budget figures for ${yrCurr} yet.`;
         const yieldEmptyMsg = `Need harvest data and planted HA to compute yield.`;
@@ -377,6 +461,8 @@
                 ${kpiCard('🐴', '#f5f3ff', machines, 'Iron Horse Machines' + suffix(ihYear))}
                 ${kpiCard('🌿', '#fffbeb', maintLogs, 'Maintenance Logs' + suffix(mYear))}
             </div>
+
+            ${alertsHtml}
 
             <h3 class="dash-section">Production overview</h3>
             <div style="margin-bottom:1.25rem;">
@@ -397,7 +483,7 @@
             </div>
         `;
 
-        wrapper.querySelectorAll('.quick-card').forEach(card => {
+        wrapper.querySelectorAll('.quick-card, .dash-alert-chip').forEach(card => {
             card.onclick = () => {
                 const el = document.getElementById(card.getAttribute('data-target'));
                 if (el) el.click();

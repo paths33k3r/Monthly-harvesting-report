@@ -344,8 +344,13 @@ weekly week delete (images), harvesting gang remove (block reassignment).
 Header "🖨️ PDF" button (`initPrintButton` in ui_enhancements.js): renames `document.title` to
 "<current view heading> — <date>" (becomes the suggested PDF filename), opens the browser print
 dialog (Save as PDF), restores the title on `afterprint`. Print CSS strips all chrome.
-### Phase 7 — Dashboard alerts (e.g. block overdue for harvest, from interval data). ← NEXT
-### Phase 8 — Dark mode (hard: many hardcoded inline colors in render_*.js).
+### Phase 7 — Dashboard alerts ✅ DONE
+"⚠️ Harvest alerts" section on the dashboard (render_dashboard.js): a block's last-harvest date is
+the latest non-empty cell in its interval `days` grid; blocks past `ALERT_OVERDUE_DAYS` (21) show
+as clickable chips (amber; red past 42 days) linking to the Interval view, capped at 10 + "+N
+more", plus a count of blocks never harvested. Hidden entirely when the year has no interval data;
+shows a green all-clear when nothing is overdue.
+### Phase 8 — Dark mode (hard: many hardcoded inline colors in render_*.js). ← NEXT
 ### Phase 9 — Split script.js (~291 KB) into modules. Do alone; riskiest.
 
 ---
