@@ -196,6 +196,17 @@
     }
 
     const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    // Historical FFB grand totals (MT) per month, hard-coded from the user's
+    // "FFB summary 2021 - 2024.xlsx". Live performance data, when it exists
+    // for one of these years, takes precedence over this table.
+    const FFB_HISTORY = {
+        '2021': [1356.00, 1080.00, 1834.00, 1809.00, 1809.00, 1758.42, 2009.62, 2512.03, 2512.03, 3516.84, 2763.23, 2512.03],
+        '2022': [1276.75, 822.83, 1061.45, 1274.54, 1496.14, 1363.34, 1483.82, 1896.38, 1883.46, 2346.50, 1936.18, 1991.04],
+        '2023': [1450.95, 1191.72, 1334.48, 1263.48, 1400.83, 1424.10, 1582.25, 1658.37, 1806.92, 1966.14, 1803.11, 1545.42],
+        '2024': [1328.21, 852.04, 655.97, 1064.09, 1352.63, 1285.96, 1537.55, 2136.82, 2341.78, 2640.73, 2304.94, 1989.43]
+    };
+    const FFB_HISTORY_COLORS = { '2021': '#94a3b8', '2022': '#3b82f6', '2023': '#8b5cf6', '2024': '#ef4444' };
     function monthIndex(key) {
         const k = String(key).slice(0, 3).toLowerCase();
         return MONTHS.findIndex(m => m.toLowerCase() === k);
@@ -317,7 +328,12 @@
 
         const currTotals = monthlyFfbTotals(perf[yrCurr]);
         const prevTotals = monthlyFfbTotals(perf[yrPrev]);
-        const hasFfbData = currTotals.any || prevTotals.any;
+
+        // hard-coded history years, skipping any year already covered live
+        const historyYears = Object.keys(FFB_HISTORY)
+            .filter(y => y !== yrCurr && y !== yrPrev && !monthlyFfbTotals(perf[y]).any)
+            .sort();
+        const hasFfbData = currTotals.any || prevTotals.any || historyYears.length > 0;
 
         const budgetCurr = monthlyBudgetTotals(s.ffbBudget && s.ffbBudget[yrCurr]);
         const hasBudgetView = currTotals.any || budgetCurr.any;
@@ -356,7 +372,7 @@
 
             <h3 class="dash-section">Production overview</h3>
             <div style="margin-bottom:1.25rem;">
-                ${chartCard('FFB Production — Total Tonnage', `${yrPrev} vs ${yrCurr}`, 'ffbCompareChart', 'ffbCompareEmpty', ffbEmptyMsg, 320)}
+                ${chartCard('FFB Production — Total Tonnage', historyYears.length ? `${historyYears[0]} – ${yrCurr}` : `${yrPrev} vs ${yrCurr}`, 'ffbCompareChart', 'ffbCompareEmpty', ffbEmptyMsg, 320)}
             </div>
             <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:1.25rem; margin-bottom:1.5rem;">
                 ${chartCard('Actual vs Budget', yrCurr, 'ffbBudgetChart', 'ffbBudgetEmpty', budgetEmptyMsg, 280)}
@@ -393,6 +409,15 @@
             data: {
                 labels: MONTHS,
                 datasets: [
+                    // dashed muted lines for the hard-coded history; click the
+                    // legend to hide/show any year
+                    ...historyYears.map(y => ({
+                        label: y, data: FFB_HISTORY[y],
+                        borderColor: FFB_HISTORY_COLORS[y] || '#94a3b8',
+                        backgroundColor: 'transparent',
+                        borderWidth: 1.5, borderDash: [6, 4], tension: 0.3,
+                        fill: false, pointRadius: 2, pointHoverRadius: 4
+                    })),
                     {
                         label: yrPrev, data: prevTotals.arr,
                         borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.12)',
