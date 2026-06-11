@@ -617,6 +617,45 @@
     }
 
     /* ----------------------------------------------------------
+       Dark mode toggle (roadmap Phase 8)
+       html.dark is applied pre-paint by an inline head script;
+       this just owns the header button, persistence and Chart.js
+       defaults (charts draw with fixed colors, so axis/legend
+       text must be re-tinted and visible charts re-rendered).
+    ---------------------------------------------------------- */
+    function applyChartTheme(dark) {
+        if (typeof Chart === 'undefined') return;
+        Chart.defaults.color = dark ? '#94a3b8' : '#666';
+        Chart.defaults.borderColor = dark ? 'rgba(148,163,184,0.18)' : 'rgba(0,0,0,0.1)';
+    }
+
+    function initThemeToggle() {
+        const right = document.querySelector('.header-right');
+        if (!right || document.getElementById('theme-toggle-btn')) return;
+        const btn = document.createElement('button');
+        btn.id = 'theme-toggle-btn';
+        const sync = () => {
+            const dark = document.documentElement.classList.contains('dark');
+            btn.textContent = dark ? '☀️' : '🌙';
+            btn.title = dark ? 'Switch to light mode' : 'Switch to dark mode';
+        };
+        btn.addEventListener('click', () => {
+            const dark = document.documentElement.classList.toggle('dark');
+            try { localStorage.setItem('theme', dark ? 'dark' : 'light'); } catch (e) { }
+            sync();
+            applyChartTheme(dark);
+            // charts cache their colors — re-render the dashboard if it's on screen
+            const dash = document.getElementById('dashboard-wrapper');
+            if (dash && !dash.classList.contains('hidden') && typeof window.renderDashboard === 'function') {
+                window.renderDashboard();
+            }
+        });
+        sync();
+        applyChartTheme(document.documentElement.classList.contains('dark'));
+        right.insertBefore(btn, right.firstChild);
+    }
+
+    /* ----------------------------------------------------------
        Print / save-as-PDF (roadmap Phase 6)
        The print stylesheet already strips chrome and outputs just
        the report — this button names the document after the
@@ -728,6 +767,7 @@
         initDirtyTracking();
         initOffline();
         initPrintButton();
+        initThemeToggle();
     }
 
     if (document.readyState === 'loading') {

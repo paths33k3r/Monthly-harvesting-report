@@ -78,5 +78,5 @@ See **CLAUDE.md → "Enhancement roadmap"** for technical notes per phase.
 5. ~~**Undo for deletes**~~ ✅ done — row/item deletes (work-log entries, gangs, assets, blocks, observations) show a 5-second "Deleted — Undo" toast; destructive bulk actions still ask for confirmation
 6. ~~**PDF export buttons**~~ ✅ done — header 🖨️ PDF button prints the current view with a clean layout and a sensible PDF filename
 7. ~~**Dashboard alerts**~~ ✅ done — "Harvest alerts" on the dashboard flags blocks >21 days since their last recorded harvest (click a chip to open the Interval view)
-8. **Dark mode** (large) — many render files hardcode inline colors; needs care
+8. ~~**Dark mode**~~ ✅ done — 🌙/☀️ header toggle, remembered per browser; printing stays light
 9. **Split `script.js` (~291 KB) into modules** (large, riskiest — do alone with nothing else in flight)

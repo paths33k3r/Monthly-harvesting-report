@@ -251,7 +251,7 @@
       </div>
 
       <div id="manuring-edit-modal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.45); z-index:9999; align-items:center; justify-content:center;">
-        <div style="background:#fff; border-radius:8px; padding:1.5rem; min-width:320px; max-width:420px; box-shadow:0 8px 32px rgba(0,0,0,0.25);">
+        <div style="background:var(--bg-card,#fff); border-radius:8px; padding:1.5rem; min-width:320px; max-width:420px; box-shadow:0 8px 32px rgba(0,0,0,0.25);">
           <h3 id="manuring-edit-title" style="margin:0 0 1rem; color:#1a3d1e; font-size:1rem"></h3>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-bottom:1rem;">
             <label style="font-size:0.85rem; color:#555; display:flex; flex-direction:column; gap:3px">

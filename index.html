@@ -8,7 +8,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0f172a">
-    <link rel="stylesheet" href="style.css?v=20">
+    <script>/* apply saved theme before first paint to avoid a light flash */
+        try { if (localStorage.getItem('theme') === 'dark') document.documentElement.classList.add('dark'); } catch (e) { }</script>
+    <link rel="stylesheet" href="style.css?v=21">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     
@@ -539,10 +541,10 @@
     <script src="render_maintenance.js?v=6"></script>
     <script src="render_weekly.js?v=16"></script>
     <script src="render_spraying.js?v=14"></script>
-    <script src="render_manuring.js?v=12"></script>
+    <script src="render_manuring.js?v=13"></script>
     <script src="render_reports.js?v=23"></script>
     <script src="script.js?v=59"></script>
-    <script src="ui_enhancements.js?v=7"></script>
+    <script src="ui_enhancements.js?v=8"></script>
     <script>
         // Vertical sidebar accordion: expand/collapse groups. Clicking a header
         // toggles its submenu and closes sibling groups at the same level. The

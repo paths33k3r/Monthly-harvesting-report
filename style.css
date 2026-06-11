@@ -15,6 +15,45 @@
     --bg-secondary: #f1f5f9;
 }
 
+/* ============================================================
+   Dark mode (roadmap Phase 8) — html.dark is set by an inline
+   head script (pre-paint, from localStorage 'theme') and toggled
+   by the 🌙 header button (ui_enhancements.js). Most of the app
+   styles itself via the variables above, so the palette swap
+   below does the heavy lifting; color-scheme:dark makes native
+   inputs/scrollbars/date-pickers follow. The rainfall sheet keeps
+   its white "Excel paper" look on purpose.
+   ============================================================ */
+html.dark {
+    color-scheme: dark;
+    --bg-main: #0b1220;
+    --bg-card: #111c30;
+    --text-primary: #e2e8f0;
+    --text-secondary: #94a3b8;
+    --border-color: #263655;
+    --accent: #3b82f6;
+    --accent-hover: #60a5fa;
+    --group-bg: #18243d;
+    --group-border: #32436b;
+    --grand-total-bg: #1e293b;
+    --grand-total-text: #f8fafc;
+    --bg-primary: #111c30;
+    --bg-secondary: #18243d;
+}
+
+html.dark .stat-badge {
+    background: #18243d;
+    border-color: #32436b;
+}
+
+html.dark .grouped-table .row-block.zebra td { background: #131f36; }
+html.dark .grouped-table .row-block:hover td { background: #1a2a4a; }
+
+html.dark .col-total {
+    background-color: #0c2a1c !important;
+    color: #6ee7b7 !important;
+}
+
 * {
     box-sizing: border-box;
 }
@@ -1266,6 +1305,23 @@ select.edit-input:focus {
     color: var(--accent);
 }
 
+/* ---------- theme toggle button ---------- */
+#theme-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    border-radius: 8px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: border-color 0.15s;
+}
+
+#theme-toggle-btn:hover { border-color: var(--accent); }
+
 /* ---------- print/PDF button ---------- */
 #print-pdf-btn {
     display: inline-flex;
@@ -1490,6 +1546,21 @@ select.edit-input:focus {
 
 /* ---------- print: clean report output ---------- */
 @media print {
+
+    /* always print the light palette, even when dark mode is on */
+    html.dark {
+        color-scheme: light;
+        --bg-main: #ffffff;
+        --bg-card: #ffffff;
+        --text-primary: #0f172a;
+        --text-secondary: #475569;
+        --border-color: #e2e8f0;
+        --group-bg: #f1f5f9;
+        --group-border: #cbd5e1;
+        --bg-primary: #ffffff;
+        --bg-secondary: #f1f5f9;
+    }
+
     .sidebar,
     header,
     .toolbar-right,

@@ -353,8 +353,15 @@ the latest non-empty cell in its interval `days` grid; blocks past `ALERT_OVERDU
 as clickable chips (amber; red past 42 days) linking to the Interval view, capped at 10 + "+N
 more", plus a count of blocks never harvested. Hidden entirely when the year has no interval data;
 shows a green all-clear when nothing is overdue.
-### Phase 8 — Dark mode (hard: many hardcoded inline colors in render_*.js). ← NEXT
-### Phase 9 — Split script.js (~291 KB) into modules. Do alone; riskiest.
+### Phase 8 — Dark mode ✅ DONE
+`html.dark` palette override in style.css (the app styles itself via CSS variables, so the swap
+covers most surfaces; `color-scheme: dark` handles native inputs). Applied pre-paint by an inline
+head script reading `localStorage.theme`; toggled by the 🌙/☀️ header button
+(`initThemeToggle` in ui_enhancements.js), which also re-tints Chart.js defaults and re-renders
+the dashboard charts. Printing always uses the light palette (`@media print` re-override).
+Known leftovers: semantic light tints (status chips/cells with inline dark text) stay light by
+design; the Rainfall sheet keeps its white "Excel paper" look on purpose.
+### Phase 9 — Split script.js (~291 KB) into modules. Do alone; riskiest. ← NEXT (needs its own session)
 
 ---
 
