@@ -335,6 +335,14 @@
             .sort();
         const hasFfbData = currTotals.any || prevTotals.any || historyYears.length > 0;
 
+        // one bar per year: hard-coded history + any live year with data
+        const sum12 = (arr) => arr.reduce((t, v) => t + (Number(v) || 0), 0);
+        const yearlyTotals = historyYears.map(y => ({ y: y, total: sum12(FFB_HISTORY[y]), color: FFB_HISTORY_COLORS[y] || '#94a3b8' }));
+        if (prevTotals.any) yearlyTotals.push({ y: yrPrev, total: sum12(prevTotals.arr), color: '#f59e0b' });
+        if (currTotals.any) yearlyTotals.push({ y: yrCurr, total: sum12(currTotals.arr), color: '#10b981' });
+        yearlyTotals.sort((a, b) => a.y.localeCompare(b.y));
+        const hasYearly = yearlyTotals.length > 0;
+
         const budgetCurr = monthlyBudgetTotals(s.ffbBudget && s.ffbBudget[yrCurr]);
         const hasBudgetView = currTotals.any || budgetCurr.any;
 
@@ -375,6 +383,7 @@
                 ${chartCard('FFB Production — Total Tonnage', historyYears.length ? `${historyYears[0]} – ${yrCurr}` : `${yrPrev} vs ${yrCurr}`, 'ffbCompareChart', 'ffbCompareEmpty', ffbEmptyMsg, 320)}
             </div>
             <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:1.25rem; margin-bottom:1.5rem;">
+                ${chartCard('Yearly Totals', yearlyTotals.length ? `${yearlyTotals[0].y} – ${yearlyTotals[yearlyTotals.length - 1].y}` : '', 'ffbYearlyChart', 'ffbYearlyEmpty', 'No yearly figures yet.', 280)}
                 ${chartCard('Actual vs Budget', yrCurr, 'ffbBudgetChart', 'ffbBudgetEmpty', budgetEmptyMsg, 280)}
                 ${chartCard('Yield (MT / HA)', `${yrPrev} vs ${yrCurr}`, 'ffbYieldChart', 'ffbYieldEmpty', yieldEmptyMsg, 280)}
             </div>
@@ -436,6 +445,34 @@
                 plugins: {
                     legend: { position: 'top' },
                     tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${fmt(ctx.parsed.y)} MT` } }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true, title: { display: true, text: 'FFB (MT)' },
+                        ticks: { callback: (v) => Number(v).toLocaleString('en-MY') }
+                    }
+                }
+            }
+        });
+
+        // ---- Chart 1b: total tonnage per year (bar, multi-year trend) ----
+        drawChart('ffbYearlyChart', 'ffbYearlyEmpty', hasYearly, {
+            type: 'bar',
+            data: {
+                labels: yearlyTotals.map(t => t.y),
+                datasets: [{
+                    label: 'FFB (MT)',
+                    data: yearlyTotals.map(t => t.total),
+                    backgroundColor: yearlyTotals.map(t => t.color),
+                    borderRadius: 6,
+                    maxBarThickness: 64
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: (ctx) => `${fmt(ctx.parsed.y)} MT` } }
                 },
                 scales: {
                     y: {
