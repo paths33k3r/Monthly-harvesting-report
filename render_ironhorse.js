@@ -1640,7 +1640,7 @@ const ihRenderCostCharts = (host, d, yearStr) => {
         kpi(`Total expenses ${yearStr}`, fmtRM(grandYearExp)) +
         kpi('Total FFB', grandYearMt > 0 ? grandYearMt.toFixed(2) + ' MT' : '—') +
         kpi('Average cost / MT', grandYearMt > 0 ? fmtRM(avgCpmt) : '—') +
-        kpi('Worst month', worstM ? `${worstM} · ${fmtRM(worstV)}/MT` : '—');
+        kpi('Highest cost / MT', worstM ? `${worstM} · ${fmtRM(worstV)}/MT` : '—');
     sec.appendChild(strip);
 
     const chartCard = (title, canvasId, height) => {
