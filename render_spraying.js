@@ -73,7 +73,7 @@ const renderSprayingReport = () => {
         const newY = prompt('Enter the new Spraying Year (e.g., 2026):', String(parseInt(yearStr) + 1));
         if (!newY || newY.trim() === '') return;
         const ny = newY.trim();
-        if (window.state.spraying[ny]) { alert(`Year ${ny} already exists.`); return; }
+        if (window.state.spraying[ny]) { window.notify(`Year ${ny} already exists.`, 'warn'); return; }
         window.state.spraying[ny] = getBlankSprayingYear();
         window.state.sprayingYear = ny;
         saveSprayingData();
@@ -187,7 +187,7 @@ const renderPhaseTable = (wrapper, phase, phaseIdx, yearStr, MONTHS, extraChemic
         const u = uom.trim().toUpperCase();
         const yd = window.state.spraying[yearStr];
         if (!yd.extraChemicals) yd.extraChemicals = [];
-        if (yd.extraChemicals.some(c => c.name === n)) { alert(`"${n}" already exists for ${yearStr}.`); return; }
+        if (yd.extraChemicals.some(c => c.name === n)) { window.notify(`"${n}" already exists for ${yearStr}.`, 'warn'); return; }
         yd.extraChemicals.push({ name: n, uom: u });
         saveSprayingData();
         renderSprayingReport();
@@ -205,7 +205,7 @@ const renderPhaseTable = (wrapper, phase, phaseIdx, yearStr, MONTHS, extraChemic
             const choice = prompt(`Which chemical to remove from ${yearStr}?\n\n${list}\n\nEnter number:`);
             if (!choice) return;
             const idx = parseInt(choice) - 1;
-            if (isNaN(idx) || idx < 0 || idx >= extraChemicals.length) { alert('Invalid selection.'); return; }
+            if (isNaN(idx) || idx < 0 || idx >= extraChemicals.length) { window.notify('Invalid selection.', 'error'); return; }
             const removed = extraChemicals[idx];
             if (!confirm(`Remove "${removed.name} (${removed.uom})" from year ${yearStr}?\nAll data for this chemical will be deleted.`)) return;
             const yd = window.state.spraying[yearStr];
@@ -767,13 +767,13 @@ const getBlankSprayingYear = () => {
 // ─────────────────────────────────────────────────────────────────────
 const saveSprayingData = (silent = true) => {
     if (!window._sprayingDb || !window._sprayingUid) {
-        if (!silent) alert('Not connected to database. Please login first.');
+        if (!silent) window.notify('Not connected to database. Please login first.', 'warn');
         return;
     }
     const payload = JSON.stringify(window.state.spraying);
     window._sprayingDb.ref('shared/spraying_data').set(payload)
-        .then(() => { if (!silent) alert('Spraying data saved successfully!'); })
-        .catch(e => { console.error('Spraying save error:', e); if (!silent) alert('Error saving: ' + e.message); });
+        .then(() => { if (!silent) window.notify('Spraying data saved successfully!', 'success'); })
+        .catch(e => { console.error('Spraying save error:', e); if (!silent) window.notify('Error saving: ' + e.message, 'error'); });
 };
 
 // ─────────────────────────────────────────────────────────────────────
@@ -909,7 +909,7 @@ async function downloadSprayingTemplate(yearStr) {
         a.click();
         URL.revokeObjectURL(url);
     } catch (err) {
-        alert('Error generating template: ' + err.message);
+        window.notify('Error generating template: ' + err.message, 'error');
     }
 }
 
@@ -924,10 +924,10 @@ async function importSprayingFromExcel(file, yearStr) {
         await wb.xlsx.load(await file.arrayBuffer());
 
         const ws = wb.getWorksheet('Spraying Data') || wb.worksheets[0];
-        if (!ws) { alert('No worksheet found in file.'); return; }
+        if (!ws) { window.notify('No worksheet found in file.', 'error'); return; }
 
         const yd = window.state.spraying && window.state.spraying[yearStr];
-        if (!yd) { alert(`No spraying data for year ${yearStr}. Add year first.`); return; }
+        if (!yd) { window.notify(`No spraying data for year ${yearStr}. Add year first.`, 'warn'); return; }
         if (!Array.isArray(yd.extraChemicals)) yd.extraChemicals = [];
 
         // ── Header-driven column mapping ──────────────────────────────
@@ -979,7 +979,7 @@ async function importSprayingFromExcel(file, yearStr) {
         }
 
         if (colMap.phase == null || colMap.block == null || colMap.month == null) {
-            alert('Could not find the "Phase", "Block" and "Month" header columns in row 1. Please keep the header row intact.');
+            window.notify('Could not find the "Phase", "Block" and "Month" header columns in row 1. Please keep the header row intact.', 'error');
             return;
         }
 
@@ -1047,8 +1047,8 @@ async function importSprayingFromExcel(file, yearStr) {
         saveSprayingData(false);
         renderSprayingReport();
         const extraNote = newChemicals.length ? `\nAdded chemical column(s): ${newChemicals.join(', ')}.` : '';
-        alert(`Import complete: ${updated} rows updated, ${skipped} skipped.${extraNote}`);
+        window.notify(`Import complete: ${updated} rows updated, ${skipped} skipped.${extraNote}`, 'success');
     } catch (err) {
-        alert('Import error: ' + err.message);
+        window.notify('Import error: ' + err.message, 'error');
     }
 }

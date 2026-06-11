@@ -305,12 +305,12 @@ for app code. Original investigation notes:
 - False-dirty is acceptable (one extra confirm); false-clean = today's behavior, no regression.
 - Add `beforeunload` guard + an "● unsaved" badge near `#header-user-info`.
 
-### Phase 2 — Replace ~98 `alert()` calls with `window.notify` toasts (mechanical) ← NEXT
-Spread: script.js (43), render_ironhorse (16), render_spraying (12), render_maintenance (12),
-render_weekly (9), render_manuring (6). Keep `confirm()` dialogs — only replace notifications.
-Success messages → 'success', failures → 'error'. Bump each file's `?v=` in index.html.
+### Phase 2 — Replace ~98 `alert()` calls with `window.notify` toasts (mechanical) ✅ DONE
+All 98 alerts replaced (success → 'success', failures → 'error', validation → 'warn').
+`confirm()`/`prompt()` dialogs kept. The two "Backup restored — will reload" sites now delay
+`location.reload()` by 1.2 s so the toast is visible (alert used to block before reloading).
 
-### Phase 3 — Firebase Realtime DB security rules (write rules file + USER deploys in console)
+### Phase 3 — Firebase Realtime DB security rules (write rules file + USER deploys in console) ← NEXT
 Today: enforcement is client-side only (`_canEdit`); any authenticated user can write via console.
 Data layout: `shared/*` (see paths above, plus `shared/audit_log`, `shared/backup_settings`,
 `shared/weekly_images/<year>/<weekId>/<id>`), `user_roles/<uid>` = `{ role: 'admin'|'user',

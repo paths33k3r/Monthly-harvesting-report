@@ -129,17 +129,17 @@ const mntUid = () => 'm' + Date.now().toString(36) + Math.random().toString(36).
 // ─────────────────────────────────────────────────────────────────────
 const saveMaintenanceData = (silent = true) => {
     if (!window._maintenanceDb) {
-        if (!silent) alert('Not connected. Please login first.');
+        if (!silent) window.notify('Not connected. Please login first.', 'warn');
         return Promise.resolve();
     }
     return window._maintenanceDb.ref('shared/maintenance_data').set(JSON.stringify(window.state.maintenance))
         .then(() => {
             if (!silent) {
-                alert('Maintenance data saved!');
+                window.notify('Maintenance data saved!', 'success');
                 if (typeof window.logAudit === 'function') window.logAudit('save', 'maintenance', 'Maintenance data', '');
             }
         })
-        .catch(e => { console.error('Maintenance save error:', e); if (!silent) alert('Error: ' + e.message); });
+        .catch(e => { console.error('Maintenance save error:', e); if (!silent) window.notify('Error: ' + e.message, 'error'); });
 };
 window.saveMaintenanceData = saveMaintenanceData;
 
@@ -249,7 +249,7 @@ function renderMaintenanceGangs() {
             const name = (prompt('New maintenance gang name (e.g. "Anwar gang"):') || '').trim();
             if (!name) return;
             const yd = mntEnsureYear(year);
-            if (yd.gangs[name]) { alert('That gang already exists.'); return; }
+            if (yd.gangs[name]) { window.notify('That gang already exists.', 'warn'); return; }
             yd.gangs[name] = { months: {} };
             saveMaintenanceData(true);
             // Immediately open roster editor for the active month
@@ -586,9 +586,9 @@ function mntShowEntryModal(yearStr, month, idx, onSave) {
         const round = document.getElementById('mnt-e-round').value.trim();
         const methodVal = document.getElementById('mnt-e-method').value.trim();
 
-        if (!dateStart) { alert('Date Start is required.'); return; }
-        if (dateEnd < dateStart) { alert('Date End cannot be before Date Start.'); return; }
-        if (!block) { alert('Block is required.'); return; }
+        if (!dateStart) { window.notify('Date Start is required.', 'warn'); return; }
+        if (dateEnd < dateStart) { window.notify('Date End cannot be before Date Start.', 'error'); return; }
+        if (!block) { window.notify('Block is required.', 'warn'); return; }
 
         const rec = {
             id: editing ? (e.id || mntUid()) : mntUid(),
@@ -621,12 +621,12 @@ function mntManageActivities(yearStr, onSave) {
     if (trimmed.startsWith('-')) {
         const target = trimmed.slice(1).trim();
         const found = yd.activityTypes.find(a => a.toLowerCase() === target.toLowerCase());
-        if (!found) { alert(`"${target}" is not in the list.`); return; }
+        if (!found) { window.notify(`"${target}" is not in the list.`, 'warn'); return; }
         const inUse = yd.entries.some(e => e.activity === found);
         if (inUse && !confirm(`"${found}" is used by existing entries. Remove it from the list anyway? (Entries keep their activity.)`)) return;
         yd.activityTypes = yd.activityTypes.filter(a => a !== found);
     } else {
-        if (yd.activityTypes.some(a => a.toLowerCase() === trimmed.toLowerCase())) { alert('That activity already exists.'); return; }
+        if (yd.activityTypes.some(a => a.toLowerCase() === trimmed.toLowerCase())) { window.notify('That activity already exists.', 'warn'); return; }
         yd.activityTypes.push(trimmed);
     }
     if (typeof onSave === 'function') onSave();
@@ -933,7 +933,7 @@ async function downloadMaintenanceTemplate(yearStr) {
         setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
     } catch (err) {
         console.error('Maintenance template error:', err);
-        alert('Template error: ' + err.message);
+        window.notify('Template error: ' + err.message, 'error');
     }
 }
 window.downloadMaintenanceTemplate = downloadMaintenanceTemplate;
@@ -1021,7 +1021,7 @@ async function importMaintenanceWorkLog(file, yearStr) {
         });
 
         if (added.length === 0) {
-            alert(`No importable rows found.\nMake sure there is a header row with at least "Gang", a date, and "Block".`);
+            window.notify(`No importable rows found.\nMake sure there is a header row with at least "Gang", a date, and "Block".`, 'warn');
             return;
         }
 
@@ -1038,7 +1038,7 @@ async function importMaintenanceWorkLog(file, yearStr) {
         renderMaintenanceWorkLog();
     } catch (err) {
         console.error('Maintenance import error:', err);
-        alert('Import error: ' + err.message);
+        window.notify('Import error: ' + err.message, 'error');
     }
 }
 window.importMaintenanceWorkLog = importMaintenanceWorkLog;

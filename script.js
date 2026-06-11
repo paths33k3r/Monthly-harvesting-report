@@ -332,7 +332,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             db.ref('user_roles/' + auth.currentUser.uid + '/firstLogin').set(false);
                             currentUserRole.firstLogin = false;
                             overlay.style.display = 'none';
-                            alert('Password updated successfully!');
+                            window.notify('Password updated successfully!', 'success');
                         })
                         .catch(e => { msgEl.textContent = e.message; });
                 };
@@ -562,7 +562,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     else showToast('Auto-backup downloaded locally.');
                 }
             } catch (err) {
-                if (!silent) alert('Backup failed: ' + err.message);
+                if (!silent) window.notify('Backup failed: ' + err.message, 'error');
                 else console.error('Auto-backup failed:', err);
             }
         };
@@ -753,10 +753,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             Object.assign(state, data);
                             window.state = state;
                             await saveState(false);
-                            alert('Backup restored! The page will now reload.');
-                            location.reload();
+                            window.notify('Backup restored! The page will now reload.', 'success');
+                            setTimeout(() => location.reload(), 1200);
                         } catch (e) {
-                            alert('Restore failed: ' + e.message);
+                            window.notify('Restore failed: ' + e.message, 'error');
                             btn.disabled = false; btn.textContent = 'Restore';
                         }
                     };
@@ -772,7 +772,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             await gdriveDelete(btn.getAttribute('data-id'));
                             await renderBackupSettingsPanel();
                         } catch (e) {
-                            alert('Delete failed: ' + e.message);
+                            window.notify('Delete failed: ' + e.message, 'error');
                             btn.disabled = false;
                         }
                     };
@@ -925,11 +925,11 @@ document.addEventListener('DOMContentLoaded', () => {
             wrapper.querySelectorAll('.btn-reset-pw').forEach(btn => {
                 btn.onclick = () => {
                     const email = btn.getAttribute('data-email');
-                    if (!email) { alert('No email address on record for this user.'); return; }
+                    if (!email) { window.notify('No email address on record for this user.', 'error'); return; }
                     if (confirm(`Send password reset email to ${email}?`)) {
                         auth.sendPasswordResetEmail(email)
-                            .then(() => alert(`Reset email sent to ${email}.`))
-                            .catch(e => alert('Error: ' + e.message));
+                            .then(() => window.notify(`Reset email sent to ${email}.`, 'success'))
+                            .catch(e => window.notify('Error: ' + e.message, 'error'));
                     }
                 };
             });
@@ -940,16 +940,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     const uid = btn.getAttribute('data-uid');
                     const email = btn.getAttribute('data-email');
                     if (uid === currentUid) {
-                        alert('You cannot delete your own account.');
+                        window.notify('You cannot delete your own account.', 'error');
                         return;
                     }
                     if (!confirm(`Delete user "${email}"?\n\nThis will remove their access permanently. The Firebase Auth account will remain but they will no longer be able to log in.`)) return;
                     try {
                         await db.ref('user_roles/' + uid).remove();
-                        alert(`User "${email}" has been removed.`);
+                        window.notify(`User "${email}" has been removed.`, 'success');
                         renderUserManagementPanel();
                     } catch (e) {
-                        alert('Error deleting user: ' + e.message);
+                        window.notify('Error deleting user: ' + e.message, 'error');
                     }
                 };
             });
@@ -1135,7 +1135,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     .then(() => {
                         window.dispatchEvent(new CustomEvent('harvesting:activity'));
                         if (!silent) {
-                            alert("Data saved successfully to cloud!");
+                            window.notify("Data saved successfully to cloud!", 'success');
                             if (typeof window.logAudit === 'function') {
                                 const sec = state.activeViewType || 'harvesting';
                                 const yr = state.activeViewValue || state.selectedReportYear || '';
@@ -1159,11 +1159,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     })
                     .catch(e => {
                         console.error("Firebase save error:", e);
-                        if (!silent) alert("Failed to save data. Please check console for errors.");
+                        if (!silent) window.notify("Failed to save data. Please check console for errors.", 'error');
                     });
             } catch (e) {
                 console.error("Error saving state:", e);
-                if (!silent) alert("Failed to save data completely.");
+                if (!silent) window.notify("Failed to save data completely.", 'error');
             }
         };
         window.saveState = saveState;
@@ -1299,7 +1299,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const handleGlobalAddBlock = () => {
             if (!state.selectedReportYear) {
-                alert("No report year available");
+                window.notify("No report year available", 'warn');
                 return;
             }
 
@@ -1310,7 +1310,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const blockToAssign = state.reports[state.selectedReportYear].find(b => b.block_id === targetBlockId.trim());
 
                 if (!blockToAssign) {
-                    alert(`Block '${targetBlockId.trim()}' not found in Report Year ${state.selectedReportYear}. Please add it to the Planting Phase Record first.`);
+                    window.notify(`Block '${targetBlockId.trim()}' not found in Report Year ${state.selectedReportYear}. Please add it to the Planting Phase Record first.`, 'error');
                     return;
                 }
 
@@ -1413,7 +1413,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (!sheetChoice) { e.target.value = ''; return; }
                     const sheetIndex = parseInt(sheetChoice.trim()) - 1;
                     if (isNaN(sheetIndex) || sheetIndex < 0 || sheetIndex >= sheetNames.length) {
-                        alert("Invalid sheet selection. Import cancelled.");
+                        window.notify("Invalid sheet selection. Import cancelled.", 'error');
                         e.target.value = '';
                         return;
                     }
@@ -1423,13 +1423,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Ask user for target month and year when importing this interval data
                 const importTargetStr = prompt("Which month and year are you importing this data for? (e.g., Mar 2026)", "Mar 2026");
                 if (!importTargetStr) {
-                    alert("Import cancelled. Month and Year is required to assign interval performance data.");
+                    window.notify("Import cancelled. Month and Year is required to assign interval performance data.", 'warn');
                     return;
                 }
 
                 const [monthStr, yearStr] = importTargetStr.trim().split(" ");
                 if (!monthStr || !yearStr) {
-                    alert("Import cancelled. Please enter a valid Month and Year format (e.g., Mar 2026).");
+                    window.notify("Import cancelled. Please enter a valid Month and Year format (e.g., Mar 2026).", 'warn');
                     return;
                 }
 
@@ -1505,7 +1505,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
 
                 if (newBlocks.length === 0) {
-                    alert("No valid data found in the Excel file format.");
+                    window.notify("No valid data found in the Excel file format.", 'error');
                     return;
                 }
 
@@ -1570,7 +1570,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     window.logAudit('import', 'harvesting', `${targetMonth} ${targetYear}`, `File: ${file.name} — ${newBlocks.length} blocks imported`);
                 }
                 // Update UI
-                alert(`Successfully imported ${newBlocks.length} blocks!`);
+                window.notify(`Successfully imported ${newBlocks.length} blocks!`, 'success');
                 renderSidebar();
                 renderTable();
                 recalculateTotals();
@@ -1595,13 +1595,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const excelData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
                 if (excelData.length < 2) {
-                    alert("Excel file does not contain enough data rows.");
+                    window.notify("Excel file does not contain enough data rows.", 'error');
                     return;
                 }
 
                 const importYear = prompt("Enter the year for this FFB Budget import (e.g., 2026):", state.selectedReportYear || "2026");
                 if (!importYear) {
-                    alert("Import cancelled. Year is required.");
+                    window.notify("Import cancelled. Year is required.", 'warn');
                     return;
                 }
 
@@ -1662,7 +1662,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (typeof window.logAudit === 'function') {
                     window.logAudit('import', 'ffb_budget', `Year ${importYear}`, `File: ${file.name} — ${state.ffbBudget[importYear].length} blocks imported`);
                 }
-                alert(`Successfully imported ${state.ffbBudget[importYear].length} blocks for year ${importYear}!`);
+                window.notify(`Successfully imported ${state.ffbBudget[importYear].length} blocks for year ${importYear}!`, 'success');
 
                 // Switch view if it was FFB Budget already
                 if (state.activeViewType === 'ffb_budget') {
@@ -1699,7 +1699,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const newYear = newYearStr.trim();
 
             if (state.reports[newYear]) {
-                alert(`Report Year ${newYear} already exists!`);
+                window.notify(`Report Year ${newYear} already exists!`, 'warn');
                 return;
             }
 
@@ -1742,7 +1742,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 state.selectedReportYear : (years.length > 0 ? years[0] : null);
 
             if (!sourceYear) {
-                alert("No existing year found to duplicate from.");
+                window.notify("No existing year found to duplicate from.", 'warn');
                 return;
             }
 
@@ -1751,7 +1751,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const newYear = newYearStr.trim();
 
             if (state.reports[newYear]) {
-                alert(`Year ${newYear} already exists!`);
+                window.notify(`Year ${newYear} already exists!`, 'warn');
                 return;
             }
 
@@ -1968,16 +1968,16 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!newYearStr || !newYearStr.trim()) return null;
             const newYear = newYearStr.trim();
             if (cfg.yearsFrom === 'reports') {
-                alert('Add report years from the Planting Phase Record menu.');
+                window.notify('Add report years from the Planting Phase Record menu.', 'info');
                 return null;
             } else if (cfg.yearsFrom === 'rainfall') {
                 if (!state.rainfall) state.rainfall = {};
-                if (state.rainfall[newYear]) { alert(`Rainfall Record for ${newYear} already exists!`); return null; }
+                if (state.rainfall[newYear]) { window.notify(`Rainfall Record for ${newYear} already exists!`, 'warn'); return null; }
                 if (typeof createEmptyRainfallYear === 'function') state.rainfall[newYear] = createEmptyRainfallYear();
                 else state.rainfall[newYear] = {};
             } else if (cfg.yearsFrom === 'ffbBudget') {
                 if (!state.ffbBudget) state.ffbBudget = {};
-                if (state.ffbBudget[newYear]) { alert(`FFB Budget Year ${newYear} already exists!`); return null; }
+                if (state.ffbBudget[newYear]) { window.notify(`FFB Budget Year ${newYear} already exists!`, 'warn'); return null; }
                 const existing = Object.keys(state.ffbBudget).filter(k => /^\d{4}$/.test(k)).sort((a, b) => parseInt(a) - parseInt(b));
                 state.ffbBudget[newYear] = existing.length ? JSON.parse(JSON.stringify(state.ffbBudget[existing[existing.length - 1]])) : [];
             }
@@ -2555,7 +2555,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             const hash = `#view=${targetViewType}&year=${year}&month=${encodeURIComponent(selectedMonth)}`;
                             window.open(window.location.pathname + hash, '_blank');
                         } else {
-                            alert('Please select a month first.');
+                            window.notify('Please select a month first.', 'warn');
                         }
                     };
                     monthNavRow.appendChild(openTabBtn);
@@ -2621,7 +2621,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const newYear = newYearStr.trim();
 
                     if (state.ffbBudget && state.ffbBudget[newYear]) {
-                        alert(`FFB Budget Year ${newYear} already exists!`);
+                        window.notify(`FFB Budget Year ${newYear} already exists!`, 'warn');
                         return;
                     }
 
@@ -2703,7 +2703,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const newYear = newYearStr.trim();
 
                     if (state.rainfall && state.rainfall[newYear]) {
-                        alert(`Rainfall Record for ${newYear} already exists!`);
+                        window.notify(`Rainfall Record for ${newYear} already exists!`, 'warn');
                         return;
                     }
 
@@ -3385,7 +3385,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         const blockToTransfer = blocks.find(b => b.block_id === blockId.trim());
                         if (!blockToTransfer) {
-                            alert(`Block '${blockId}' not found in Year ${year}. Cannot transfer block.`);
+                            window.notify(`Block '${blockId}' not found in Year ${year}. Cannot transfer block.`, 'error');
                             return;
                         }
 
@@ -4237,7 +4237,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const blockId = blockInput ? blockInput.value.trim() : "";
 
                         if (!phase || !blockId) {
-                            alert("Phase and Block ID are required.");
+                            window.notify("Phase and Block ID are required.", 'warn');
                             return false; // don't close modal
                         }
 
@@ -4475,7 +4475,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         }, 100);
                     } catch (error) {
                         console.error("Download error:", error);
-                        alert("Failed to download " + filename + ". " + error.message);
+                        window.notify("Failed to download " + filename + ". " + error.message, 'error');
                     }
                 };
 
@@ -4547,7 +4547,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (typeof downloadSprayingTemplate === 'function') {
                             downloadSprayingTemplate(year);
                         } else {
-                            alert('Spraying template function not loaded yet.');
+                            window.notify('Spraying template function not loaded yet.', 'error');
                         }
                     });
                 }
@@ -4560,7 +4560,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (typeof window._manuringDownloadTemplate === 'function') {
                             window._manuringDownloadTemplate();
                         } else {
-                            alert('Manuring template function not loaded yet.');
+                            window.notify('Manuring template function not loaded yet.', 'error');
                         }
                     });
                 }
@@ -4578,7 +4578,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (typeof downloadIronHorseTemplate === 'function') {
                             downloadIronHorseTemplate(year, month);
                         } else {
-                            alert('Iron Horse template function not loaded yet.');
+                            window.notify('Iron Horse template function not loaded yet.', 'error');
                         }
                     });
                 }
@@ -4601,7 +4601,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (typeof importSprayingFromExcel === 'function') {
                             importSprayingFromExcel(file, year);
                         } else {
-                            alert('Spraying import function not loaded yet.');
+                            window.notify('Spraying import function not loaded yet.', 'error');
                         }
                     };
                 }
@@ -4620,7 +4620,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (typeof window._manuringImportExcel === 'function') {
                             window._manuringImportExcel(file);
                         } else {
-                            alert('Manuring import function not loaded yet.');
+                            window.notify('Manuring import function not loaded yet.', 'error');
                         }
                     };
                 }
@@ -4657,10 +4657,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                 const restored = JSON.parse(ev.target.result);
                                 window.state = restored;
                                 await saveState(false);
-                                alert('Backup restored successfully! The page will now reload.');
-                                location.reload();
+                                window.notify('Backup restored successfully! The page will now reload.', 'success');
+                                setTimeout(() => location.reload(), 1200);
                             } catch (err) {
-                                alert('Failed to restore backup: ' + err.message);
+                                window.notify('Failed to restore backup: ' + err.message, 'error');
                             }
                         };
                         reader.readAsText(file);

@@ -72,7 +72,7 @@ Work in phases, one commit each, so the app stays working at every step.
 See **CLAUDE.md → "Enhancement roadmap"** for technical notes per phase.
 
 1. ~~**Unsaved-changes warning + Save indicator**~~ ✅ done
-2. **Replace ~98 `alert()` calls with toasts** (medium, mechanical) — use the `window.notify(msg, type)` API from `ui_enhancements.js`
+2. ~~**Replace ~98 `alert()` calls with toasts**~~ ✅ done
 3. **Firebase security rules** (small to write, deploy in Firebase console) — permissions are currently client-side only; anyone logged in can write via the browser console
 4. **PWA / offline support** (medium) — service worker caching app shell + CDN libs; Firebase offline persistence + pending-sync badge (field users have patchy signal)
 5. **Undo for deletes** (medium) — 5-second "Deleted — Undo" toast instead of permanent immediate deletion

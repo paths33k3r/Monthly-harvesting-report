@@ -134,8 +134,8 @@ const ihShowGangAssignModal = (assetNo, yearStr, onConfirm, prefill = null) => {
         const from   = document.getElementById('ih-gang-from').value.trim();
         const to     = document.getElementById('ih-gang-to').value.trim() || null;
         const remark = document.getElementById('ih-gang-remark').value.trim();
-        if (!gang) { alert('Please select a gang.'); return; }
-        if (!from) { alert('Please enter a from date.'); return; }
+        if (!gang) { window.notify('Please select a gang.', 'warn'); return; }
+        if (!from) { window.notify('Please enter a from date.', 'warn'); return; }
         overlay.remove();
         onConfirm({ gang, from, to, remark });
     };
@@ -261,7 +261,7 @@ const renderIronHorseAssets = () => {
         const newY = prompt('Enter year (e.g. 2027):', String(parseInt(latest) + 1));
         if (!newY || !newY.trim()) return;
         const ny = newY.trim();
-        if (window.state.ironHorse.assets[ny]) { alert(`Year ${ny} already exists.`); return; }
+        if (window.state.ironHorse.assets[ny]) { window.notify(`Year ${ny} already exists.`, 'warn'); return; }
         window.state.ironHorse.assets[ny] = getDefaultIronHorseAssets();
         window.state.ihAssetsYear = ny;
         saveIronHorseData(); renderIronHorseAssets();
@@ -603,7 +603,7 @@ const renderIronHorseExpenses = () => {
         const newY = prompt('Enter year:', String(parseInt(latest) + 1));
         if (!newY || !newY.trim()) return;
         const ny = newY.trim();
-        if (window.state.ironHorse.expenses[ny]) { alert(`Year ${ny} already exists.`); return; }
+        if (window.state.ironHorse.expenses[ny]) { window.notify(`Year ${ny} already exists.`, 'warn'); return; }
         window.state.ironHorse.expenses[ny] = { extraCategories: [], months: {} };
         window.state.ihExpensesYear = ny;
         saveIronHorseData(); renderIronHorseExpenses();
@@ -630,9 +630,9 @@ const renderIronHorseExpenses = () => {
         if (!name || !name.trim()) return;
         const norm = ihNormalizeHeader(name);
         if (!norm) return;
-        if (IH_CATS.includes(norm)) { alert(`"${norm}" is already a base category.`); return; }
+        if (IH_CATS.includes(norm)) { window.notify(`"${norm}" is already a base category.`, 'warn'); return; }
         const yd = ihEnsureExpenseYear(yearStr);
-        if (yd.extraCategories.includes(norm)) { alert(`"${norm}" already exists for ${yearStr}.`); return; }
+        if (yd.extraCategories.includes(norm)) { window.notify(`"${norm}" already exists for ${yearStr}.`, 'warn'); return; }
         yd.extraCategories.push(norm);
         saveIronHorseData(); renderIronHorseExpenses();
     };
@@ -650,7 +650,7 @@ const renderIronHorseExpenses = () => {
             const choice = prompt(`Remove which category from ${yearStr}?\n\n${list}\n\nEnter number:`);
             if (!choice) return;
             const idx = parseInt(choice) - 1;
-            if (isNaN(idx) || idx < 0 || idx >= yearExtras.length) { alert('Invalid selection.'); return; }
+            if (isNaN(idx) || idx < 0 || idx >= yearExtras.length) { window.notify('Invalid selection.', 'error'); return; }
             const removed = yearExtras[idx];
             if (!confirm(`Remove "${removed}" from year ${yearStr}?\nAll data for this category will be deleted.`)) return;
             const yd = ihEnsureExpenseYear(yearStr);
@@ -805,17 +805,17 @@ const renderIronHorseExpenses = () => {
 // ─────────────────────────────────────────────────────────────────────
 const saveIronHorseData = (silent = true) => {
     if (!window._ironHorseDb) {
-        if (!silent) alert('Not connected. Please login first.');
+        if (!silent) window.notify('Not connected. Please login first.', 'warn');
         return;
     }
     window._ironHorseDb.ref('shared/ironhorse_data').set(JSON.stringify(window.state.ironHorse))
         .then(() => {
             if (!silent) {
-                alert('Iron Horse data saved!');
+                window.notify('Iron Horse data saved!', 'success');
                 if (typeof window.logAudit === 'function') window.logAudit('save', 'ironhorse', 'Iron Horse data', '');
             }
         })
-        .catch(e => { console.error('Iron Horse save error:', e); if (!silent) alert('Error: ' + e.message); });
+        .catch(e => { console.error('Iron Horse save error:', e); if (!silent) window.notify('Error: ' + e.message, 'error'); });
 };
 
 // ─────────────────────────────────────────────────────────────────────
@@ -949,7 +949,7 @@ async function downloadIronHorseTemplate(yearStr, monthStr) {
         setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
     } catch (err) {
         console.error('Iron Horse template error:', err);
-        alert('Template error: ' + err.message);
+        window.notify('Template error: ' + err.message, 'error');
     }
 }
 
@@ -974,7 +974,7 @@ async function importIronHorseExpenses(file, yearStr, monthStr) {
         const wb = new window.ExcelJS.Workbook();
         await wb.xlsx.load(await file.arrayBuffer());
         const ws = wb.worksheets[0];
-        if (!ws) { alert('No worksheet found.'); return; }
+        if (!ws) { window.notify('No worksheet found.', 'error'); return; }
 
         // Locate the header row: first row whose first cell contains ASSET/ROW/LABEL
         let headerRowIdx = 0;
@@ -988,7 +988,7 @@ async function importIronHorseExpenses(file, yearStr, monthStr) {
             }
         });
 
-        if (headerRowIdx === 0) { alert('Could not find header row. The first column must be "Asset No" or "Row Labels".'); return; }
+        if (headerRowIdx === 0) { window.notify('Could not find header row. The first column must be "Asset No" or "Row Labels".', 'error'); return; }
 
         // Ensure year structure exists
         const yd = ihEnsureExpenseYear(yearStr);
@@ -1052,7 +1052,7 @@ async function importIronHorseExpenses(file, yearStr, monthStr) {
         });
 
         const count = Object.keys(monthData).length;
-        if (count === 0) { alert('No valid asset rows found (rows must start with GT…). Check file format.'); return; }
+        if (count === 0) { window.notify('No valid asset rows found (rows must start with GT…). Check file format.', 'error'); return; }
 
         yd.months[monthStr] = monthData;
         window.state.ihExpensesYear = yearStr;
@@ -1065,10 +1065,10 @@ async function importIronHorseExpenses(file, yearStr, monthStr) {
         let msg = `Imported ${count} asset rows for ${monthStr} ${yearStr}.`;
         if (addedExtras.length) msg += `\nNew categories added: ${addedExtras.join(', ')}.`;
         if (skippedExtras.length) msg += `\nSkipped columns: ${skippedExtras.join(', ')}.`;
-        alert(msg);
+        window.notify(msg, 'success');
     } catch (err) {
         console.error('Iron Horse import error:', err);
-        alert('Import error: ' + err.message);
+        window.notify('Import error: ' + err.message, 'error');
     }
 }
 

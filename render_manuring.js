@@ -413,7 +413,7 @@
     if (!window.state) return;
     if (!window.state.manuring) window.state.manuring = {};
     if (window.state.manuring[y]) {
-      alert(`Year ${y} already exists.`);
+      window.notify(`Year ${y} already exists.`, 'warn');
       return;
     }
     window.state.manuring[y] = createBlankYear();
@@ -500,7 +500,7 @@
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      alert('Error generating template: ' + err.message);
+      window.notify('Error generating template: ' + err.message, 'error');
     }
   };
 
@@ -514,7 +514,7 @@
       await wb.xlsx.load(await file.arrayBuffer());
 
       const ws = wb.getWorksheet('Manuring Data') || wb.worksheets[0];
-      if (!ws) { alert('No worksheet found in file.'); return; }
+      if (!ws) { window.notify('No worksheet found in file.', 'error'); return; }
 
       const data = getManuringData();
       if (!data[currentYear]) {
@@ -564,9 +564,9 @@
       window.state.manuring = data;
       saveManuringToFirebase();
       renderManuring();
-      alert(`Import complete: ${updated} rows updated, ${skipped} skipped.`);
+      window.notify(`Import complete: ${updated} rows updated, ${skipped} skipped.`, 'success');
     } catch (err) {
-      alert('Import error: ' + err.message);
+      window.notify('Import error: ' + err.message, 'error');
     }
   };
 
@@ -931,7 +931,7 @@
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch(e) {
-      alert('Failed to generate Excel: ' + e.message);
+      window.notify('Failed to generate Excel: ' + e.message, 'error');
       console.error(e);
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = '⬇ Download Excel'; }

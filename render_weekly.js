@@ -107,17 +107,17 @@ const wkBlockOptions = () => {
 // ─────────────────────────────────────────────────────────────────────
 const saveWeeklyActivityData = (silent = true) => {
     if (!window._weeklyDb) {
-        if (!silent) alert('Not connected. Please login first.');
+        if (!silent) window.notify('Not connected. Please login first.', 'warn');
         return Promise.resolve();
     }
     return window._weeklyDb.ref('shared/weekly_activity_data').set(JSON.stringify(window.state.weekly))
         .then(() => {
             if (!silent) {
-                alert('Weekly Activity saved!');
+                window.notify('Weekly Activity saved!', 'success');
                 if (typeof window.logAudit === 'function') window.logAudit('save', 'weekly', 'Weekly Activity', '');
             }
         })
-        .catch(e => { console.error('Weekly Activity save error:', e); if (!silent) alert('Error: ' + e.message); });
+        .catch(e => { console.error('Weekly Activity save error:', e); if (!silent) window.notify('Error: ' + e.message, 'error'); });
 };
 
 // ─────────────────────────────────────────────────────────────────────
@@ -460,7 +460,7 @@ const wkDocImgType = (mime, url) => {
 
 const downloadWeeklyActivityDoc = async (yearStr, weekId) => {
     const week = wkFindWeek(yearStr, weekId);
-    if (!week) { alert('Week not found.'); return; }
+    if (!week) { window.notify('Week not found.', 'error'); return; }
     try {
         await wkEnsureDocx();
         const D = window.docx;
@@ -558,7 +558,7 @@ const downloadWeeklyActivityDoc = async (yearStr, weekId) => {
         if (typeof window.logAudit === 'function') window.logAudit('export', 'weekly', fname, '');
     } catch (e) {
         console.error('Weekly Word export failed:', e);
-        alert('Could not generate the Word document: ' + e.message);
+        window.notify('Could not generate the Word document: ' + e.message, 'error');
     }
 };
 
@@ -653,7 +653,7 @@ const renderWeeklyActivity = () => {
             const latest = wkYears().pop() || yearStr;
             const ny = (prompt('Enter year (e.g. 2027):', String(parseInt(latest) + 1)) || '').trim();
             if (!ny) return;
-            if (wkEnsure()[ny]) { alert(`Year ${ny} already exists.`); return; }
+            if (wkEnsure()[ny]) { window.notify(`Year ${ny} already exists.`, 'warn'); return; }
             wkEnsureYear(ny); window.state.weeklyYear = ny; window.state.weeklyWeekId = null;
             saveWeeklyActivityData(); renderWeeklyActivity();
         };
@@ -867,7 +867,7 @@ const wkRenderWeekEditor = (host, yearStr, week) => {
                 wkRenderWeekEditor(host, yearStr, week);
             } catch (e) {
                 console.error(e);
-                alert('Could not generate the map image: ' + e.message + '\n\nTip: make sure the map has finished loading, then try again — or use "Upload screenshot" to add your own Google Maps image.');
+                window.notify('Could not generate the map image: ' + e.message + '\n\nTip: make sure the map has finished loading, then try again — or use "Upload screenshot" to add your own Google Maps image.', 'error');
                 btnGen.disabled = false; btnGen.innerHTML = '📸 Generate map image';
             }
         };
@@ -889,7 +889,7 @@ const wkRenderWeekEditor = (host, yearStr, week) => {
                 saveWeeklyActivityData(); wkRenderWeekEditor(host, yearStr, week);
             } catch (e) {
                 console.error(e); upLbl.innerHTML = prevLbl; upLbl.appendChild(upInput);
-                alert('Could not save the image: ' + e.message + '\n\nCheck your connection and that you are logged in, then try again.');
+                window.notify('Could not save the image: ' + e.message + '\n\nCheck your connection and that you are logged in, then try again.', 'error');
             }
         };
         upLbl.appendChild(upInput);
@@ -1032,7 +1032,7 @@ const wkRenderObservations = (yearStr, week, host) => {
                     saveWeeklyActivityData(); wkRenderWeekEditor(host, yearStr, week);
                 } catch (e) {
                     console.error(e); photoLbl.textContent = prev;
-                    alert('Could not save the photo: ' + e.message + '\n\nCheck your connection and that you are logged in, then try again.');
+                    window.notify('Could not save the photo: ' + e.message + '\n\nCheck your connection and that you are logged in, then try again.', 'error');
                 }
             };
             photoLbl.appendChild(photoInput);
