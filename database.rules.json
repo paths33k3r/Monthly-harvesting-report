@@ -1,0 +1,85 @@
+{
+  // Firebase Realtime Database security rules — AntiGravity Harvesting Report.
+  //
+  // Deploy: Firebase console → Realtime Database → Rules → paste this file →
+  // Publish. (The console editor accepts these // comments.)
+  //
+  // Role data lives at user_roles/<uid>:
+  //   { role: 'admin'|'user', allowedMenus, editableMenus, editableMenusMap,
+  //     firstLogin, email, createdAt }
+  // editableMenus is an array (rules can't test array membership), so the app
+  // also writes editableMenusMap: { ffbBudget:true, maintenance:true, ... }.
+  // NOTE: users created before editableMenusMap existed have no map — an admin
+  // must re-save their permissions once (User Management → Edit → Save) or
+  // their writes will be denied after these rules go live.
+  //
+  // 'dataManagement' is treated as full data-write permission because its
+  // Restore feature rewrites every shared/* section.
+  "rules": {
+    // everything not matched below is denied by default
+
+    "user_roles": {
+      // any signed-in user may read (the app reads its own record at login and
+      // checks whether user_roles is empty for the first-user bootstrap)
+      ".read": "auth != null",
+
+      "$uid": {
+        // writes allowed for:
+        //  1. admins (User Management create/edit/delete)
+        //  2. the first-ever user bootstrapping their own admin record while
+        //     user_roles is still empty (loadUserRole in script.js)
+        //  3. a signed-in user creating their own DEFAULT record — role 'user'
+        //     and no menu grants — when no record exists yet
+        ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || (auth.uid === $uid && !root.child('user_roles').exists()) || (auth.uid === $uid && !data.exists() && newData.child('role').val() === 'user' && !newData.child('allowedMenus').exists() && !newData.child('editableMenus').exists() && !newData.child('editableMenusMap').exists()))",
+
+        // a user may clear their own first-login flag after changing password
+        "firstLogin": {
+          ".write": "auth != null && auth.uid === $uid && newData.val() === false"
+        }
+      }
+    },
+
+    "shared": {
+      ".read": "auth != null",
+
+      // main app state: planting record, gangs, harvesting performance,
+      // rainfall, FFB budget — written by saveState()
+      "app_state": {
+        ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('ffbBudget').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('planting').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('gangs').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('performance').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('rainfall').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+      },
+
+      // Spraying, Manuring and the Maintenance module all sit under the
+      // 'maintenance' menu key
+      "spraying_data": {
+        ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('maintenance').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+      },
+      "manuring_data": {
+        ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('maintenance').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+      },
+      "maintenance_data": {
+        ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('maintenance').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+      },
+
+      "ironhorse_data": {
+        ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('ironhorse').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+      },
+
+      // Weekly Activity record + its photo/map images (stored as data URLs)
+      "weekly_activity_data": {
+        ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('weekly').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+      },
+      "weekly_images": {
+        ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('weekly').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+      },
+
+      // every signed-in user logs their own actions
+      "audit_log": {
+        ".write": "auth != null"
+      },
+
+      "backup_settings": {
+        ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+      }
+    }
+  }
+}

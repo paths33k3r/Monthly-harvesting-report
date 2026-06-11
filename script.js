@@ -263,6 +263,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
+        // editableMenus is an array, which DB security rules can't test for
+        // membership — mirror it as a {key:true} map the rules can check
+        const menusToMap = (arr) => {
+            const m = {};
+            if (Array.isArray(arr)) arr.forEach(k => { m[k] = true; });
+            return m;
+        };
+
         // ── Edit-permission helpers ─────────────────────────────────────
         window._canEdit = (menuKey) => {
             if (!currentUserRole) return false;
@@ -1035,7 +1043,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const allowedMenus  = newRole === 'admin' ? 'all' : checkedMenus;
                 const editPerms     = newRole === 'admin' ? 'all' : editableMenus;
                 try {
-                    await db.ref('user_roles/' + uid).update({ role: newRole, allowedMenus, editableMenus: editPerms });
+                    await db.ref('user_roles/' + uid).update({ role: newRole, allowedMenus, editableMenus: editPerms, editableMenusMap: menusToMap(editableMenus) });
                     overlay.remove();
                     if (onSaved) onSaved();
                 } catch (e) {
@@ -1074,6 +1082,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         role: roleVal,
                         allowedMenus,
                         editableMenus,
+                        editableMenusMap: menusToMap(checkedEditMenus),
                         firstLogin: true,
                         createdAt: Date.now()
                     });

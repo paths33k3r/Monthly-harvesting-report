@@ -310,16 +310,20 @@ All 98 alerts replaced (success → 'success', failures → 'error', validation 
 `confirm()`/`prompt()` dialogs kept. The two "Backup restored — will reload" sites now delay
 `location.reload()` by 1.2 s so the toast is visible (alert used to block before reloading).
 
-### Phase 3 — Firebase Realtime DB security rules (write rules file + USER deploys in console) ← NEXT
-Today: enforcement is client-side only (`_canEdit`); any authenticated user can write via console.
-Data layout: `shared/*` (see paths above, plus `shared/audit_log`, `shared/backup_settings`,
-`shared/weekly_images/<year>/<weekId>/<id>`), `user_roles/<uid>` = `{ role: 'admin'|'user',
-allowedMenus, editableMenus, firstLogin }`. Rules sketch: reads require auth; `user_roles` writes
-admin-only (mind the first-ever-user bootstrap in `loadUserRole`, script.js ~210 — it writes its
-own role record when `user_roles` is empty); `shared/*` writes require matching `editableMenus`
-entry or admin role.
+### Phase 3 — Firebase Realtime DB security rules ✅ RULES WRITTEN — USER MUST DEPLOY
+`database.rules.json` written; **not active until pasted into Firebase console → Realtime
+Database → Rules → Publish** (the console editor accepts the `//` comments).
+- Rules can't test array membership, so the app now also writes
+  `user_roles/<uid>/editableMenusMap = {key:true,...}` alongside `editableMenus`
+  (`menusToMap` in script.js; written by User Management create + edit).
+- **Migration:** users created before this change have no `editableMenusMap` — after the rules
+  go live an admin must re-save each existing user's permissions once (User Management → ✏ → Save).
+- `dataManagement` grants write to ALL `shared/*` paths (its Restore rewrites every section).
+- `user_roles` writes: admin, the first-ever-user bootstrap (only while `user_roles` is empty),
+  or a user creating their own zero-permission default record; `firstLogin` self-clearable to false.
+- `shared/audit_log` writable by any signed-in user; reads of everything require auth.
 
-### Phase 4 — PWA/offline: service worker caches app shell + CDN libs (ExcelJS, JSZip, Leaflet,
+### Phase 4 ← NEXT — PWA/offline: service worker caches app shell + CDN libs (ExcelJS, JSZip, Leaflet,
 Chart.js, docx); Firebase offline persistence; visible pending-sync indicator.
 ### Phase 5 — Undo for deletes: 5s "Deleted — Undo" toast before committing the removal.
 ### Phase 6 — PDF export per report (print CSS already produces clean Ctrl+P output).
