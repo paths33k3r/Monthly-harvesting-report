@@ -76,7 +76,7 @@ See **CLAUDE.md → "Enhancement roadmap"** for technical notes per phase.
 3. ~~**Firebase security rules**~~ ✅ written (`database.rules.json`) — **NOT ACTIVE until deployed**: paste into Firebase console → Realtime Database → Rules → Publish, then re-save each pre-existing user's permissions once in User Management
 4. ~~**PWA / offline support**~~ ✅ done — `sw.js` caches the app shell + CDN libs; "📡 offline" badge + reconnect toast (note: reloading while offline loses unsynced edits — keep the page open)
 5. ~~**Undo for deletes**~~ ✅ done — row/item deletes (work-log entries, gangs, assets, blocks, observations) show a 5-second "Deleted — Undo" toast; destructive bulk actions still ask for confirmation
-6. **PDF export buttons** (medium) — print stylesheet already produces clean Ctrl+P output; add per-report export
+6. ~~**PDF export buttons**~~ ✅ done — header 🖨️ PDF button prints the current view with a clean layout and a sensible PDF filename
 7. **Dashboard alerts** (medium) — e.g. "Block X not harvested in 21 days" derived from interval data
 8. **Dark mode** (large) — many render files hardcode inline colors; needs care
 9. **Split `script.js` (~291 KB) into modules** (large, riskiest — do alone with nothing else in flight)

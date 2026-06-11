@@ -528,6 +528,45 @@
     }
 
     /* ----------------------------------------------------------
+       Print / save-as-PDF (roadmap Phase 6)
+       The print stylesheet already strips chrome and outputs just
+       the report — this button names the document after the
+       current view (becomes the suggested PDF filename) and opens
+       the browser print dialog ("Save as PDF" destination).
+    ---------------------------------------------------------- */
+    function currentViewTitle() {
+        const wrappers = document.querySelectorAll('main .report-wrapper, main [id$="-wrapper"]');
+        for (const w of wrappers) {
+            if (w.classList.contains('hidden') || w.style.display === 'none') continue;
+            if (!w.offsetParent && w.offsetWidth === 0) continue;
+            const h = w.querySelector('h1, h2, h3');
+            if (h && h.textContent.trim()) return h.textContent.trim();
+        }
+        return 'Harvesting Report';
+    }
+
+    function initPrintButton() {
+        const right = document.querySelector('.header-right');
+        if (!right || document.getElementById('print-pdf-btn')) return;
+        const btn = document.createElement('button');
+        btn.id = 'print-pdf-btn';
+        btn.title = 'Print or save the current view as PDF (Ctrl+P)';
+        btn.innerHTML = '<span>🖨️</span><span class="ppb-label">PDF</span>';
+        btn.addEventListener('click', () => {
+            const oldTitle = document.title;
+            const d = new Date();
+            const stamp = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            document.title = currentViewTitle().replace(/[\\/:*?"<>|]/g, '-') + ' — ' + stamp;
+            const restore = () => { document.title = oldTitle; window.removeEventListener('afterprint', restore); };
+            window.addEventListener('afterprint', restore);
+            setTimeout(restore, 60000); // safety net if afterprint never fires
+            window.print();
+        });
+        const search = document.getElementById('global-search-btn');
+        right.insertBefore(btn, search ? search.nextSibling : right.firstChild);
+    }
+
+    /* ----------------------------------------------------------
        Offline support (roadmap Phase 4)
        - registers sw.js (app shell + CDN libs cached for offline)
        - "📡 offline" header badge + reconnect toast. The RTDB web
@@ -598,6 +637,7 @@
         replayDeepLink();
         initDirtyTracking();
         initOffline();
+        initPrintButton();
     }
 
     if (document.readyState === 'loading') {

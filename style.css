@@ -1200,6 +1200,27 @@ select.edit-input:focus {
     color: var(--accent);
 }
 
+/* ---------- print/PDF button ---------- */
+#print-pdf-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    border-radius: 8px;
+    padding: 0.45rem 0.8rem;
+    font-family: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+}
+
+#print-pdf-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
 /* ---------- sidebar quick filter ---------- */
 .nav-filter-wrap {
     padding: 6px 10px 0;
@@ -1363,7 +1384,8 @@ select.edit-input:focus {
     .kpi-grid { grid-template-columns: 1fr 1fr; }
     .quick-grid { grid-template-columns: 1fr; }
     #global-search-btn kbd,
-    #global-search-btn .gsb-label { display: none; }
+    #global-search-btn .gsb-label,
+    #print-pdf-btn .ppb-label { display: none; }
 }
 
 /* ---------- unsaved-changes badge ---------- */

@@ -340,8 +340,11 @@ assignment, spraying block, FFB Budget block, weekly observation (photo bytes pu
 onExpire so Undo keeps the photo). Kept confirm() (undo impossible/misleading): backup
 restore/delete, user delete, bulk delete, clear-all-year (spraying/manuring/performance),
 weekly week delete (images), harvesting gang remove (block reassignment).
-### Phase 6 — PDF export per report (print CSS already produces clean Ctrl+P output). ← NEXT
-### Phase 7 — Dashboard alerts (e.g. block overdue for harvest, from interval data).
+### Phase 6 — PDF export ✅ DONE
+Header "🖨️ PDF" button (`initPrintButton` in ui_enhancements.js): renames `document.title` to
+"<current view heading> — <date>" (becomes the suggested PDF filename), opens the browser print
+dialog (Save as PDF), restores the title on `afterprint`. Print CSS strips all chrome.
+### Phase 7 — Dashboard alerts (e.g. block overdue for harvest, from interval data). ← NEXT
 ### Phase 8 — Dark mode (hard: many hardcoded inline colors in render_*.js).
 ### Phase 9 — Split script.js (~291 KB) into modules. Do alone; riskiest.
 
