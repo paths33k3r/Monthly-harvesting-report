@@ -264,10 +264,16 @@ function renderMaintenanceGangs() {
         wrapper.querySelectorAll('.mnt-del-gang').forEach(btn => {
             btn.onclick = () => {
                 const gang = decodeURIComponent(btn.dataset.gang);
-                if (!confirm(`Delete gang "${gang}" for ${year}? This removes all its monthly rosters (work-log entries are kept).`)) return;
-                delete mntEnsureYear(year).gangs[gang];
+                const yd = mntEnsureYear(year);
+                const snapshot = yd.gangs[gang];
+                delete yd.gangs[gang];
                 saveMaintenanceData(true);
                 renderMaintenanceGangs();
+                window.notifyUndo(`Deleted gang "${gang}" (${year}).`, () => {
+                    mntEnsureYear(year).gangs[gang] = snapshot;
+                    saveMaintenanceData(true);
+                    renderMaintenanceGangs();
+                });
             };
         });
     }
@@ -481,10 +487,14 @@ function renderMaintenanceWorkLog() {
                 const idx = Number(btn.dataset.idx);
                 const e = yd.entries[idx];
                 if (!e) return;
-                if (!confirm(`Delete this entry (${e.gang} · ${e.activity} · Blk ${e.block})?`)) return;
                 yd.entries.splice(idx, 1);
                 saveMaintenanceData(true);
                 renderMaintenanceWorkLog();
+                window.notifyUndo(`Deleted entry (${e.gang} · ${e.activity} · Blk ${e.block}).`, () => {
+                    yd.entries.splice(Math.min(idx, yd.entries.length), 0, e);
+                    saveMaintenanceData(true);
+                    renderMaintenanceWorkLog();
+                });
             };
         });
     }

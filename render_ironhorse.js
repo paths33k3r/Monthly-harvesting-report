@@ -488,13 +488,16 @@ const renderIronHorseAssets = () => {
                 btnDelAssign.textContent = '✕';
                 btnDelAssign.title = 'Remove this assignment';
                 btnDelAssign.onclick = () => {
-                    if (!confirm(`Remove gang assignment "${g.gang}" for ${asset.assetNo}?`)) return;
                     const origIdx = asset.gangAssignments.findIndex(a => a.gang === g.gang && a.from === g.from);
-                    if (origIdx > -1) {
-                        if (typeof window.logAudit === 'function') window.logAudit('delete', 'ironhorse', `${asset.assetNo} gang assignment`, `Removed: ${g.gang} (${g.from}→${g.to})`);
-                        asset.gangAssignments.splice(origIdx, 1);
-                    }
+                    if (origIdx === -1) return;
+                    const snapshot = asset.gangAssignments[origIdx];
+                    if (typeof window.logAudit === 'function') window.logAudit('delete', 'ironhorse', `${asset.assetNo} gang assignment`, `Removed: ${g.gang} (${g.from}→${g.to})`);
+                    asset.gangAssignments.splice(origIdx, 1);
                     saveIronHorseData(); renderIronHorseAssets();
+                    window.notifyUndo(`Removed assignment "${g.gang}" from ${asset.assetNo}.`, () => {
+                        asset.gangAssignments.splice(Math.min(origIdx, asset.gangAssignments.length), 0, snapshot);
+                        saveIronHorseData(); renderIronHorseAssets();
+                    });
                 };
                 row.appendChild(btnDelAssign);
                 tdHist.appendChild(row);
@@ -525,14 +528,18 @@ const renderIronHorseAssets = () => {
         btnDel.style.cssText = 'padding:3px 10px; font-size:0.78rem; background:#dc2626; border-color:#dc2626; color:#fff; display:block; width:100%;';
         btnDel.textContent = '✕ Remove Asset';
         btnDel.onclick = () => {
-            if (!confirm(`Remove ${asset.assetNo} from year ${yearStr}?\nAll gang assignments for this asset will be lost.`)) return;
             const currentList = window.state.ironHorse.assets[yearStr];
             const idx = currentList.findIndex(a => a.assetNo === asset.assetNo);
-            if (idx > -1) {
-                if (typeof window.logAudit === 'function') window.logAudit('delete', 'ironhorse', `Asset ${asset.assetNo} — Year ${yearStr}`, 'Asset removed with all gang assignments');
-                currentList.splice(idx, 1);
+            if (idx === -1) return;
+            const snapshot = currentList[idx];
+            if (typeof window.logAudit === 'function') window.logAudit('delete', 'ironhorse', `Asset ${asset.assetNo} — Year ${yearStr}`, 'Asset removed with all gang assignments');
+            currentList.splice(idx, 1);
+            saveIronHorseData(); renderIronHorseAssets();
+            window.notifyUndo(`Removed ${asset.assetNo} from ${yearStr} (incl. its gang assignments).`, () => {
+                const list = window.state.ironHorse.assets[yearStr];
+                list.splice(Math.min(idx, list.length), 0, snapshot);
                 saveIronHorseData(); renderIronHorseAssets();
-            }
+            });
         };
         tdAct.appendChild(btnDel);
         tr.appendChild(tdAct);

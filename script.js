@@ -4319,12 +4319,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     e.stopPropagation();
                     const blockId = btn.dataset.blockId;
                     const phase = btn.dataset.phase;
-                    if (!confirm(`Delete block "${blockId}" (${phase}) from Year ${year}? This only affects ${year} and cannot be undone.`)) return;
                     // Remove only from the current year — other years are untouched
+                    const removed = state.ffbBudget[year].filter(
+                        r => r.block_id === blockId && r.phase === phase
+                    );
+                    if (!removed.length) return;
                     state.ffbBudget[year] = state.ffbBudget[year].filter(
                         r => !(r.block_id === blockId && r.phase === phase)
                     );
                     renderFfbBudgetTable();
+                    window.notifyUndo(`Deleted block "${blockId}" (${phase}) from ${year}.`, () => {
+                        state.ffbBudget[year] = state.ffbBudget[year].concat(removed);
+                        renderFfbBudgetTable();
+                    });
                 });
             });
         };

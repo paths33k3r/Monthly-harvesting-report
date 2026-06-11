@@ -1041,12 +1041,17 @@ const wkRenderObservations = (yearStr, week, host) => {
             const del = document.createElement('button');
             del.textContent = '🗑'; del.title = 'Delete observation';
             del.style.cssText = 'font-size:0.8rem; border:1px solid #ef4444; color:#ef4444; border-radius:6px; background:transparent; cursor:pointer; padding:0.25rem 0.45rem;';
-            del.onclick = async () => {
-                if (!confirm('Delete this observation?')) return;
-                await wkDeleteStorage(o.photoPath);
+            del.onclick = () => {
                 const i = week.observations.findIndex(x => x.id === o.id);
-                if (i >= 0) week.observations.splice(i, 1);
+                if (i < 0) return;
+                const snapshot = week.observations[i];
+                week.observations.splice(i, 1);
                 saveWeeklyActivityData(); wkRenderWeekEditor(host, yearStr, week);
+                // photo bytes are only purged once the undo window has passed
+                window.notifyUndo('Deleted observation.', () => {
+                    week.observations.splice(Math.min(i, week.observations.length), 0, snapshot);
+                    saveWeeklyActivityData(); wkRenderWeekEditor(host, yearStr, week);
+                }, 5000, () => { wkDeleteStorage(o.photoPath); });
             };
             actions.appendChild(del);
             card.appendChild(actions);

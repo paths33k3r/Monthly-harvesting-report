@@ -331,8 +331,16 @@ caches. Registered in ui_enhancements.js (`initOffline`), which also shows a red
 header badge + reconnect toasts (navigator online/offline). `manifest.json` added (no icons yet).
 NB: the RTDB **web** SDK has no disk persistence — queued offline writes flush on reconnect but
 are lost if the page reloads while offline; the badge tooltip warns to keep the page open.
-### Phase 5 — Undo for deletes: 5s "Deleted — Undo" toast before committing the removal. ← NEXT
-### Phase 6 — PDF export per report (print CSS already produces clean Ctrl+P output).
+### Phase 5 — Undo for deletes ✅ DONE
+`window.notifyUndo(msg, onUndo, duration=5000, onExpire?)` in ui_enhancements.js — delete sites
+remove + save immediately, then show a 5 s "Deleted — Undo" toast; Undo restores the snapshot and
+saves again; optional `onExpire` runs irreversible cleanup only after the window passes.
+Converted (confirm() removed): maintenance gang + work-log entry, Iron Horse asset + gang
+assignment, spraying block, FFB Budget block, weekly observation (photo bytes purged via
+onExpire so Undo keeps the photo). Kept confirm() (undo impossible/misleading): backup
+restore/delete, user delete, bulk delete, clear-all-year (spraying/manuring/performance),
+weekly week delete (images), harvesting gang remove (block reassignment).
+### Phase 6 — PDF export per report (print CSS already produces clean Ctrl+P output). ← NEXT
 ### Phase 7 — Dashboard alerts (e.g. block overdue for harvest, from interval data).
 ### Phase 8 — Dark mode (hard: many hardcoded inline colors in render_*.js).
 ### Phase 9 — Split script.js (~291 KB) into modules. Do alone; riskiest.

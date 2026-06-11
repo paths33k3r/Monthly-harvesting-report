@@ -1061,6 +1061,23 @@ select.edit-input:focus {
 .toast-error   { background: #7f1d1d; }
 .toast-warn    { background: #78350f; }
 
+.toast-undo { pointer-events: auto; }
+
+.toast-undo-btn {
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    border-radius: 7px;
+    padding: 4px 12px;
+    font-family: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.toast-undo-btn:hover { background: rgba(255, 255, 255, 0.25); }
+
 /* ---------- command palette ---------- */
 #cmd-palette-overlay {
     position: fixed;

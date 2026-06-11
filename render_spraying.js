@@ -425,10 +425,15 @@ const renderPhaseTable = (wrapper, phase, phaseIdx, yearStr, MONTHS, extraChemic
                 const btnDel = document.createElement('button');
                 btnDel.className = 'btn-icon delete'; btnDel.title = 'Delete Block'; btnDel.innerHTML = '🗑';
                 btnDel.onclick = () => {
-                    if (confirm(`Delete Block ${block.blockNo || blockIdx + 1}?`)) {
-                        window.state.spraying[yearStr].phases[phaseIdx].blocks.splice(blockIdx, 1);
+                    const blocks = window.state.spraying[yearStr].phases[phaseIdx].blocks;
+                    const snapshot = blocks[blockIdx];
+                    blocks.splice(blockIdx, 1);
+                    renderSprayingReport();
+                    window.notifyUndo(`Deleted Block ${block.blockNo || blockIdx + 1}.`, () => {
+                        const list = window.state.spraying[yearStr].phases[phaseIdx].blocks;
+                        list.splice(Math.min(blockIdx, list.length), 0, snapshot);
                         renderSprayingReport();
-                    }
+                    });
                 };
                 tdDel.appendChild(btnDel); tr.appendChild(tdDel);
             }

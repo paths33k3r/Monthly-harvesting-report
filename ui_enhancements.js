@@ -47,6 +47,49 @@
     };
 
     /* ----------------------------------------------------------
+       Undo toast (roadmap Phase 5) — window.notifyUndo(msg, onUndo)
+       Shows "msg [Undo]" for `duration` ms; clicking Undo runs the
+       callback (once) and dismisses. Delete sites call this AFTER
+       removing + saving; onUndo restores the snapshot + saves again.
+       Optional onExpire runs only if the user did NOT undo — for
+       irreversible cleanup deferred past the undo window (e.g.
+       deleting a stored photo).
+    ---------------------------------------------------------- */
+    window.notifyUndo = function (message, onUndo, duration = 5000, onExpire) {
+        const t = document.createElement('div');
+        t.className = 'toast toast-warn toast-undo';
+        const ico = document.createElement('span');
+        ico.className = 'toast-ico';
+        ico.textContent = '🗑️';
+        const msg = document.createElement('span');
+        msg.textContent = message;
+        const btn = document.createElement('button');
+        btn.className = 'toast-undo-btn';
+        btn.textContent = 'Undo';
+        t.append(ico, msg, btn);
+
+        let done = false;
+        const dismiss = () => {
+            t.classList.remove('toast-in');
+            setTimeout(() => t.remove(), 350);
+        };
+        btn.addEventListener('click', () => {
+            if (done) return;
+            done = true;
+            dismiss();
+            try { onUndo(); } catch (e) { console.error('undo failed:', e); }
+        });
+        ensureToastHost().appendChild(t);
+        requestAnimationFrame(() => t.classList.add('toast-in'));
+        setTimeout(() => {
+            if (done) return;
+            done = true;
+            dismiss();
+            if (onExpire) { try { onExpire(); } catch (e) { console.error('post-undo cleanup failed:', e); } }
+        }, duration);
+    };
+
+    /* ----------------------------------------------------------
        Command palette (Ctrl+K)
     ---------------------------------------------------------- */
     let paletteOverlay = null;
