@@ -74,7 +74,7 @@ See **CLAUDE.md → "Enhancement roadmap"** for technical notes per phase.
 1. ~~**Unsaved-changes warning + Save indicator**~~ ✅ done
 2. ~~**Replace ~98 `alert()` calls with toasts**~~ ✅ done
 3. ~~**Firebase security rules**~~ ✅ written (`database.rules.json`) — **NOT ACTIVE until deployed**: paste into Firebase console → Realtime Database → Rules → Publish, then re-save each pre-existing user's permissions once in User Management
-4. **PWA / offline support** (medium) — service worker caching app shell + CDN libs; Firebase offline persistence + pending-sync badge (field users have patchy signal)
+4. ~~**PWA / offline support**~~ ✅ done — `sw.js` caches the app shell + CDN libs; "📡 offline" badge + reconnect toast (note: reloading while offline loses unsynced edits — keep the page open)
 5. **Undo for deletes** (medium) — 5-second "Deleted — Undo" toast instead of permanent immediate deletion
 6. **PDF export buttons** (medium) — print stylesheet already produces clean Ctrl+P output; add per-report export
 7. **Dashboard alerts** (medium) — e.g. "Block X not harvested in 21 days" derived from interval data

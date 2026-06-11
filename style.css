@@ -1366,6 +1366,23 @@ select.edit-input:focus {
 
 #unsaved-badge.show { display: inline-flex; }
 
+/* ---------- offline badge ---------- */
+#offline-badge {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 0.35rem 0.7rem;
+    border-radius: 8px;
+    background: #fee2e2;
+    border: 1px solid #ef4444;
+    color: #991b1b;
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+#offline-badge.show { display: inline-flex; }
+
 /* ---------- print: clean report output ---------- */
 @media print {
     .sidebar,
@@ -1375,6 +1392,7 @@ select.edit-input:focus {
     #global-search-btn,
     #mobile-nav-btn,
     #unsaved-badge,
+    #offline-badge,
     #toast-host { display: none !important; }
 
     .app-layout { display: block; }

@@ -1,0 +1,9 @@
+{
+    "name": "AntiGravity Harvesting Report",
+    "short_name": "Harvesting",
+    "description": "Plantation harvesting performance dashboard and reports",
+    "start_url": "./index.html",
+    "display": "standalone",
+    "background_color": "#0f172a",
+    "theme_color": "#0f172a"
+}

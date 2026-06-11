@@ -323,9 +323,15 @@ Database → Rules → Publish** (the console editor accepts the `//` comments).
   or a user creating their own zero-permission default record; `firstLogin` self-clearable to false.
 - `shared/audit_log` writable by any signed-in user; reads of everything require auth.
 
-### Phase 4 ← NEXT — PWA/offline: service worker caches app shell + CDN libs (ExcelJS, JSZip, Leaflet,
-Chart.js, docx); Firebase offline persistence; visible pending-sync indicator.
-### Phase 5 — Undo for deletes: 5s "Deleted — Undo" toast before committing the removal.
+### Phase 4 — PWA/offline ✅ DONE
+`sw.js` service worker: network-first for same-origin (fresh `?v=` code when online, cached app
+shell + Excel templates offline), cache-first for CDN libs (jsdelivr/cdnjs/unpkg/gstatic/fonts);
+Firebase DB/Auth traffic and Esri tiles are never intercepted. Bump `VERSION` in sw.js to flush
+caches. Registered in ui_enhancements.js (`initOffline`), which also shows a red "📡 offline"
+header badge + reconnect toasts (navigator online/offline). `manifest.json` added (no icons yet).
+NB: the RTDB **web** SDK has no disk persistence — queued offline writes flush on reconnect but
+are lost if the page reloads while offline; the badge tooltip warns to keep the page open.
+### Phase 5 — Undo for deletes: 5s "Deleted — Undo" toast before committing the removal. ← NEXT
 ### Phase 6 — PDF export per report (print CSS already produces clean Ctrl+P output).
 ### Phase 7 — Dashboard alerts (e.g. block overdue for harvest, from interval data).
 ### Phase 8 — Dark mode (hard: many hardcoded inline colors in render_*.js).

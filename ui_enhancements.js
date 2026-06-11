@@ -485,6 +485,41 @@
     }
 
     /* ----------------------------------------------------------
+       Offline support (roadmap Phase 4)
+       - registers sw.js (app shell + CDN libs cached for offline)
+       - "📡 offline" header badge + reconnect toast. The RTDB web
+         SDK queues writes in memory and flushes them on reconnect,
+         but a reload while offline loses queued writes — hence the
+         badge warns to stay on the page.
+    ---------------------------------------------------------- */
+    function initOffline() {
+        if ('serviceWorker' in navigator &&
+            (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+            navigator.serviceWorker.register('sw.js').catch(() => { /* offline support is best-effort */ });
+        }
+
+        let badge = document.getElementById('offline-badge');
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.id = 'offline-badge';
+            badge.title = 'No connection — keep this page open; changes sync when you are back online';
+            badge.textContent = '📡 offline';
+            const right = document.querySelector('.header-right');
+            if (right) right.insertBefore(badge, right.firstChild);
+        }
+        const update = () => badge.classList.toggle('show', !navigator.onLine);
+        window.addEventListener('online', () => {
+            update();
+            window.notify('Back online — changes are syncing.', 'success');
+        });
+        window.addEventListener('offline', () => {
+            update();
+            window.notify('You are offline. Keep this page open — edits will sync when the connection returns.', 'warn', 5000);
+        });
+        update();
+    }
+
+    /* ----------------------------------------------------------
        Global key bindings
     ---------------------------------------------------------- */
     document.addEventListener('keydown', (e) => {
@@ -519,6 +554,7 @@
         initDeepLinks();
         replayDeepLink();
         initDirtyTracking();
+        initOffline();
     }
 
     if (document.readyState === 'loading') {
