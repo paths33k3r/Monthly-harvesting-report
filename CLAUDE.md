@@ -361,7 +361,21 @@ head script reading `localStorage.theme`; toggled by the 🌙/☀️ header butt
 the dashboard charts. Printing always uses the light palette (`@media print` re-override).
 Known leftovers: semantic light tints (status chips/cells with inline dark text) stay light by
 design; the Rainfall sheet keeps its white "Excel paper" look on purpose.
-### Phase 9 — Split script.js (~291 KB) into modules. Do alone; riskiest. ← NEXT (needs its own session)
+### Phase 9 — Split script.js into modules. 🔶 IN PROGRESS (branch `2026-06-11_11-30-05`)
+Step 1 done (script.js 5259 → 4195 lines). Pattern: extract a contiguous closure section into a
+file that receives its dependencies explicitly and returns what the rest needs — no build step.
+- `app_boot.js` — login shell: Firebase init, login/logout, remember-me, idle timer. Sets
+  `window._fb = { auth, db }` and calls `window.runMainApplication()` after login.
+- `app_user_mgmt.js` — `window._initUserMgmt({auth, db})` → `{ loadUserRole,
+  applyRolePermissions, renderUserManagementPanel }`; still defines `window._canEdit/_applyReadOnly`.
+- script.js — `runMainApplication` (now `window.runMainApplication`), reads `window._fb` at start.
+  Load order in index.html: app_boot → app_user_mgmt → script.js. Deleted stale **unloaded**
+  `render_interval.js` (the live `renderIntervalTable` is inside script.js).
+- Verified: localhost boots with zero console errors; `_initUserMgmt` instantiates.
+**Next extraction candidates** (clean → messy): handleImportExcel/FFB import block (~1375–1690);
+renderSidebar (~2171–2747, calls every renderer — extract LAST along with init).
+The view renderers (renderTable/Performance/Interval/FfbBudget) share many closure locals
+(months, formatHA, recalculateTotals, DOM refs) — extract each WITH its helpers or pass a ctx.
 
 ---
 
