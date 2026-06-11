@@ -394,6 +394,97 @@
     }
 
     /* ----------------------------------------------------------
+       Unsaved-changes tracking (roadmap Phase 1)
+       - mark dirty on edits to .edit-input/.ha-input inside <main>
+       - clear on any Firebase write under /shared/ — several save
+         fns are module-local, so the reliable choke point is the
+         compat-SDK Reference prototype's set()
+       - "● unsaved" badge in the header + beforeunload guard
+       False-dirty is acceptable (one extra confirm); never block
+       a save path on this layer failing.
+    ---------------------------------------------------------- */
+    let dirty = false;
+
+    function ensureUnsavedBadge() {
+        let b = document.getElementById('unsaved-badge');
+        if (!b) {
+            b = document.createElement('span');
+            b.id = 'unsaved-badge';
+            b.title = 'You have edits that are not saved to the cloud yet';
+            b.textContent = '● unsaved';
+            const userInfo = document.getElementById('header-user-info');
+            const right = document.querySelector('.header-right');
+            if (userInfo && userInfo.parentElement === right) {
+                right.insertBefore(b, userInfo);
+            } else if (right) {
+                right.insertBefore(b, right.firstChild);
+            }
+        }
+        return b;
+    }
+
+    function setDirty(on) {
+        dirty = !!on;
+        const b = ensureUnsavedBadge();
+        if (b) b.classList.toggle('show', dirty);
+    }
+    window._markUnsaved = function () { setDirty(true); };
+
+    function patchFirebaseSet() {
+        try {
+            if (!window.firebase || !firebase.apps || !firebase.apps.length) return false;
+            const ref = firebase.database().ref('_ui_probe');
+            let proto = Object.getPrototypeOf(ref);
+            while (proto && !Object.prototype.hasOwnProperty.call(proto, 'set')) {
+                proto = Object.getPrototypeOf(proto);
+            }
+            if (!proto || proto._unsavedPatched) return true;
+            const origSet = proto.set;
+            proto.set = function (...args) {
+                const result = origSet.apply(this, args);
+                try {
+                    if (String(this.toString()).indexOf('/shared/') !== -1) {
+                        if (result && typeof result.then === 'function') {
+                            result.then(() => setDirty(false)).catch(() => { });
+                        } else {
+                            setDirty(false);
+                        }
+                    }
+                } catch (_) { /* never break a save */ }
+                return result;
+            };
+            proto._unsavedPatched = true;
+            return true;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function initDirtyTracking() {
+        document.addEventListener('input', (e) => {
+            const el = e.target;
+            if (!el || !el.matches || !el.matches('.edit-input, .ha-input')) return;
+            if (!el.closest('main')) return;
+            if (el.closest('#login-overlay, #forgot-pw-overlay, #first-login-overlay')) return;
+            setDirty(true);
+        }, true);
+
+        // firebase app may not be initialised yet — retry briefly
+        if (!patchFirebaseSet()) {
+            let tries = 0;
+            const timer = setInterval(() => {
+                if (patchFirebaseSet() || ++tries > 40) clearInterval(timer);
+            }, 250);
+        }
+
+        window.addEventListener('beforeunload', (e) => {
+            if (!dirty) return;
+            e.preventDefault();
+            e.returnValue = '';
+        });
+    }
+
+    /* ----------------------------------------------------------
        Global key bindings
     ---------------------------------------------------------- */
     document.addEventListener('keydown', (e) => {
@@ -427,6 +518,7 @@
         initTooltips();
         initDeepLinks();
         replayDeepLink();
+        initDirtyTracking();
     }
 
     if (document.readyState === 'loading') {

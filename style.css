@@ -1349,6 +1349,23 @@ select.edit-input:focus {
     #global-search-btn .gsb-label { display: none; }
 }
 
+/* ---------- unsaved-changes badge ---------- */
+#unsaved-badge {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 0.35rem 0.7rem;
+    border-radius: 8px;
+    background: #fef3c7;
+    border: 1px solid #f59e0b;
+    color: #92400e;
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+#unsaved-badge.show { display: inline-flex; }
+
 /* ---------- print: clean report output ---------- */
 @media print {
     .sidebar,
@@ -1357,6 +1374,7 @@ select.edit-input:focus {
     #scroll-top-btn,
     #global-search-btn,
     #mobile-nav-btn,
+    #unsaved-badge,
     #toast-host { display: none !important; }
 
     .app-layout { display: block; }

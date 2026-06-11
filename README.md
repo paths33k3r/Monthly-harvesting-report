@@ -64,13 +64,14 @@ python -m http.server 8001
 - [x] Historical monthly gang data preservation
 - [x] UI enhancement layer: Ctrl+K command palette, sidebar filter, mobile off-canvas nav, scroll-to-top, `?` shortcut help, `window.notify()` toast API, print stylesheet (`ui_enhancements.js`)
 - [x] "Open in New Tab" deep links — every sidebar view has a real `#nav=<sidebar-id>` URL; refresh restores the current view
+- [x] Unsaved-changes warning — "● unsaved" header badge + leave-page guard; clears on any cloud save
 - [ ] Print/Export to PDF reports
 
 ## 🔧 Planned Enhancements (prioritized — continue from here)
 Work in phases, one commit each, so the app stays working at every step.
 See **CLAUDE.md → "Enhancement roadmap"** for technical notes per phase.
 
-1. **Unsaved-changes warning + Save indicator** (small) — `beforeunload` guard + visible "unsaved" dot; investigation notes in CLAUDE.md
+1. ~~**Unsaved-changes warning + Save indicator**~~ ✅ done
 2. **Replace ~98 `alert()` calls with toasts** (medium, mechanical) — use the `window.notify(msg, type)` API from `ui_enhancements.js`
 3. **Firebase security rules** (small to write, deploy in Firebase console) — permissions are currently client-side only; anyone logged in can write via the browser console
 4. **PWA / offline support** (medium) — service worker caching app shell + CDN libs; Firebase offline persistence + pending-sync badge (field users have patchy signal)

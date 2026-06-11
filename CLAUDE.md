@@ -289,8 +289,12 @@ Companion file: `ui_enhancements.js` (self-contained UI layer; loaded last in in
 It already provides `window.notify(msg, type, ms)` toasts ('info'|'success'|'error'|'warn'),
 the Ctrl+K command palette, sidebar filter, mobile nav, and `#nav=<sidebar-id>` deep links.
 
-### Phase 1 — Unsaved-changes warning + Save indicator (small) ← NEXT
-Investigation notes (already verified):
+### Phase 1 — Unsaved-changes warning + Save indicator (small) ✅ DONE
+Implemented in ui_enhancements.js (`initDirtyTracking` + `patchFirebaseSet`): dirty flag set on
+`input` events on `.edit-input, .ha-input` inside `main`; cleared by patching the compat-SDK
+Reference prototype `set()` for any path containing `/shared/`; "● unsaved" badge before
+`#header-user-info` (CSS in style.css); `beforeunload` guard. `window._markUnsaved()` exposed
+for app code. Original investigation notes:
 - `saveState()` (script.js ~1131, `window.saveState`) writes `JSON.stringify(state)` → `shared/app_state`. Manual: global 💾 `#save-main-btn` and FFB `#save-ffb-btn`.
 - Module saves (mostly **silent autosaves** on each edit, so dirty-tracking must clear on them too):
   `window.saveMaintenanceData` → `shared/maintenance_data`; `window.saveWeeklyActivityData` → `shared/weekly_activity_data`; `saveIronHorseData` → `shared/ironhorse_data` (module-local const); `saveSprayingData` → `shared/spraying_data` (module-local); `saveManuringToFirebase` → `shared/manuring_data` (module-local).
@@ -301,7 +305,7 @@ Investigation notes (already verified):
 - False-dirty is acceptable (one extra confirm); false-clean = today's behavior, no regression.
 - Add `beforeunload` guard + an "● unsaved" badge near `#header-user-info`.
 
-### Phase 2 — Replace ~98 `alert()` calls with `window.notify` toasts (mechanical)
+### Phase 2 — Replace ~98 `alert()` calls with `window.notify` toasts (mechanical) ← NEXT
 Spread: script.js (43), render_ironhorse (16), render_spraying (12), render_maintenance (12),
 render_weekly (9), render_manuring (6). Keep `confirm()` dialogs — only replace notifications.
 Success messages → 'success', failures → 'error'. Bump each file's `?v=` in index.html.
