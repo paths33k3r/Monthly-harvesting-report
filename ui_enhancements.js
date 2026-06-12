@@ -634,6 +634,20 @@
        defaults (charts draw with fixed colors, so axis/legend
        text must be re-tinted and visible charts re-rendered).
     ---------------------------------------------------------- */
+    /* ----------------------------------------------------------
+       Chart tooltips on click, not hover — moving the cursor
+       across a chart no longer pops figures; click (or tap) a
+       point to see them, leave the chart to clear them.
+       Applies to every chart via Chart.js global defaults.
+    ---------------------------------------------------------- */
+    function initChartClickTooltips() {
+        if (typeof Chart === 'undefined') {
+            window.addEventListener('load', initChartClickTooltips, { once: true });
+            return;
+        }
+        Chart.defaults.events = ['click', 'mouseout', 'touchstart'];
+    }
+
     function applyChartTheme(dark) {
         if (typeof Chart === 'undefined') return;
         Chart.defaults.color = dark ? '#94a3b8' : '#666';
@@ -779,6 +793,7 @@
         initOffline();
         initPrintButton();
         initThemeToggle();
+        initChartClickTooltips();
     }
 
     if (document.readyState === 'loading') {
