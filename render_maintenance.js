@@ -655,17 +655,44 @@ function renderMaintenanceGantt() {
     const month = mntActiveMonth();
     const yd = mntEnsureYear(year);
 
-    // Activity filter chips
+    // Activity / gang / block filters
     const activeFilter = window.state.maintGanttFilter || '__all__';
-    const filterOpts = ['__all__', ...yd.activityTypes]
-        .map(a => `<option value="${a}" ${a === activeFilter ? 'selected' : ''}>${a === '__all__' ? 'All activities' : a}</option>`).join('');
+    const gangFilter   = window.state.maintGanttGang   || '__all__';
+    const blockFilter  = window.state.maintGanttBlock  || '__all__';
+
+    // options come from what was actually logged this year (plus the gang roster)
+    const gangSet = {};
+    Object.keys(yd.gangs || {}).forEach(g => gangSet[g] = 1);
+    const blockSet = {};
+    yd.entries.forEach(e => {
+        if (e.gang) gangSet[e.gang] = 1;
+        if (e.block !== undefined && e.block !== '') blockSet[e.block] = 1;
+    });
+    const gangOpts = Object.keys(gangSet).sort((a, b) => a.localeCompare(b));
+    const blockOpts = Object.keys(blockSet).sort((a, b) => {
+        const na = parseFloat(a), nb = parseFloat(b);
+        if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
+        return a.localeCompare(b);
+    });
+
+    const optHtml = (list, selected, allLabel) => ['__all__', ...list]
+        .map(v => `<option value="${String(v).replace(/"/g, '&quot;')}" ${v === selected ? 'selected' : ''}>${v === '__all__' ? allLabel : (allLabel === 'All blocks' ? 'Blk ' + v : v)}</option>`).join('');
+
     const extra = `<label style="font-size:0.85rem; color:var(--text-secondary);">Show</label>
-                   <select id="mnt-gantt-filter" class="edit-input" style="padding:0.4rem 0.6rem;">${filterOpts}</select>`;
+                   <select id="mnt-gantt-filter" class="edit-input" style="padding:0.4rem 0.6rem;">${optHtml(yd.activityTypes, activeFilter, 'All activities')}</select>
+                   <label style="font-size:0.85rem; color:var(--text-secondary);">Gang</label>
+                   <select id="mnt-gantt-gang" class="edit-input" style="padding:0.4rem 0.6rem;">${optHtml(gangOpts, gangFilter, 'All gangs')}</select>
+                   <label style="font-size:0.85rem; color:var(--text-secondary);">Block</label>
+                   <select id="mnt-gantt-block" class="edit-input" style="padding:0.4rem 0.6rem;">${optHtml(blockOpts, blockFilter, 'All blocks')}</select>`;
     wrapper.appendChild(mntBuildToolbar('Maintenance Gantt', 'gantt', { extraHtml: extra }));
 
     setTimeout(() => {
         const f = document.getElementById('mnt-gantt-filter');
         if (f) f.onchange = () => { window.state.maintGanttFilter = f.value; renderMaintenanceGantt(); };
+        const g = document.getElementById('mnt-gantt-gang');
+        if (g) g.onchange = () => { window.state.maintGanttGang = g.value; renderMaintenanceGantt(); };
+        const b = document.getElementById('mnt-gantt-block');
+        if (b) b.onchange = () => { window.state.maintGanttBlock = b.value; renderMaintenanceGantt(); };
     }, 0);
 
     const dim = mntDaysInMonth(year, month);
@@ -675,6 +702,8 @@ function renderMaintenanceGantt() {
     yd.entries.forEach(e => {
         if (!mntEntryInMonth(e, year, month)) return;
         if (activeFilter !== '__all__' && mntCanonActivity(e.activity) !== mntCanonActivity(activeFilter)) return;
+        if (gangFilter !== '__all__' && String(e.gang) !== gangFilter) return;
+        if (blockFilter !== '__all__' && String(e.block) !== blockFilter) return;
         const key = `${e.block}||${e.gang}||${e.activity}`;
         if (!groups[key]) groups[key] = { block: e.block, gang: e.gang, activity: e.activity, entries: [] };
         groups[key].entries.push(e);
@@ -692,7 +721,10 @@ function renderMaintenanceGantt() {
     if (keys.length === 0) {
         const empty = document.createElement('div');
         empty.style.cssText = 'padding:2rem; text-align:center; color:var(--text-secondary); border:1px dashed var(--border-color); border-radius:8px;';
-        empty.innerHTML = `No maintenance work recorded for ${month} ${year}.`;
+        const filtered = activeFilter !== '__all__' || gangFilter !== '__all__' || blockFilter !== '__all__';
+        empty.innerHTML = filtered
+            ? `No maintenance work matches the current filters for ${month} ${year}.`
+            : `No maintenance work recorded for ${month} ${year}.`;
         wrapper.appendChild(empty);
         return;
     }
