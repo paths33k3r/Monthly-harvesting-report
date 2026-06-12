@@ -545,7 +545,9 @@
                 responsive: true, maintainAspectRatio: false,
                 interaction: { mode: 'index', intersect: false },
                 plugins: {
-                    legend: { position: 'top' },
+                    // built-in legend replaced by the custom paired legend below
+                    // (rain toggle sits directly under its year)
+                    legend: { display: false },
                     tooltip: { callbacks: { label: (ctx) => ctx.dataset.yAxisID === 'y1'
                         ? `${ctx.dataset.label}: ${fmt(ctx.parsed.y)} mm`
                         : `${ctx.dataset.label}: ${fmt(ctx.parsed.y)} MT` } }
@@ -563,6 +565,60 @@
                 }
             }
         });
+
+        // ---- Custom legend for Chart 1: one column per year, the year's
+        // rain toggle sits directly under its FFB entry. Clicking a chip
+        // toggles the dataset (struck-through + dimmed when hidden).
+        (function buildFfbPairedLegend() {
+            const chart = CHART_REG['ffbCompareChart'];
+            const canvas = document.getElementById('ffbCompareChart');
+            if (!chart || !canvas) return;
+
+            const lineYears = [...historyYears, yrPrev, yrCurr];
+            const lineColor = (y, i) => i < historyYears.length
+                ? (FFB_HISTORY_COLORS[y] || '#94a3b8')
+                : (y === yrCurr ? '#10b981' : '#f59e0b');
+
+            const holder = document.createElement('div');
+            holder.style.cssText = 'display:flex; flex-wrap:wrap; justify-content:center; align-items:flex-start; gap:.4rem 1.5rem; margin-bottom:.6rem;';
+            canvas.parentElement.parentElement.insertBefore(holder, canvas.parentElement);
+
+            const mkChip = (dsIdx, swatchStyle, text) => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.style.cssText = 'display:inline-flex; align-items:center; gap:.4rem; background:none; border:none; padding:0; cursor:pointer; font-size:.78rem; color:var(--text-secondary,#4b5563);';
+                b.innerHTML = `<span style="${swatchStyle}"></span><span>${text}</span>`;
+                const txt = b.querySelectorAll('span')[1];
+                const sync = () => {
+                    const vis = chart.isDatasetVisible(dsIdx);
+                    b.style.opacity = vis ? '1' : '.55';
+                    txt.style.textDecoration = vis ? 'none' : 'line-through';
+                };
+                b.onclick = () => {
+                    chart.setDatasetVisibility(dsIdx, !chart.isDatasetVisible(dsIdx));
+                    chart.update();
+                    sync();
+                };
+                sync();
+                return b;
+            };
+
+            lineYears.forEach((y, i) => {
+                const col = document.createElement('div');
+                col.style.cssText = 'display:flex; flex-direction:column; align-items:flex-start; gap:3px;';
+                const dashed = i < historyYears.length;
+                col.appendChild(mkChip(i,
+                    `width:22px; height:0; border-top:3px ${dashed ? 'dashed' : 'solid'} ${lineColor(y, i)}; display:inline-block;`,
+                    y));
+                const ri = rainYears.indexOf(y);
+                if (ri !== -1) {
+                    col.appendChild(mkChip(lineYears.length + ri,
+                        `width:12px; height:12px; border-radius:3px; background:${RAIN_COLORS[ri % RAIN_COLORS.length].replace(/[\d.]+\)$/, '0.85)')}; display:inline-block;`,
+                        'Rain (mm)'));
+                }
+                holder.appendChild(col);
+            });
+        })();
 
         // ---- Chart 1b: total tonnage per year (bar, multi-year trend) ----
         drawChart('ffbYearlyChart', 'ffbYearlyEmpty', hasYearly, {
