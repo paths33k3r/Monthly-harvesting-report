@@ -408,6 +408,15 @@
         const budgetCurr = monthlyBudgetTotals(s.ffbBudget && s.ffbBudget[yrCurr]);
         const hasBudgetView = currTotals.any || budgetCurr.any;
 
+        // ---- Rainfall overlay (mm) for the production chart ----
+        // one bar series per charted year that has rainfall records
+        const rainAll = s.rainfall || {};
+        const rainArrFor = (y) => MONTHS.map(m => parseFloat(((rainAll[y] || {})[m.toUpperCase()] || {}).mm) || 0);
+        const rainYears = [...new Set([...historyYears, yrPrev, yrCurr])]
+            .filter(y => rainAll[y] && rainArrFor(y).some(v => v > 0))
+            .sort();
+        const RAIN_COLORS = ['rgba(96,165,250,0.35)', 'rgba(37,99,235,0.45)', 'rgba(30,64,175,0.5)', 'rgba(8,47,112,0.5)'];
+
         const haCurr = totalHaForYear(s, yrCurr);
         const haPrev = totalHaForYear(s, yrPrev);
         const yieldCurr = currTotals.arr.map(v => (haCurr > 0 ? v / haCurr : 0));
@@ -522,7 +531,13 @@
                         label: yrCurr, data: currTotals.arr,
                         borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.12)',
                         borderWidth: 2, tension: 0.3, fill: true, pointRadius: 3, pointHoverRadius: 5
-                    }
+                    },
+                    // rainfall bars behind the tonnage lines (right axis, mm)
+                    ...rainYears.map((y, i) => ({
+                        type: 'bar', label: `Rain ${y} (mm)`, data: rainArrFor(y),
+                        backgroundColor: RAIN_COLORS[i % RAIN_COLORS.length],
+                        borderRadius: 3, yAxisID: 'y1', order: 10
+                    }))
                 ]
             },
             options: {
@@ -530,12 +545,19 @@
                 interaction: { mode: 'index', intersect: false },
                 plugins: {
                     legend: { position: 'top' },
-                    tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${fmt(ctx.parsed.y)} MT` } }
+                    tooltip: { callbacks: { label: (ctx) => ctx.dataset.yAxisID === 'y1'
+                        ? `${ctx.dataset.label}: ${fmt(ctx.parsed.y)} mm`
+                        : `${ctx.dataset.label}: ${fmt(ctx.parsed.y)} MT` } }
                 },
                 scales: {
                     y: {
                         beginAtZero: true, title: { display: true, text: 'FFB (MT)' },
                         ticks: { callback: (v) => Number(v).toLocaleString('en-MY') }
+                    },
+                    y1: {
+                        display: rainYears.length > 0, position: 'right', beginAtZero: true,
+                        title: { display: true, text: 'Rain (mm)' },
+                        grid: { drawOnChartArea: false }
                     }
                 }
             }
