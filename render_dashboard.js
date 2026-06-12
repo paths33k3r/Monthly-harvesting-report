@@ -532,11 +532,12 @@
                         borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.12)',
                         borderWidth: 2, tension: 0.3, fill: true, pointRadius: 3, pointHoverRadius: 5
                     },
-                    // rainfall bars behind the tonnage lines (right axis, mm)
+                    // rainfall bars behind the tonnage lines (right axis, mm);
+                    // hidden (struck-through in the legend) until the user toggles them on
                     ...rainYears.map((y, i) => ({
                         type: 'bar', label: `Rain ${y} (mm)`, data: rainArrFor(y),
                         backgroundColor: RAIN_COLORS[i % RAIN_COLORS.length],
-                        borderRadius: 3, yAxisID: 'y1', order: 10
+                        borderRadius: 3, yAxisID: 'y1', order: 10, hidden: true
                     }))
                 ]
             },
@@ -555,7 +556,7 @@
                         ticks: { callback: (v) => Number(v).toLocaleString('en-MY') }
                     },
                     y1: {
-                        display: rainYears.length > 0, position: 'right', beginAtZero: true,
+                        display: 'auto', position: 'right', beginAtZero: true,
                         title: { display: true, text: 'Rain (mm)' },
                         grid: { drawOnChartArea: false }
                     }
