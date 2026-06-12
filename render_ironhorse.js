@@ -1607,7 +1607,7 @@ window.downloadIronHorseCostPerFFBMt = async (yearStr) => {
 // ─────────────────────────────────────────────────────────────────────
 const ihRenderCostCharts = (host, d, yearStr) => {
     if (typeof Chart === 'undefined') return;
-    const { grandMonthExp, grandYearExp, grandMonthMt, grandYearMt, gangMonthExp, gangYearMt, gangOrder, noMtData } = d;
+    const { grandMonthExp, grandYearExp, grandMonthMt, grandYearMt, gangMonthExp, gangMonthMt, gangYearMt, gangOrder, noMtData } = d;
     if (grandYearExp === 0 && noMtData) return; // nothing to draw yet
 
     window._ihCostCharts = window._ihCostCharts || {};
@@ -1664,6 +1664,33 @@ const ihRenderCostCharts = (host, d, yearStr) => {
         sec.appendChild(chartCard(`Cost per MT by gang — ${yearStr}`, 'ihCostGangs', gangRows.length * 42 + 80));
     }
 
+    // ── Per-gang section: one mini combo chart per gang ──
+    const perGangs = gangOrder.filter(g =>
+        g !== '__UNASSIGNED__' && (((gangMonthExp[g] || {}).YEAR || 0) > 0 || (gangYearMt[g] || 0) > 0));
+    if (perGangs.length) {
+        const head = document.createElement('div');
+        head.style.cssText = 'font-size:0.95rem; font-weight:700; color:var(--text-primary); margin:0.25rem 0 0.75rem;';
+        head.textContent = `Per-gang monthly breakdown — ${yearStr}`;
+        sec.appendChild(head);
+
+        const grid = document.createElement('div');
+        grid.style.cssText = 'display:grid; grid-template-columns:repeat(auto-fit, minmax(420px, 1fr)); gap:1.25rem;';
+        perGangs.forEach((g, i) => {
+            const exp = (gangMonthExp[g] || {}).YEAR || 0;
+            const mt  = gangYearMt[g] || 0;
+            const card = document.createElement('div');
+            card.style.cssText = 'background:var(--bg-card); border:1px solid var(--border-color); border-radius:10px; padding:1rem 1.25rem;';
+            card.innerHTML = `
+                <div style="font-size:0.9rem; font-weight:700; color:var(--text-primary);">${g}</div>
+                <div style="font-size:0.74rem; color:var(--text-secondary); margin:2px 0 0.6rem;">
+                    ${fmtRM(exp)} &nbsp;·&nbsp; ${mt > 0 ? mt.toFixed(2) + ' MT' : '— MT'} &nbsp;·&nbsp; avg ${mt > 0 ? fmtRM(exp / mt) + '/MT' : '—'}
+                </div>
+                <div style="position:relative; height:230px;"><canvas id="ihCostGangCombo_${i}"></canvas></div>`;
+            grid.appendChild(card);
+        });
+        sec.appendChild(grid);
+    }
+
     host.appendChild(sec);
 
     const mtArr = IH_MONTHS.map(m => (grandMonthMt[m] || 0) > 0 ? grandMonthMt[m] : null);
@@ -1715,6 +1742,44 @@ const ihRenderCostCharts = (host, d, yearStr) => {
             }
         });
     }
+
+    // destroy any per-gang charts left over from a previous render (gang count may shrink)
+    Object.keys(window._ihCostCharts)
+        .filter(k => k.startsWith('ihCostGangCombo_'))
+        .forEach(destroy);
+    perGangs.forEach((g, i) => {
+        const gExp  = gangMonthExp[g] || {};
+        const gMt   = gangMonthMt[g] || {};
+        const mtArr2   = IH_MONTHS.map(m => (gMt[m] || 0) > 0 ? gMt[m] : null);
+        const cpmtArr2 = IH_MONTHS.map(m => (gMt[m] || 0) > 0 ? +(((gExp[m] || 0)) / gMt[m]).toFixed(2) : null);
+        window._ihCostCharts['ihCostGangCombo_' + i] = new Chart(document.getElementById('ihCostGangCombo_' + i).getContext('2d'), {
+            data: {
+                labels: IH_MONTHS,
+                datasets: [
+                    { type: 'bar', label: 'Expenses (RM)', data: IH_MONTHS.map(m => gExp[m] || 0), backgroundColor: 'rgba(127,119,221,0.75)', borderRadius: 4, yAxisID: 'y' },
+                    { type: 'line', label: 'FFB (MT)', data: mtArr2, borderColor: '#10b981', backgroundColor: 'transparent', borderWidth: 2.5, tension: 0.3, pointRadius: 3, yAxisID: 'y1' },
+                    { type: 'line', label: 'Cost / MT (RM)', data: cpmtArr2, borderColor: '#f59e0b', backgroundColor: 'transparent', borderWidth: 2, borderDash: [6, 4], tension: 0.3, pointRadius: 2, yAxisID: 'y2' }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { position: 'top', labels: { boxWidth: 18, font: { size: 10 } } },
+                    tooltip: { callbacks: { label: (c) => {
+                        if (c.dataset.yAxisID === 'y') return ' Expenses: ' + fmtRM(c.parsed.y);
+                        if (c.dataset.yAxisID === 'y1') return ' FFB: ' + c.parsed.y.toFixed(2) + ' MT';
+                        return ' Cost/MT: ' + fmtRM(c.parsed.y);
+                    } } }
+                },
+                scales: {
+                    y:  { position: 'left', beginAtZero: true, ticks: { font: { size: 10 } } },
+                    y1: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, ticks: { font: { size: 10 } } },
+                    y2: { display: false, beginAtZero: true }
+                }
+            }
+        });
+    });
 };
 
 const renderIronHorseCostPerHa = () => {
@@ -1774,7 +1839,7 @@ const renderIronHorseCostPerHa = () => {
     // ── Charts above the detail tables ────────────────────────────────
     ihRenderCostCharts(wrapper, {
         grandMonthExp, grandYearExp, grandMonthMt, grandYearMt,
-        gangMonthExp, gangYearMt, gangOrder, noMtData
+        gangMonthExp, gangMonthMt, gangYearMt, gangOrder, noMtData
     }, yearStr);
 
     // Shared CSS
