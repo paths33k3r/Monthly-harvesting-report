@@ -10,6 +10,10 @@ window._initUserMgmt = function ({ auth, db }) {
         // =====================================================================
         let currentUserRole = null; // { role, allowedMenus, firstLogin, email, ... }
 
+        // HTML-escape for user-supplied strings rendered into innerHTML (emails,
+        // backup filenames). Firebase validates email format, but escape anyway.
+        const H = (s) => window.escapeHtml(s);
+
         const ALL_MENU_KEYS = ['ffbBudget', 'planting', 'gangs', 'performance', 'rainfall', 'maintenance', 'weekly', 'dataManagement'];
 
         const loadUserRole = async (uid) => {
@@ -454,12 +458,12 @@ window._initUserMgmt = function ({ auth, db }) {
                 const backupRows = backups.length === 0
                     ? `<tr><td colspan="3" style="padding:1.5rem; text-align:center; color:var(--text-muted); font-size:0.9rem;">No backups found in Google Drive.</td></tr>`
                     : backups.map(b => `
-                    <tr data-id="${b.id}" data-name="${b.name}" style="border-bottom:1px solid var(--border-color);">
-                        <td style="padding:10px 8px; font-size:0.88rem;">${fmtDate(b.timeCreated)}</td>
+                    <tr data-id="${H(b.id)}" data-name="${H(b.name)}" style="border-bottom:1px solid var(--border-color);">
+                        <td style="padding:10px 8px; font-size:0.88rem;">${H(fmtDate(b.timeCreated))}</td>
                         <td style="padding:10px 8px; font-size:0.88rem; color:var(--text-secondary);">${fmtSize(b.size)}</td>
                         <td style="padding:10px 8px; display:flex; gap:6px;">
-                            <button class="btn-restore-backup btn-secondary" data-id="${b.id}" data-name="${b.name}" style="padding:3px 10px; font-size:0.8rem;">Restore</button>
-                            <button class="btn-delete-backup" data-id="${b.id}" data-name="${b.name}" style="padding:3px 10px; font-size:0.8rem; background:#dc3545; color:#fff; border:none; border-radius:4px; cursor:pointer;">Delete</button>
+                            <button class="btn-restore-backup btn-secondary" data-id="${H(b.id)}" data-name="${H(b.name)}" style="padding:3px 10px; font-size:0.8rem;">Restore</button>
+                            <button class="btn-delete-backup" data-id="${H(b.id)}" data-name="${H(b.name)}" style="padding:3px 10px; font-size:0.8rem; background:#dc3545; color:#fff; border:none; border-radius:4px; cursor:pointer;">Delete</button>
                         </td>
                     </tr>`).join('');
 
@@ -712,7 +716,7 @@ window._initUserMgmt = function ({ auth, db }) {
                     <tbody id="user-table-body">
                         ${Object.entries(usersData).map(([uid, u]) => `
                             <tr data-uid="${uid}" style="border-bottom:1px solid var(--border-color);">
-                                <td style="padding:10px 8px;">${u.email || '(unknown)'}</td>
+                                <td style="padding:10px 8px;">${H(u.email || '(unknown)')}</td>
                                 <td style="padding:10px 8px;">
                                     <select class="user-role-select edit-input" data-uid="${uid}" style="padding:4px 8px; border:1px solid var(--border-color); border-radius:4px; background:var(--bg-card); font-size:0.85rem;">
                                         <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
@@ -724,8 +728,8 @@ window._initUserMgmt = function ({ auth, db }) {
                                 </td>
                                 <td style="padding:10px 8px; display:flex; gap:6px;">
                                     <button class="btn-edit-user btn-primary" data-uid="${uid}" style="padding:4px 10px; font-size:0.8rem;">Edit</button>
-                                    <button class="btn-reset-pw btn-secondary" data-uid="${uid}" data-email="${u.email || ''}" style="padding:4px 10px; font-size:0.8rem;">Reset PW</button>
-                                    <button class="btn-delete-user" data-uid="${uid}" data-email="${u.email || ''}" style="padding:4px 10px; font-size:0.8rem; background:#dc3545; color:#fff; border:none; border-radius:4px; cursor:pointer;">Delete</button>
+                                    <button class="btn-reset-pw btn-secondary" data-uid="${uid}" data-email="${H(u.email || '')}" style="padding:4px 10px; font-size:0.8rem;">Reset PW</button>
+                                    <button class="btn-delete-user" data-uid="${uid}" data-email="${H(u.email || '')}" style="padding:4px 10px; font-size:0.8rem; background:#dc3545; color:#fff; border:none; border-radius:4px; cursor:pointer;">Delete</button>
                                 </td>
                             </tr>
                         `).join('')}
@@ -800,7 +804,7 @@ window._initUserMgmt = function ({ auth, db }) {
             overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:10000;display:flex;justify-content:center;align-items:center;';
             overlay.innerHTML = `
             <div style="background:var(--bg-card);padding:2rem;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.2);width:480px;max-width:95vw;">
-                <h3 style="margin-top:0;">Edit User: ${userData.email || uid}</h3>
+                <h3 style="margin-top:0;">Edit User: ${H(userData.email || uid)}</h3>
                 <div style="margin-bottom:1rem;">
                     <label style="font-size:0.85rem;color:var(--text-secondary);display:block;margin-bottom:4px;">Role</label>
                     <select id="edit-role-select" style="padding:0.6rem;border:1px solid var(--border-color);border-radius:4px;background:var(--bg-card);width:200px;">
@@ -886,7 +890,14 @@ window._initUserMgmt = function ({ auth, db }) {
             }
             const secondaryAuth = secondaryApp.auth();
 
-            const tempPassword = 'user1234';
+            // Random per-user temporary password (not a shared default like
+            // "user1234"). The user is forced to change it on first login.
+            const tempPassword = (() => {
+                const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+                const buf = new Uint32Array(12);
+                (window.crypto || window.msCrypto).getRandomValues(buf);
+                return Array.from(buf, n => chars[n % chars.length]).join('') + '#7';
+            })();
             secondaryAuth.createUserWithEmailAndPassword(emailVal, tempPassword)
                 .then(async (cred) => {
                     const newUid = cred.user.uid;

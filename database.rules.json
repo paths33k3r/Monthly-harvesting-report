@@ -75,9 +75,17 @@
         ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('weekly').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
       },
 
-      // every signed-in user logs their own actions
+      // Append-only audit trail. Any signed-in user may ADD a new entry, but
+      // existing entries are immutable: they cannot be overwritten, and can only
+      // be deleted if older than 12 months (the client purge) or by an admin.
+      // No '.write' on the audit_log node itself, so the whole log can't be
+      // wiped in one set(null) — each child is guarded individually.
       "audit_log": {
-        ".write": "auth != null"
+        "$entryId": {
+          ".write": "auth != null && ((!data.exists() && newData.exists()) || (!newData.exists() && data.child('ts').val() < (now - 31536000000)) || root.child('user_roles').child(auth.uid).child('role').val() === 'admin')",
+          // a new entry must carry a timestamp and the author's identity
+          ".validate": "newData.hasChildren(['ts','user','action']) || !newData.exists()"
+        }
       },
 
       "backup_settings": {

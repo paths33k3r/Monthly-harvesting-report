@@ -10,6 +10,14 @@
     <meta name="theme-color" content="#0f172a">
     <script>/* apply saved theme before first paint to avoid a light flash */
         try { if (localStorage.getItem('theme') === 'dark') document.documentElement.classList.add('dark'); } catch (e) { }</script>
+    <script>/* Global HTML-escape helper — used everywhere user/DB text is put into innerHTML.
+        Defined before any module so it is always available. Escapes the five characters
+        that matter for both element text and double-quoted attribute values. */
+        window.escapeHtml = function (s) {
+            return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
+        };
     <link rel="stylesheet" href="style.css?v=21">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -530,22 +538,22 @@
     </div>
 
     <script src="templates.js"></script>
-    <script src="render_dashboard.js?v=11"></script>
+    <script src="render_dashboard.js?v=12"></script>
     <script src="ffbData.js"></script>
     <script src="rainfallData.js"></script>
     <script src="render_rainfall.js"></script>
     <script src="render_ytd_report.js"></script>
     <script src="render_current_vs_prev.js"></script>
-    <script src="render_audit.js?v=2"></script>
-    <script src="render_ironhorse.js?v=44"></script>
-    <script src="render_maintenance.js?v=7"></script>
+    <script src="render_audit.js?v=3"></script>
+    <script src="render_ironhorse.js?v=45"></script>
+    <script src="render_maintenance.js?v=8"></script>
     <script src="render_weekly.js?v=16"></script>
     <script src="render_spraying.js?v=14"></script>
     <script src="render_manuring.js?v=13"></script>
     <script src="render_reports.js?v=23"></script>
     <script src="app_boot.js?v=1"></script>
-    <script src="app_user_mgmt.js?v=3"></script>
-    <script src="script.js?v=61"></script>
+    <script src="app_user_mgmt.js?v=4"></script>
+    <script src="script.js?v=62"></script>
     <script src="ui_enhancements.js?v=10"></script>
     <script>
         // Vertical sidebar accordion: expand/collapse groups. Clicking a header

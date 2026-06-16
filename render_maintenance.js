@@ -16,6 +16,10 @@
 
 const MNT_MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
 
+// HTML-escape for user/DB free text (gang, activity, block, round, method,
+// members) before it goes into innerHTML — shared data, so treat as untrusted.
+const mEsc = (s) => window.escapeHtml(s);
+
 // Default configurable activity list (per year, editable in the UI)
 const MNT_DEFAULT_ACTIVITIES = ['Spraying', 'Slashing', 'Manuring', 'Pruning'];
 
@@ -221,9 +225,9 @@ function renderMaintenanceGangs() {
             const isSet = rm != null;
             rows += `
                 <tr data-gang="${encodeURIComponent(gang)}">
-                    <td style="font-weight:600;">${gang}</td>
-                    <td style="text-align:center;">${isSet ? headcount : '<span style="color:var(--text-secondary);">– not set –</span>'}</td>
-                    <td>${members || '<span style="color:var(--text-secondary);">—</span>'}</td>
+                    <td style="font-weight:600;">${mEsc(gang)}</td>
+                    <td style="text-align:center;">${isSet ? mEsc(headcount) : '<span style="color:var(--text-secondary);">– not set –</span>'}</td>
+                    <td>${members ? mEsc(members) : '<span style="color:var(--text-secondary);">—</span>'}</td>
                     <td style="text-align:right; white-space:nowrap;">
                         ${canEdit ? `<button class="mnt-edit-roster" data-gang="${encodeURIComponent(gang)}" style="cursor:pointer; border:none; background:none; font-size:1rem;" title="Edit ${month} roster">✏️</button>
                         <button class="mnt-del-gang" data-gang="${encodeURIComponent(gang)}" style="cursor:pointer; border:none; background:none; font-size:1rem; color:var(--danger);" title="Delete gang">🗑️</button>` : ''}
@@ -305,11 +309,11 @@ function mntShowRosterModal(yearStr, month, gang, onSave) {
     modal.style.cssText = 'background:var(--bg-card); border-radius:8px; padding:1.5rem; width:420px; max-width:92vw; box-shadow:0 4px 24px rgba(0,0,0,0.35); border:1px solid var(--border-color);';
     modal.innerHTML = `
         <h3 style="margin:0 0 1rem; font-size:1rem; color:var(--text-primary); border-bottom:1px solid var(--border-color); padding-bottom:0.75rem;">
-            ${gang} — Roster for ${month} ${yearStr}</h3>
+            ${mEsc(gang)} — Roster for ${month} ${yearStr}</h3>
         <label style="display:block; font-size:0.85rem; color:var(--text-secondary); margin-bottom:4px;">Headcount</label>
         <input type="number" id="mnt-r-headcount" class="edit-input" min="0" step="1" value="${current.headcount ?? ''}" style="width:100%; padding:0.5rem; margin-bottom:1rem;" />
         <label style="display:block; font-size:0.85rem; color:var(--text-secondary); margin-bottom:4px;">Members (one per line, or comma-separated)</label>
-        <textarea id="mnt-r-members" class="edit-input" rows="5" style="width:100%; padding:0.5rem; margin-bottom:0.5rem; resize:vertical;">${(Array.isArray(current.members) ? current.members.join('\n') : '')}</textarea>
+        <textarea id="mnt-r-members" class="edit-input" rows="5" style="width:100%; padding:0.5rem; margin-bottom:0.5rem; resize:vertical;">${mEsc(Array.isArray(current.members) ? current.members.join('\n') : '')}</textarea>
         ${prevRoster ? `<button id="mnt-r-copy" type="button" style="background:none; border:1px dashed var(--border-color); border-radius:6px; padding:0.35rem 0.6rem; cursor:pointer; font-size:0.8rem; color:var(--text-secondary); margin-bottom:1rem;">⤵ Copy from ${prevMonthName}</button>` : ''}
         <div style="display:flex; justify-content:flex-end; gap:0.6rem; margin-top:0.5rem;">
             <button id="mnt-r-cancel" class="btn-secondary" style="padding:0.45rem 1rem;">Cancel</button>
@@ -405,19 +409,19 @@ function renderMaintenanceWorkLog() {
             const st = mntActivityStyle(e.activity);
             const days = mntDaySpan(e.dateStart, e.dateEnd);
             const verMark = e.verified
-                ? `<span title="Verified${e.verifiedBy ? ' by ' + e.verifiedBy : ''}" style="color:#16a34a; font-weight:700; font-size:1.05rem;">✓</span>`
+                ? `<span title="Verified${e.verifiedBy ? ' by ' + mEsc(e.verifiedBy) : ''}" style="color:#16a34a; font-weight:700; font-size:1.05rem;">✓</span>`
                 : `<span title="Not yet verified" style="color:var(--text-secondary); font-weight:700; font-size:1.05rem;">–</span>`;
             rows += `
                 <tr data-idx="${i}">
                     <td style="text-align:center; ${canEdit ? 'cursor:pointer;' : ''}" class="mnt-verify-cell" data-idx="${i}">${verMark}</td>
-                    <td>${e.gang || '<span style="color:var(--text-secondary);">—</span>'}</td>
-                    <td><span style="display:inline-block; padding:1px 7px; border-radius:10px; font-size:0.72rem; color:#fff; background:${st.color};">${e.activity || '?'}</span></td>
-                    <td style="font-weight:600;">${e.block ? 'Blk ' + e.block : '—'}</td>
-                    <td style="white-space:nowrap;">${e.dateStart || ''}</td>
-                    <td style="white-space:nowrap;">${e.dateEnd || e.dateStart || ''}</td>
+                    <td>${e.gang ? mEsc(e.gang) : '<span style="color:var(--text-secondary);">—</span>'}</td>
+                    <td><span style="display:inline-block; padding:1px 7px; border-radius:10px; font-size:0.72rem; color:#fff; background:${st.color};">${mEsc(e.activity || '?')}</span></td>
+                    <td style="font-weight:600;">${e.block ? 'Blk ' + mEsc(e.block) : '—'}</td>
+                    <td style="white-space:nowrap;">${mEsc(e.dateStart || '')}</td>
+                    <td style="white-space:nowrap;">${mEsc(e.dateEnd || e.dateStart || '')}</td>
                     <td style="text-align:center;">${days}</td>
-                    <td style="text-align:center;">${e.persons ?? ''}</td>
-                    <td style="font-size:0.8rem; color:var(--text-secondary);">${[e.round, e.method].filter(Boolean).join(' · ')}</td>
+                    <td style="text-align:center;">${mEsc(e.persons ?? '')}</td>
+                    <td style="font-size:0.8rem; color:var(--text-secondary);">${mEsc([e.round, e.method].filter(Boolean).join(' · '))}</td>
                     <td style="text-align:right; white-space:nowrap;">
                         ${canEdit ? `<button class="mnt-edit-entry" data-idx="${i}" style="cursor:pointer; border:none; background:none; font-size:1rem;" title="Edit">✏️</button>
                         <button class="mnt-del-entry" data-idx="${i}" style="cursor:pointer; border:none; background:none; font-size:1rem; color:var(--danger);" title="Delete">🗑️</button>` : ''}
@@ -520,11 +524,11 @@ function mntShowEntryModal(yearStr, month, idx, onSave) {
     const defEnd = e.dateEnd || e.dateStart || defStart;
 
     const gangOpts = gangs.length
-        ? gangs.map(g => `<option value="${g}" ${g === e.gang ? 'selected' : ''}>${g}</option>`).join('')
+        ? gangs.map(g => `<option value="${mEsc(g)}" ${g === e.gang ? 'selected' : ''}>${mEsc(g)}</option>`).join('')
         : '<option value="">(no gangs — add one first)</option>';
-    const actOpts = activities.map(a => `<option value="${a}" ${a === e.activity ? 'selected' : ''}>${a}</option>`).join('');
+    const actOpts = activities.map(a => `<option value="${mEsc(a)}" ${a === e.activity ? 'selected' : ''}>${mEsc(a)}</option>`).join('');
     const blockOpts = blocks.length
-        ? `<option value="">— select block —</option>` + blocks.map(b => `<option value="${b}" ${String(b) === String(e.block) ? 'selected' : ''}>Blk ${b}</option>`).join('')
+        ? `<option value="">— select block —</option>` + blocks.map(b => `<option value="${mEsc(b)}" ${String(b) === String(e.block) ? 'selected' : ''}>Blk ${mEsc(b)}</option>`).join('')
         : '';
 
     const overlay = document.createElement('div');
@@ -536,7 +540,7 @@ function mntShowEntryModal(yearStr, month, idx, onSave) {
     // Block field: dropdown if we have a block list, else free text
     const blockField = blocks.length
         ? `<select id="mnt-e-block" class="edit-input" style="width:100%; padding:0.5rem;">${blockOpts}</select>`
-        : `<input type="text" id="mnt-e-block" class="edit-input" value="${e.block || ''}" placeholder="Block number" style="width:100%; padding:0.5rem;" />`;
+        : `<input type="text" id="mnt-e-block" class="edit-input" value="${mEsc(e.block || '')}" placeholder="Block number" style="width:100%; padding:0.5rem;" />`;
 
     modal.innerHTML = `
         <h3 style="margin:0 0 1rem; font-size:1rem; color:var(--text-primary); border-bottom:1px solid var(--border-color); padding-bottom:0.75rem;">
@@ -568,11 +572,11 @@ function mntShowEntryModal(yearStr, month, idx, onSave) {
             </div>
             <div>
                 <label style="display:block; font-size:0.82rem; color:var(--text-secondary); margin-bottom:3px;">Round (optional)</label>
-                <input type="text" id="mnt-e-round" class="edit-input" value="${e.round || ''}" placeholder="e.g. Round 1" style="width:100%; padding:0.5rem;" />
+                <input type="text" id="mnt-e-round" class="edit-input" value="${mEsc(e.round || '')}" placeholder="e.g. Round 1" style="width:100%; padding:0.5rem;" />
             </div>
             <div style="grid-column:1 / -1;">
                 <label style="display:block; font-size:0.82rem; color:var(--text-secondary); margin-bottom:3px;">Method / Remark (optional)</label>
-                <input type="text" id="mnt-e-method" class="edit-input" value="${e.method || ''}" placeholder="e.g. Selective spraying" style="width:100%; padding:0.5rem;" />
+                <input type="text" id="mnt-e-method" class="edit-input" value="${mEsc(e.method || '')}" placeholder="e.g. Selective spraying" style="width:100%; padding:0.5rem;" />
             </div>
         </div>
         <div style="display:flex; justify-content:flex-end; gap:0.6rem; margin-top:1.25rem;">
@@ -676,7 +680,7 @@ function renderMaintenanceGantt() {
     });
 
     const optHtml = (list, selected, allLabel) => ['__all__', ...list]
-        .map(v => `<option value="${String(v).replace(/"/g, '&quot;')}" ${v === selected ? 'selected' : ''}>${v === '__all__' ? allLabel : (allLabel === 'All blocks' ? 'Blk ' + v : v)}</option>`).join('');
+        .map(v => `<option value="${mEsc(v)}" ${v === selected ? 'selected' : ''}>${v === '__all__' ? mEsc(allLabel) : (allLabel === 'All blocks' ? 'Blk ' + mEsc(v) : mEsc(v))}</option>`).join('');
 
     const extra = `<label style="font-size:0.85rem; color:var(--text-secondary);">Show</label>
                    <select id="mnt-gantt-filter" class="edit-input" style="padding:0.4rem 0.6rem;">${optHtml(yd.activityTypes, activeFilter, 'All activities')}</select>
@@ -774,13 +778,13 @@ function renderMaintenanceGantt() {
                     ? st.color
                     : `repeating-linear-gradient(45deg, ${st.color}, ${st.color} 4px, ${st.color}99 4px, ${st.color}99 8px)`;
                 const tip = `${grp.activity} · Blk ${grp.block} · ${grp.gang}\n${mntDayStr(year, month, d)}${info.persons ? ' · ' + info.persons + ' persons' : ''}${info.verified ? ' · verified' : ' · not verified'}`;
-                cells += `<td style="width:${DAY_W}px; min-width:${DAY_W}px; padding:0; text-align:center;"><div title="${tip.replace(/"/g, '&quot;')}" style="height:20px; margin:2px 1px; border-radius:3px; background:${bg}; color:#fff; font-size:0.6rem; line-height:20px;">${info.persons || ''}</div></td>`;
+                cells += `<td style="width:${DAY_W}px; min-width:${DAY_W}px; padding:0; text-align:center;"><div title="${mEsc(tip)}" style="height:20px; margin:2px 1px; border-radius:3px; background:${bg}; color:#fff; font-size:0.6rem; line-height:20px;">${info.persons || ''}</div></td>`;
             } else {
                 cells += `<td style="width:${DAY_W}px; min-width:${DAY_W}px; padding:0; background:${weekendBg};"></td>`;
             }
         }
 
-        const label = `Blk ${grp.block} – ${grp.gang} <span style="display:inline-block; padding:0 6px; border-radius:9px; font-size:0.65rem; color:#fff; background:${st.color};">${st.abbr}</span>`;
+        const label = `Blk ${mEsc(grp.block)} – ${mEsc(grp.gang)} <span style="display:inline-block; padding:0 6px; border-radius:9px; font-size:0.65rem; color:#fff; background:${st.color};">${mEsc(st.abbr)}</span>`;
         bodyRows += `
             <tr>
                 <td style="position:sticky; left:0; background:var(--bg-card); width:${LABEL_W}px; min-width:${LABEL_W}px; font-size:0.8rem; padding:4px 8px; border-right:1px solid var(--border-color);">${label}<br><span style="font-size:0.68rem; color:var(--text-secondary);">${daysSpent} day${daysSpent === 1 ? '' : 's'}</span></td>

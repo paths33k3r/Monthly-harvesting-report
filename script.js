@@ -1,6 +1,9 @@
 window.state = window.state || {};
 const state = window.state;
 
+// HTML-escape for user/DB free text (gang names, block ids) before innerHTML.
+const sEsc = (s) => window.escapeHtml(s);
+
 // =====================================================================
 // script.js — main application (Phase 9 split in progress).
 // The login shell lives in app_boot.js (which sets window._fb and
@@ -820,7 +823,7 @@ const runMainApplication = () => {
                     const gb = blocks.filter(b => b.gang === g);
                     const ha = gb.reduce((s, b) => s + (Number(b.ha) || 0), 0);
                     rows += `<tr>
-                        <td class="go-open" data-gang="${enc(g)}" style="font-weight:600; cursor:pointer;">${g}</td>
+                        <td class="go-open" data-gang="${enc(g)}" style="font-weight:600; cursor:pointer;">${sEsc(g)}</td>
                         <td style="text-align:center;">${gb.length}</td>
                         <td style="text-align:right;">${formatHA(ha)}</td>
                         <td style="text-align:right; white-space:nowrap;">
@@ -2200,7 +2203,7 @@ const runMainApplication = () => {
                         <div class="perf-stats">
                             <div class="stat-row">
                                 <label>HARVESTER TEAM:</label>
-                                <span class="font-bold">${gangName.toUpperCase()}</span>
+                                <span class="font-bold">${sEsc(gangName.toUpperCase())}</span>
                             </div>
                             <div class="stat-row" style="display: flex; align-items: center; gap: 0.5rem;">
                                 <label>TOTAL MANPOWER:</label>
@@ -2383,7 +2386,7 @@ const runMainApplication = () => {
                     }
 
                     const tr = document.createElement('tr');
-                    tr.innerHTML = `<td class="text-center cell-block">${bId}</td><td class="text-right">${formatHA(block.ha)}</td>`;
+                    tr.innerHTML = `<td class="text-center cell-block">${sEsc(bId)}</td><td class="text-right">${formatHA(block.ha)}</td>`;
 
                     // createPerfInput handles input logic. If linked, any manual edits here are volatile until next render, serving purely as a temporary view if they don't want to use FFB structure.
                     tr.appendChild(createPerfInput(bData, 'budget', (v) => bData.budget = v));
@@ -2756,7 +2759,7 @@ const runMainApplication = () => {
                 sR4 += bData.r4 || 0;
 
                 const tr = document.createElement('tr');
-                tr.innerHTML = `<td style="position: sticky; left: 0; background: var(--bg-primary); font-weight: 500; border-right: 2px solid var(--border-color);" class="text-center cell-block">${bId}</td>
+                tr.innerHTML = `<td style="position: sticky; left: 0; background: var(--bg-primary); font-weight: 500; border-right: 2px solid var(--border-color);" class="text-center cell-block">${sEsc(bId)}</td>
                             <td class="text-right" style="border-right: 2px solid var(--border-color);">${formatHA(block.ha)}</td>`;
 
                 bData.days.forEach((dayObj, i) => {

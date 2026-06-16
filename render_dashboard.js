@@ -439,7 +439,7 @@
         if (alerts && (alerts.overdue.length || alerts.neverCount)) {
             const MAX_CHIPS = 10;
             const chip = (a) => `<button type="button" class="dash-alert-chip" data-target="sidebar-interval" title="Open Harvesting Interval" style="display:inline-flex; align-items:center; gap:.45rem; border:1px solid ${a.days > 2 * ALERT_OVERDUE_DAYS ? '#fca5a5' : '#fcd34d'}; background:${a.days > 2 * ALERT_OVERDUE_DAYS ? '#fef2f2' : '#fffbeb'}; color:${a.days > 2 * ALERT_OVERDUE_DAYS ? '#991b1b' : '#92400e'}; border-radius:999px; padding:.35rem .8rem; font-size:.82rem; cursor:pointer;">
-                <strong>Blk ${a.bId}</strong> ${a.days} days</button>`;
+                <strong>Blk ${window.escapeHtml(a.bId)}</strong> ${a.days} days</button>`;
             const shown = alerts.overdue.slice(0, MAX_CHIPS);
             const moreCount = alerts.overdue.length - shown.length;
             alertsHtml = `

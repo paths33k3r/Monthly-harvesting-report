@@ -8,6 +8,10 @@ const IH_CAT_LABELS = { DC:'D.C/', FUEL:'FUEL', LUBE:'LUBE', PART:'PART', SR1:'S
 
 const IH_DEFAULT_ASSET_NOS = ['GT06','GT07','GT08','GT09','GT10','GT12','GT13','GT16','GT17','GT20','GT22'];
 
+// HTML-escape for user/DB free text (gang names, asset no, description, remark,
+// extra category names, filter input) before it goes into innerHTML.
+const ihEsc = (s) => window.escapeHtml(s);
+
 const getDefaultIronHorseAssets = () => IH_DEFAULT_ASSET_NOS.map(no => ({
     assetNo: no, description: 'IRON HORSE', gangAssignments: []
 }));
@@ -78,7 +82,7 @@ const ihShowGangAssignModal = (assetNo, yearStr, onConfirm, prefill = null) => {
     modal.style.cssText = 'background:var(--bg-card); border-radius:8px; padding:1.5rem; width:400px; box-shadow:0 4px 24px rgba(0,0,0,0.35); border:1px solid var(--border-color);';
 
     const gangOptions = gangs.length > 0
-        ? gangs.map(g => `<option value="${g}">${g}</option>`).join('')
+        ? gangs.map(g => `<option value="${ihEsc(g)}">${ihEsc(g)}</option>`).join('')
         : '<option value="" disabled>No gangs found for ' + yearStr + '</option>';
 
     const isEdit = !!prefill;
@@ -88,7 +92,7 @@ const ihShowGangAssignModal = (assetNo, yearStr, onConfirm, prefill = null) => {
 
     modal.innerHTML = `
         <h3 style="margin:0 0 1.25rem; font-size:1rem; color:var(--text-primary); border-bottom:1px solid var(--border-color); padding-bottom:0.75rem;">
-            ${isEdit ? 'Edit Assignment' : 'Assign Gang'} — <span style="color:var(--accent);">${assetNo}</span>
+            ${isEdit ? 'Edit Assignment' : 'Assign Gang'} — <span style="color:var(--accent);">${ihEsc(assetNo)}</span>
         </h3>
         <div style="margin-bottom:0.85rem;">
             <label style="display:block; font-size:0.82rem; color:var(--text-secondary); margin-bottom:4px; font-weight:600;">Gang *</label>
@@ -109,7 +113,7 @@ const ihShowGangAssignModal = (assetNo, yearStr, onConfirm, prefill = null) => {
         </div>
         <div style="margin-bottom:1.25rem;">
             <label style="display:block; font-size:0.82rem; color:var(--text-secondary); margin-bottom:4px; font-weight:600;">Remark <span style="font-weight:400;">(optional)</span></label>
-            <input id="ih-gang-remark" type="text" class="edit-input" value="${defaultRemark}" placeholder="e.g. transferred after breakdown"
+            <input id="ih-gang-remark" type="text" class="edit-input" value="${ihEsc(defaultRemark)}" placeholder="e.g. transferred after breakdown"
                 style="width:100%; padding:0.5rem 0.75rem; border:1px solid var(--border-color); border-radius:4px; font-size:0.9rem;" />
         </div>
         <div style="display:flex; gap:0.75rem; justify-content:flex-end;">
@@ -397,7 +401,7 @@ const renderIronHorseAssets = () => {
     if (displayAssets.length === 0) {
         const tr = document.createElement('tr');
         tr.innerHTML = `<td colspan="5" style="${cS}text-align:center; color:var(--text-secondary); padding:2rem;">
-            ${filterLow ? `No assets match "<strong>${_ihAssetsFilter}</strong>"` : `No assets for ${yearStr}. Click <strong>Add Asset</strong> to begin.`}</td>`;
+            ${filterLow ? `No assets match "<strong>${ihEsc(_ihAssetsFilter)}</strong>"` : `No assets for ${yearStr}. Click <strong>Add Asset</strong> to begin.`}</td>`;
         tbody.appendChild(tr);
     }
 
@@ -737,7 +741,7 @@ const renderIronHorseExpenses = () => {
     const hS         = 'background:#1e293b; color:#f8fafc; padding:7px 12px; border:1px solid #334155; font-weight:600; font-size:0.78rem; text-transform:uppercase; text-align:right; min-width:90px;';
     const hExtraS    = 'background:#1e3a5f; color:#dbeafe; padding:7px 12px; border:1px solid #2d4f7c; font-weight:600; font-size:0.78rem; text-transform:uppercase; text-align:right; min-width:90px;';
     const headerCells = allCats.map((c, i) =>
-        `<th style="${i < baseCount ? hS : hExtraS}">${ihGetCatLabel(c)}</th>`
+        `<th style="${i < baseCount ? hS : hExtraS}">${ihEsc(ihGetCatLabel(c))}</th>`
     ).join('');
 
     table.innerHTML = `<thead><tr>
@@ -1156,7 +1160,7 @@ const renderIHExpensesForGang = (gangWrapper, gangName, yearStr, perfMonth) => {
     const hXtraS = 'background:#1e3a5f; color:#dbeafe; padding:7px 12px; border:1px solid #2d4f7c; font-weight:600; font-size:0.78rem; text-transform:uppercase; text-align:right;';
 
     const headerCells = allCats.map((c, i) =>
-        `<th style="${i < baseCount ? hS : hXtraS}">${ihGetCatLabel(c)}</th>`
+        `<th style="${i < baseCount ? hS : hXtraS}">${ihEsc(ihGetCatLabel(c))}</th>`
     ).join('');
 
     table.innerHTML = `<thead><tr>
@@ -1922,7 +1926,7 @@ const renderIronHorseCostPerHa = () => {
             const trGang = document.createElement('tr');
             if (hasAssets) trGang.style.cursor = 'pointer';
             trGang.innerHTML = `
-                <td style="${gLS}">${caret}${label}${suffix}</td>
+                <td style="${gLS}">${caret}${ihEsc(label)}${suffix}</td>
                 <td style="${gS}">${gangColVal(gangName)}</td>
                 ${monthTds}
                 <td style="${gTotS}">${gangExtraCell.yearVal(gangMonthExp[gangName]['YEAR'], gangName)}</td>`;
@@ -1938,7 +1942,7 @@ const renderIronHorseCostPerHa = () => {
                 const tr = document.createElement('tr');
                 tr.style.background = ai % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-main)';
                 tr.innerHTML = `
-                    <td style="${aLS}">↳ ${assetNo}</td>
+                    <td style="${aLS}">↳ ${ihEsc(assetNo)}</td>
                     <td style="${aS}">—</td>
                     ${monthAssetTds}
                     <td style="${aTotS}">${assetExtraCell.yearVal(assetMonthExp[assetNo]['YEAR'], gangName)}</td>`;

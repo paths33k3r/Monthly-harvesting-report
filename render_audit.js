@@ -1,5 +1,9 @@
 /* render_audit.js — Audit Log panel */
 
+// HTML-escape for untrusted audit fields (entries are writable by any signed-in
+// user, so user/target/details/before/after must never be injected as raw HTML).
+const esc = (s) => window.escapeHtml(s);
+
 window.renderAuditLog = function () {
     const wrapper = document.getElementById('audit-log-wrapper');
     if (!wrapper) return;
@@ -142,25 +146,25 @@ function renderAuditTable(entries) {
             beforeAfter = `
                 <div style="font-size:0.75rem; margin-top:0.25rem;">
                     <span style="color:#6b7280;">Before:</span>
-                    <code style="background:#f1f5f9; padding:1px 4px; border-radius:3px;">${_auditTruncate(e.before, 80)}</code>
+                    <code style="background:#f1f5f9; padding:1px 4px; border-radius:3px;">${esc(_auditTruncate(e.before, 80))}</code>
                     <span style="color:#6b7280; margin-left:0.5rem;">After:</span>
-                    <code style="background:#f1f5f9; padding:1px 4px; border-radius:3px;">${_auditTruncate(e.after, 80)}</code>
+                    <code style="background:#f1f5f9; padding:1px 4px; border-radius:3px;">${esc(_auditTruncate(e.after, 80))}</code>
                 </div>`;
         }
 
         return `
             <tr style="border-bottom:1px solid var(--border-color);">
-                <td style="padding:0.65rem 0.75rem; white-space:nowrap; font-size:0.8rem; color:var(--text-secondary);">${dtStr}</td>
-                <td style="padding:0.65rem 0.75rem; font-size:0.8rem;">${e.user || '—'}</td>
+                <td style="padding:0.65rem 0.75rem; white-space:nowrap; font-size:0.8rem; color:var(--text-secondary);">${esc(dtStr)}</td>
+                <td style="padding:0.65rem 0.75rem; font-size:0.8rem;">${esc(e.user || '—')}</td>
                 <td style="padding:0.65rem 0.75rem;">
                     <span style="background:${badge.bg}; color:${badge.color}; padding:2px 8px; border-radius:12px; font-size:0.72rem; font-weight:700; letter-spacing:0.05em;">
                         ${badge.label}
                     </span>
                 </td>
-                <td style="padding:0.65rem 0.75rem; font-size:0.8rem; color:var(--text-secondary);">${_auditSectionLabel(e.section)}</td>
+                <td style="padding:0.65rem 0.75rem; font-size:0.8rem; color:var(--text-secondary);">${esc(_auditSectionLabel(e.section))}</td>
                 <td style="padding:0.65rem 0.75rem; font-size:0.85rem;">
-                    <div style="font-weight:500;">${e.target || '—'}</div>
-                    ${e.details ? `<div style="font-size:0.75rem; color:var(--text-secondary); margin-top:0.15rem;">${e.details}</div>` : ''}
+                    <div style="font-weight:500;">${esc(e.target || '—')}</div>
+                    ${e.details ? `<div style="font-size:0.75rem; color:var(--text-secondary); margin-top:0.15rem;">${esc(e.details)}</div>` : ''}
                     ${beforeAfter}
                 </td>
             </tr>`;
