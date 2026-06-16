@@ -23,6 +23,7 @@ or open with VS Code Live Server (right-click index.html → Open with Live Serv
 | `render_ytd_report.js` | YTD report UI |
 | `render_ironhorse.js` | Iron Horse section UI — Assets, Expenses, template download, import |
 | `render_maintenance.js` | Maintenance Gangs, Work Log & Gantt Chart (digitises the hand-written Gantt sheets) |
+| `render_wages.js` | **Rate of Wages** — per-gang/month payment calc (FFB rate × net MT − daily-rate blocks − penalty) + Excel report |
 | `render_weekly.js` | **Weekly Activity** — track-driven field report: KMZ/KML/GPX import, Leaflet satellite map, photo storage, Word `.docx` export |
 | `Report samples/` | Excel templates used as base for downloads |
 
@@ -73,6 +74,53 @@ Sub-items under the **Maintenance** sidebar menu (alongside Spraying/Manuring/Sl
 - **📥 Import** (`importMaintenanceWorkLog(file, yearStr)`) — edit-gated (`window._canEdit('maintenance')`). Scans **every** worksheet, detects header rows (cell normalises to `GANG`), builds a column map via `mntHeaderField`, and infers activity from the Activity column, a one-cell section-title row (e.g. "SLASHING MAINTENANCE"), or the sheet name — so it also reads the user's existing multi-section "Spraying List / Slashing List" sheets. Requires gang + dateStart + block per row; appends to `entries` (existing kept), confirms count, saves, logs audit, re-renders.
 - **⚙️ Activities** (`mntManageActivities`) — add/remove activity types for the year.
 - Import helpers: `mntLoadExcelJS` (CDN on-demand), `mntNormHeader`, `mntHeaderField`, `mntActivityFromText` (SPRAY/SLASH/MANUR/PRUN keyword detection), `mntCleanBlock` (strips `Blk`/`Block` prefix), `mntToISO` (Date / ISO string / Excel serial → `YYYY-MM-DD`).
+
+---
+
+## Rate of Wages module (render_wages.js)
+
+### Overview
+Top-level sidebar menu **💵 Rate of Wages** (id `sidebar-wages`, between Iron Horse and Weekly Activity). Calculates a gang's monthly payment from three parts:
+1. **FFB payment** = (gross FFB MT − daily-rate harvest blocks) × RM/MT rate
+2. **Daily rate** = Σ over work lines of `rate × Σ(manpower per day)`
+3. **Penalty** = unripe bunches × RM/bunch (subtracted)
+`Total = FFB payment + daily rate − penalty`. Worked example (Wenderlinus, Apr): 186.41 MT × RM65 + RM660 − RM130 = **RM12,646.65**.
+
+### Key behaviours
+- **FFB MT is auto-pulled** from `state.performance` summing **r1+r2+r3+r4** (ALL rounds — can differ slightly from Iron Horse Cost/FFB MT, which drops r4). Per-gang lookup uses the same 3-tier fuzzy name match as `getGangMonthMt` in render_ironhorse.js (exact → ci/prefix/first-word/first-5-letters/"previously" → block-level via `gangAssignments`), ported as `wgGangBlocks(year,gang,month)` which returns `{blockId: mt}`.
+- A **Harvesting** daily-rate line auto-subtracts that block's tonnage from the FFB pool (so bunches aren't double-paid); shown read-only with an editable per-line override. Non-harvesting lines (Slashing/Manuring/etc.) subtract nothing.
+- **Defaults** (`WG_DEFAULT_FFB_RATE=50`, `WG_DEFAULT_DAILY_RATE=30`, `WG_DEFAULT_PENALTY=10`): applied as *effective* values via `wgEffRate(stored, default)` at compute + display time — the stored field stays `''` until edited, so a fresh month shows RM50/MT and RM30/day without polluting `wgMonthHasData` or blocking carry-forward propagation.
+- **FFB MT override** field on the month is a manual fallback when name-matching can't resolve tonnage.
+- Manpower is **manual** per day (harvesting-interval manpower is intentionally ignored). "➕ Add day" appends date+manpower cells (no cap).
+- **Carry-forward** (`wgMaybeCarry`, run at the top of `wgRenderEditor`): opening a **brand-new** month (no object yet in `state.wages`) seeds it with a **snapshot** of the most recent earlier month that has data for that gang (`wgFindPrevMonthWithData`, walks back ≤12 months across the year boundary). Copies FFB rate + daily-rate lines (block, work type, RM/day, per-day **manpower**); resets dates, `penaltyBunches`, `grossMtOverride`, per-line `tonnageOverride`. It's a one-time copy (not a live link) so editing a month never changes earlier ones, and an edit becomes the baseline the next month inherits. **Guard:** never carries into a **future** month (`wgIsFutureMonth` — after the current calendar month) so nothing is pre-billed; never overwrites a month that already exists; skipped for read-only users. Shows a "↪ carried forward from …" banner (`m._carriedFrom`), cleared on the first rate/work edit.
+
+### View wiring
+- `state.activeViewType === 'wages'`; wrapper `wages-wrapper` (index.html); registered in `_switchableWrappers` + hide/clear lists; view branch beside `weekly_activity`; sidebar handler near the Weekly handler. All in `script.js`.
+- Selectors persisted in `state.wagesYear` / `state.wagesMonth` / `state.wagesGang`.
+- Edit-gated by menu key **`wages`** (`window._canEdit('wages')`, in `ALL_MENU_KEYS` + user-management `allMenuOptions`); DB rule `shared/wages_data` in `database.rules.json`.
+- Gangs = harvesting (`state.gangsByYear`) ∪ maintenance (`state.maintenance[y].gangs`) ∪ gangs already saved in wages. Work types = `Harvesting` + maintenance `activityTypes`. Blocks from `state.reports[year]`.
+
+### Data structure (`state.wages`) → Firebase `shared/wages_data` (`window._wagesDb`)
+```js
+{ "2026": {
+  penaltyPerBunch: 10,                       // year-wide RM/bunch
+  gangs: { "Wenderlinus Gang": { months: { "APR": {
+    ffbRate: 65, penaltyBunches: 13, grossMtOverride: "",
+    dailyLines: [ { workType:"Harvesting", block:"39", dailyRate:30,
+                    tonnageOverride:"",                 // "" = auto-pull block tonnage
+                    days:[ {date:"2026-04-05", manpower:11}, {date:"2026-04-11", manpower:11} ] } ]
+  } } } }
+} }
+```
+
+### Key functions (`wg`-prefixed, module-internal unless noted)
+| Function | Purpose |
+|---|---|
+| `window.renderWagesView()` | Year/month/gang bar + editor pane + Excel button |
+| `wgRenderEditor` / `wgRenderLines` / `wgRefresh` | FFB/penalty/daily-rate cards; live recompute (no DOM teardown — keeps input focus) |
+| `window.wgCompute(year,gang,month)` | The calc engine → `{grossMt, netMt, ffbPay, dailyPay, penalty, total, ...}` (also used by the Excel report) |
+| `window.saveWagesData(silent)` | `JSON.stringify(state.wages)` → `shared/wages_data` (debounced autosave on typing) |
+| `window.downloadWagesReport(year,month)` | ExcelJS "Wages {month} {year}" — per-gang row (net MT/FFB pay/daily/penalty/total) + grand total. Also surfaced in Reports panel (render_reports.js) |
 
 ---
 

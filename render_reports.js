@@ -882,6 +882,10 @@
         const manuringYears = Object.keys(window.state.manuring  || {}).filter(k => /^\d{4}$/.test(k)).sort((a, b) => parseInt(b) - parseInt(a));
         if (!manuringYears.includes('2025')) manuringYears.unshift('2025');
         const ironHorseYears = Object.keys((window.state.ironHorse || {}).assets || {}).filter(k => /^\d{4}$/.test(k)).sort((a, b) => parseInt(b) - parseInt(a));
+        const wagesYears = [...new Set([
+            ...Object.keys(window.state.wages || {}).filter(k => /^\d{4}$/.test(k)),
+            ...perfYears
+        ])].sort((a, b) => parseInt(b) - parseInt(a));
 
         const yearOpts  = years => years.map(y => `<option value="${y}">${y}</option>`).join('');
         const monthOpts = () => MONTHS.map(m => `<option value="${m}">${m}</option>`).join('');
@@ -919,6 +923,13 @@
             ? `<select id="sel-ih-cpmt-yr" style="${SS}">${yearOpts(ironHorseYears)}</select>
                <button id="btn-dl-ih-cpmt" class="btn-primary" style="padding:0.4rem 1rem;">⬇ Download Excel</button>
                <span id="rep-ih-cpmt-status" style="font-size:0.82rem;color:var(--text-secondary);"></span>`
+            : noDataMsg;
+
+        const wagesControls = wagesYears.length
+            ? `<select id="sel-wages-yr" style="${SS}">${yearOpts(wagesYears)}</select>
+               <select id="sel-wages-mo" style="${SS}">${monthOpts()}</select>
+               <button id="btn-dl-wages" class="btn-primary" style="padding:0.4rem 1rem;">⬇ Download Excel</button>
+               <span id="rep-wages-status" style="font-size:0.82rem;color:var(--text-secondary);"></span>`
             : noDataMsg;
 
         wrapper.innerHTML = `
@@ -983,6 +994,17 @@
             </div>
           </div>
 
+          <div style="${CARD}">
+            <h3 style="margin:0 0 0.35rem;font-size:0.97rem;">💵 Rate of Wages — Monthly Gang Payment</h3>
+            <p style="margin:0 0 1rem;color:var(--text-secondary);font-size:0.82rem;">
+              Per-gang payment for the selected month: FFB tonnage × rate, less daily-rate
+              blocks and unripe-bunch penalty, with a grand total.
+            </p>
+            <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">
+              ${wagesControls}
+            </div>
+          </div>
+
           <p style="color:var(--text-secondary);font-size:0.78rem;margin-top:0.5rem;">
             ℹ️ Reports use the official Excel templates from "Report samples/" as the base.
             The app must be served via HTTP (not file://) for template loading to work.
@@ -1044,6 +1066,26 @@
             } finally {
                 btnIhCpmt.disabled = false;
                 btnIhCpmt.textContent = '⬇ Download Excel';
+            }
+        };
+
+        const btnWages = document.getElementById('btn-dl-wages');
+        if (btnWages) btnWages.onclick = async () => {
+            const yr = document.getElementById('sel-wages-yr').value;
+            const mo = document.getElementById('sel-wages-mo').value;
+            if (!yr || !mo) return;
+            const statusEl = document.getElementById('rep-wages-status');
+            if (statusEl) statusEl.textContent = '';
+            btnWages.disabled = true;
+            btnWages.textContent = '⏳ Generating...';
+            try {
+                await window.downloadWagesReport(yr, mo);
+                if (statusEl) { statusEl.textContent = '✅ Downloaded!'; setTimeout(() => { statusEl.textContent = ''; }, 3000); }
+            } catch (e) {
+                if (statusEl) statusEl.textContent = '❌ ' + e.message;
+            } finally {
+                btnWages.disabled = false;
+                btnWages.textContent = '⬇ Download Excel';
             }
         };
     };
