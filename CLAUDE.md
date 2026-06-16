@@ -124,6 +124,33 @@ Top-level sidebar menu **💵 Rate of Wages** (id `sidebar-wages`, between Iron 
 
 ---
 
+## Wage Ledger module (render_wages_ledger.js)
+
+### Overview
+**"Wage Ledger"** sub-tab under 💵 Rate of Wages (the menu became a parent with **Calculator** = existing `sidebar-wages`, and **Wage Ledger** = `sidebar-wages-ledger`). Where the Calculator *estimates* per gang/month, the Ledger stores the **detailed actuals** imported from the user's monthly Excel. Three independent wage schemes (one per source sheet):
+- **Harvester** (15 cols) — per harvest ticket/employee; Ripe Amount = `Weight(KG) × Ripe Unit Price` (+ Bags Amount + Daily Piece Rate).
+- **Driver & loader** (18 cols) — per delivery; each Amount = `Weight MT × that role's Unit Price` (Driver/Loader/Loader 2/Lorry Driver).
+- **jobcardpr** (12 cols, header on row 2 in the source) — per job card; Amount = `Unit Done × Pay Rate`.
+
+### Key behaviours
+- **Template** (`window.downloadWageLedgerTemplate(year,month)`) — ExcelJS, 3 sheets named exactly `Harvester` / `Driver & loader` / `jobcardpr`, exact column order, date cols `yyyy-mm-dd`, money cols `#,##0.00`, Gang/Block list-validation dropdowns from a hidden **Lists** sheet (gangs = harvesting∪maintenance∪wages; blocks = `state.reports[year]`).
+- **Import** (`window.importWageLedger(file,year,month)`, edit-gated `_canEdit('wages')`) — detects each scheme by a **header-signature token** (`RIPEBUNCHES` / `DRIVERUNITPRICE` / `JOBCARDNO`) so it's independent of sheet name/order and tolerates the jobcardpr header on row 2. Maps columns via specs (`wlNormHeader` mirrors `mntNormHeader`), converts Excel-serial dates (`wlToISO` mirrors `mntToISO`), auto-computes blank amount cells from qty×rate. **Skips TOTALS rows** (Driver & loader requires a driver/loader/lorry name; Harvester/Job Card require an employee — the source's grand-total rows have neither). `confirm()` with per-category counts, then **replaces** the month's arrays for categories present in the file (clean re-import, no dupes); other categories untouched.
+- **View** — Year/Month selectors, per-scheme tables (default 500 rows + a "Show all / Show fewer" toggle via `_wlShowAll`; totals always cover every row), a per-scheme + grand total summary card, and a per-gang breakdown.
+- Real April-2026 row counts: Harvester 3,656 · Driver & loader 375 · jobcardpr 708 (sheet *dimensions* are padded higher).
+
+### Data structure (`state.wagesLedger`) → Firebase `shared/wages_ledger_data` (`window._wagesLedgerDb`)
+```js
+{ "2026": { "APR": {
+  harvester:[{no,deliveryDate,harvestingDate,ticketNo,rampChitNo,block,gang,employee,ripeBunches,weightKg,ripeUnitPrice,ripeAmount,bags,bagsAmount,dailyPieceRate}],
+  driverLoader:[{no,deliveryDate,ticketNo,rampChitNo,block,gang,driver,weightMt,driverUnitPrice,driverAmount,loader,loaderUnitPrice,loaderAmount,loader2,loader2Amount,lorryDriver,lorryDriverUnitPrice,lorryAmount}],
+  jobcard:[{no,gang,employee,jobCardNo,jobDate,startDate,completeDate,block,jobActivity,unitDone,payRate,amount}],
+  importedAt, importedBy
+} } }
+```
+- Reuses the **`wages`** menu key (no new permission). DB rule `shared/wages_ledger_data` mirrors `wages_data` in `database.rules.json` (must be published in the Firebase console to take effect). View wired in script.js: `state.activeViewType === 'wages_ledger'`, wrapper `wages-ledger-wrapper`, in `_switchableWrappers` + clear/hide lists, loaded in `init()` after `wages_data`.
+
+---
+
 ## Weekly Activity module (render_weekly.js)
 
 ### Overview

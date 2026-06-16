@@ -21,6 +21,7 @@ const runMainApplication = () => {
             gangsByYear: {}, // { "2025": ["DARSO GANG", ...], "2026": [...] }
             maintenance: {}, // { "2026": { activityTypes, gangs:{}, entries:[] } } — loaded from shared/maintenance_data
             wages: {}, // { "2026": { penaltyPerBunch, gangs:{} } } — loaded from shared/wages_data
+            wagesLedger: {}, // { "2026": { "APR": { harvester:[], driverLoader:[], jobcard:[] } } } — loaded from shared/wages_ledger_data
             selectedReportYear: null,
             activeViewType: 'report_year',
             activeViewValue: null,
@@ -1765,6 +1766,7 @@ const runMainApplication = () => {
             const mntGanttWrapper    = document.getElementById('maintenance-gantt-wrapper');
             const weeklyWrapper      = document.getElementById('weekly-activity-wrapper');
             const wagesWrapper       = document.getElementById('wages-wrapper');
+            const wagesLedgerWrapper = document.getElementById('wages-ledger-wrapper');
             if (ffbWrapper) ffbWrapper.innerHTML = ''; // Clear FFB budget widgets
             if (rainfallWrapper) rainfallWrapper.innerHTML = ''; // Clear Rainfall widgets
             if (ytdWrapper) ytdWrapper.innerHTML = '';
@@ -1782,6 +1784,7 @@ const runMainApplication = () => {
             if (mntGanttWrapper)    { mntGanttWrapper.innerHTML = '';   mntGanttWrapper.classList.add('hidden'); }
             if (weeklyWrapper)      { weeklyWrapper.innerHTML = '';     weeklyWrapper.classList.add('hidden'); }
             if (wagesWrapper)       { wagesWrapper.innerHTML = '';      wagesWrapper.classList.add('hidden'); }
+            if (wagesLedgerWrapper) { wagesLedgerWrapper.innerHTML = ''; wagesLedgerWrapper.classList.add('hidden'); }
             if (userMgmtWrapper) { userMgmtWrapper.innerHTML = ''; userMgmtWrapper.classList.add('hidden'); }
             if (excelReportsWrapper) { excelReportsWrapper.innerHTML = ''; excelReportsWrapper.classList.add('hidden'); }
             const auditLogWrapper = document.getElementById('audit-log-wrapper');
@@ -1815,7 +1818,7 @@ const runMainApplication = () => {
                 ihAssetsWrapper, ihExpensesWrapper, ihCostPerHaWrapper,
                 gangOverviewWrapper, selectorWrapper,
                 mntGangsWrapper, mntWorklogWrapper, mntGanttWrapper,
-                weeklyWrapper, wagesWrapper,
+                weeklyWrapper, wagesWrapper, wagesLedgerWrapper,
                 userMgmtWrapper, excelReportsWrapper, auditLogWrapper,
                 dashboardWrapper
             ];
@@ -1930,6 +1933,10 @@ const runMainApplication = () => {
             } else if (state.activeViewType === 'wages') {
                 showView(wagesWrapper, () => {
                     if (typeof window.renderWagesView === 'function') window.renderWagesView();
+                }, 'wages');
+            } else if (state.activeViewType === 'wages_ledger') {
+                showView(wagesLedgerWrapper, () => {
+                    if (typeof window.renderWagesLedgerView === 'function') window.renderWagesLedgerView();
                 }, 'wages');
             } else if (state.activeViewType === 'audit_log') {
                 showView(auditLogWrapper, () => {
@@ -3763,6 +3770,17 @@ const runMainApplication = () => {
                     };
                 }
 
+                // ── Wage Ledger nav handler ─────────────────────────────
+                const sidebarWagesLedger = document.getElementById('sidebar-wages-ledger');
+                if (sidebarWagesLedger) {
+                    sidebarWagesLedger.onclick = (e) => {
+                        e.preventDefault();
+                        if (!state.wagesLedger) state.wagesLedger = {};
+                        state.activeViewType = 'wages_ledger';
+                        renderSidebar(); renderTable();
+                    };
+                }
+
                 // ── Audit Log nav handler ───────────────────────────────
                 const sidebarAuditLog = document.getElementById('sidebar-audit-log');
                 if (sidebarAuditLog) {
@@ -4203,6 +4221,22 @@ const runMainApplication = () => {
                 } catch (e) {
                     console.warn("Could not load Wages data:", e.message);
                     if (!state.wages) state.wages = {};
+                }
+
+                // Load Wage Ledger data (detailed actuals import — shared across all users)
+                window._wagesLedgerDb = db;
+                try {
+                    const wlSnap = await db.ref('shared/wages_ledger_data').once('value');
+                    const wlData = wlSnap.val();
+                    if (wlData) {
+                        state.wagesLedger = JSON.parse(wlData);
+                        console.log("Wage ledger data loaded from cloud.");
+                    } else if (!state.wagesLedger) {
+                        state.wagesLedger = {};
+                    }
+                } catch (e) {
+                    console.warn("Could not load Wage Ledger data:", e.message);
+                    if (!state.wagesLedger) state.wagesLedger = {};
                 }
 
                 // Load Maintenance data (gangs, work log, gantt — shared across all users)
