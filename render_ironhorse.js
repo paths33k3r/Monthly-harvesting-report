@@ -1523,21 +1523,8 @@ window.downloadIronHorseCostPerFFBMt = async (yearStr) => {
         gRow.getCell(COLS).font = { bold: true, size: 9, color: { argb: 'FFDCFCE7' } };
         gRow.height = 16;
 
-        // FFB MT sub-row
-        const mtVals = IH_MONTHS.map(m => n(gangMonthMt[gangName]?.[m] || 0));
-        const mtRow = ws.addRow(['  FFB MT of Month', null, ...mtVals, n(gangYearMt[gangName] || 0)]);
-        styleRow(mtRow, 'FFDBEAFE', 'FF1E40AF', false, 8, true);
-        mtRow.getCell(COLS).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFbfdbfe' } };
-        mtRow.height = 14;
-
-        // Expenses sub-row
-        const expVals = IH_MONTHS.map(m => n(gangMonthExp[gangName]?.[m] || 0));
-        const expRow = ws.addRow(['  Total Expenses (RM)', null, ...expVals, n(gangMonthExp[gangName]?.['YEAR'] || 0)]);
-        styleRow(expRow, 'FFFEE2E2', 'FF991B1B', false, 8, true);
-        expRow.getCell(COLS).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFECACA' } };
-        expRow.height = 14;
-
-        // Asset rows
+        // Asset rows sit directly under the gang/total header, above the
+        // FFB MT / Total Expenses summary sub-rows.
         (gangToAssets[gangName] || []).forEach((assetNo, ai) => {
             const aVals = IH_MONTHS.map(m => {
                 const mt = gangMonthMt[gangName]?.[m] || 0;
@@ -1551,6 +1538,20 @@ window.downloadIronHorseCostPerFFBMt = async (yearStr) => {
             aRow.getCell(COLS).font = { bold: true, size: 8, color: { argb: 'FF166534' } };
             aRow.height = 14;
         });
+
+        // FFB MT sub-row
+        const mtVals = IH_MONTHS.map(m => n(gangMonthMt[gangName]?.[m] || 0));
+        const mtRow = ws.addRow(['  FFB MT of Month', null, ...mtVals, n(gangYearMt[gangName] || 0)]);
+        styleRow(mtRow, 'FFDBEAFE', 'FF1E40AF', false, 8, true);
+        mtRow.getCell(COLS).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFbfdbfe' } };
+        mtRow.height = 14;
+
+        // Expenses sub-row
+        const expVals = IH_MONTHS.map(m => n(gangMonthExp[gangName]?.[m] || 0));
+        const expRow = ws.addRow(['  Total Expenses (RM)', null, ...expVals, n(gangMonthExp[gangName]?.['YEAR'] || 0)]);
+        styleRow(expRow, 'FFFEE2E2', 'FF991B1B', false, 8, true);
+        expRow.getCell(COLS).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFECACA' } };
+        expRow.height = 14;
     });
 
     // Grand Total — Cost/MT (first)
@@ -1846,7 +1847,7 @@ const renderIronHorseCostPerHa = () => {
     const hS    = 'background:#1e293b;color:#f8fafc;padding:7px 10px;border:1px solid #334155;font-weight:600;font-size:0.75rem;text-transform:uppercase;text-align:right;white-space:nowrap;';
     const hLS   = hS + 'text-align:left;min-width:155px;';
     const hTotS = hS + 'background:#14532d;color:#dcfce7;min-width:95px;';
-    const gS    = 'background:#0f172a;color:#e2e8f0;padding:7px 10px;border:1px solid #1e293b;font-weight:700;font-size:0.78rem;text-align:right;';
+    const gS    = 'background:#14532d;color:#e2e8f0;padding:7px 10px;border:1px solid #1e293b;font-weight:700;font-size:0.78rem;text-align:right;';
     const gLS   = gS + 'text-align:left;padding-left:10px;';
     const gTotS = gS + 'background:#14532d;color:#dcfce7;';
     const aS    = 'border:1px solid var(--border-color);padding:6px 10px;font-size:0.78rem;text-align:right;';
@@ -1871,9 +1872,18 @@ const renderIronHorseCostPerHa = () => {
         section.style.cssText = 'margin-bottom:2.5rem;';
 
         const secTitle = document.createElement('div');
-        secTitle.style.cssText = 'font-size:0.95rem;font-weight:700;color:var(--text-primary);margin-bottom:0.75rem;padding-bottom:0.5rem;border-bottom:2px solid var(--accent);';
-        secTitle.textContent = title;
+        secTitle.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:1rem;font-size:0.95rem;font-weight:700;color:var(--text-primary);margin-bottom:0.75rem;padding-bottom:0.5rem;border-bottom:2px solid var(--accent);';
+        const titleSpan = document.createElement('span');
+        titleSpan.textContent = title;
+        secTitle.appendChild(titleSpan);
+        // Expand/Collapse-all controls for the asset rows (populated below if any)
+        const ctrlWrap = document.createElement('div');
+        ctrlWrap.style.cssText = 'display:flex;gap:0.4rem;';
+        secTitle.appendChild(ctrlWrap);
         section.appendChild(secTitle);
+
+        // Per-gang collapse controllers, wired after the rows are built
+        const assetGroups = [];
 
         if (warn) {
             const warnEl = document.createElement('div');
@@ -1904,13 +1914,50 @@ const renderIronHorseCostPerHa = () => {
             const monthTds = IH_MONTHS.map(m =>
                 `<td style="${gS}">${gangExtraCell.monthVal(gangMonthExp[gangName][m], gangName, m)}</td>`
             ).join('');
+            const assetNos = gangToAssets[gangName] || [];
+            const hasAssets = assetNos.length > 0;
+            const caret = hasAssets
+                ? `<span class="ih-caret" style="display:inline-block;width:0.9em;margin-right:0.35rem;transition:transform 0.15s;">▾</span>`
+                : '';
             const trGang = document.createElement('tr');
+            if (hasAssets) trGang.style.cursor = 'pointer';
             trGang.innerHTML = `
-                <td style="${gLS}">${label}${suffix}</td>
+                <td style="${gLS}">${caret}${label}${suffix}</td>
                 <td style="${gS}">${gangColVal(gangName)}</td>
                 ${monthTds}
                 <td style="${gTotS}">${gangExtraCell.yearVal(gangMonthExp[gangName]['YEAR'], gangName)}</td>`;
             tbody.appendChild(trGang);
+
+            // Asset rows sit directly under the gang/total header, above the
+            // FFB MT / Total Expenses summary sub-rows.
+            const assetRows = [];
+            assetNos.forEach((assetNo, ai) => {
+                const monthAssetTds = IH_MONTHS.map(m =>
+                    `<td style="${aS}">${assetExtraCell.monthVal(assetMonthExp[assetNo][m], gangName, m)}</td>`
+                ).join('');
+                const tr = document.createElement('tr');
+                tr.style.background = ai % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-main)';
+                tr.innerHTML = `
+                    <td style="${aLS}">↳ ${assetNo}</td>
+                    <td style="${aS}">—</td>
+                    ${monthAssetTds}
+                    <td style="${aTotS}">${assetExtraCell.yearVal(assetMonthExp[assetNo]['YEAR'], gangName)}</td>`;
+                tbody.appendChild(tr);
+                assetRows.push(tr);
+            });
+
+            // Collapse toggle: click the gang header to hide/show its assets
+            if (hasAssets) {
+                const caretEl = trGang.querySelector('.ih-caret');
+                let collapsed = true; // assets hidden by default
+                const apply = () => {
+                    assetRows.forEach(r => { r.style.display = collapsed ? 'none' : ''; });
+                    if (caretEl) caretEl.style.transform = collapsed ? 'rotate(-90deg)' : '';
+                };
+                apply(); // start collapsed
+                trGang.onclick = () => { collapsed = !collapsed; apply(); };
+                assetGroups.push({ set: c => { collapsed = c; apply(); } });
+            }
 
             // Optional sub-row(s) — gangSubRow may return a single object or an array
             if (gangSubRow) {
@@ -1934,21 +1981,24 @@ const renderIronHorseCostPerHa = () => {
                     tbody.appendChild(trSub);
                 });
             }
-
-            (gangToAssets[gangName] || []).forEach((assetNo, ai) => {
-                const monthAssetTds = IH_MONTHS.map(m =>
-                    `<td style="${aS}">${assetExtraCell.monthVal(assetMonthExp[assetNo][m], gangName, m)}</td>`
-                ).join('');
-                const tr = document.createElement('tr');
-                tr.style.background = ai % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-main)';
-                tr.innerHTML = `
-                    <td style="${aLS}">↳ ${assetNo}</td>
-                    <td style="${aS}">—</td>
-                    ${monthAssetTds}
-                    <td style="${aTotS}">${assetExtraCell.yearVal(assetMonthExp[assetNo]['YEAR'], gangName)}</td>`;
-                tbody.appendChild(tr);
-            });
         });
+
+        // Populate Expand/Collapse-all controls (only when there are assets)
+        if (assetGroups.length) {
+            const ctrlBtnStyle = 'padding:0.25rem 0.6rem;background:var(--bg-secondary);border:1px solid var(--border-color);border-radius:4px;cursor:pointer;font-size:0.72rem;font-weight:600;color:var(--text-primary);';
+            const expandBtn = document.createElement('button');
+            expandBtn.type = 'button';
+            expandBtn.style.cssText = ctrlBtnStyle;
+            expandBtn.innerHTML = '＋ Expand all';
+            expandBtn.onclick = () => assetGroups.forEach(g => g.set(false));
+            const collapseBtn = document.createElement('button');
+            collapseBtn.type = 'button';
+            collapseBtn.style.cssText = ctrlBtnStyle;
+            collapseBtn.innerHTML = '－ Collapse all';
+            collapseBtn.onclick = () => assetGroups.forEach(g => g.set(true));
+            ctrlWrap.appendChild(expandBtn);
+            ctrlWrap.appendChild(collapseBtn);
+        }
 
         // Grand total row(s)
         if (grandRows && grandRows.length) {
@@ -1962,7 +2012,7 @@ const renderIronHorseCostPerHa = () => {
                     `<td style="${rowS}">${gr.monthVal(m)}</td>`
                 ).join('');
                 const tr = document.createElement('tr');
-                if (isPrimary) tr.style.cssText = 'background:#1e293b;color:#f8fafc;';
+                if (isPrimary) tr.style.cssText = 'background:#14532d;color:#f8fafc;';
                 tr.innerHTML = `
                     <td style="${rowLS}">${gr.label}</td>
                     <td style="${rowS}">${gr.colVal}</td>
