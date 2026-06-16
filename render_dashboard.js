@@ -21,7 +21,7 @@
         </div>`;
     }
     function quickCard(icon, title, desc, sidebarId) {
-        return `<button type="button" class="quick-card" data-target="${sidebarId}">
+        return `<button type="button" class="quick-card" data-target="${sidebarId}" data-view-hash="#nav=${sidebarId}">
             <span class="quick-ico">${icon}</span>
             <span class="quick-body">
                 <span class="quick-title">${title}</span>
