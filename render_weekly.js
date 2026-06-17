@@ -861,6 +861,93 @@ const downloadWeeklyActivityDoc = async (yearStr, weekId) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────
+// KMZ export (Google Earth) — zipped KML + embedded photos
+//
+// Mirrors the format the module imports: a red LineString for the GPS track and
+// a Placemark/Point per geotagged observation, each photo embedded under files/
+// and shown in the placemark balloon via a relative <img>. Opens in Google Earth
+// and re-imports cleanly here.
+// ─────────────────────────────────────────────────────────────────────
+const downloadWeeklyActivityKmz = async (yearStr, weekId) => {
+    const week = wkFindWeek(yearStr, weekId);
+    if (!week) { window.notify('Week not found.', 'error'); return; }
+    try {
+        await wkEnsureJSZip();
+        const zip = new JSZip();
+        const files = zip.folder('files');
+        const placemarks = [];
+
+        // GPS track → LineString (coords are stored [lng,lat]; KML wants lng,lat,alt)
+        if (week.track && week.track.coords && week.track.coords.length) {
+            const coordStr = week.track.coords.map(([lng, lat]) => `${lng},${lat},0`).join(' ');
+            placemarks.push(
+                '<Placemark><name>Activity Track</name>' +
+                '<Style><LineStyle><color>ff0000ff</color><width>4</width></LineStyle></Style>' +
+                '<LineString><tessellate>1</tessellate><coordinates>' + coordStr + '</coordinates></LineString>' +
+                '</Placemark>'
+            );
+        }
+
+        // Observations → Points (need coords for a map pin); embed each photo.
+        let idx = 0, photoCount = 0, skipped = 0;
+        for (const o of (week.observations || [])) {
+            idx++;
+            if (!isFinite(o.lat) || !isFinite(o.lng)) { if (o.photoPath || o.caption || o.notes) skipped++; continue; }
+            let imgTag = '';
+            if (o.photoPath) {
+                try {
+                    const src = await wkLoadImage(o.photoPath);
+                    if (src) {
+                        const bytes = await wkFetchImageBytes(src);
+                        const fname = `obs_${idx}.jpg`;
+                        files.file(fname, bytes);
+                        imgTag = `<img src="files/${fname}" width="500"/><br/>`;
+                        photoCount++;
+                    }
+                } catch (e) { console.warn('KMZ photo embed failed', o.id, e); }
+            }
+            const title = o.caption || (o.block ? 'Block ' + o.block : 'Observation ' + idx);
+            const parts = [];
+            if (imgTag) parts.push(imgTag);
+            if (o.block) parts.push('Block: ' + wkEsc(o.block));
+            if (o.caption) parts.push(wkEsc(o.caption));
+            if (o.notes) parts.push(wkEsc(o.notes));
+            placemarks.push(
+                '<Placemark><name>' + wkEsc(title) + '</name>' +
+                '<description><![CDATA[' + parts.join('<br/>') + ']]></description>' +
+                '<Point><coordinates>' + o.lng + ',' + o.lat + ',0</coordinates></Point>' +
+                '</Placemark>'
+            );
+        }
+
+        const kml =
+            '<?xml version="1.0" encoding="UTF-8"?>\n' +
+            '<kml xmlns="http://www.opengis.net/kml/2.2"><Document>' +
+            '<name>' + wkEsc(('Weekly Activity ' + (week.date || '')).trim()) + '</name>' +
+            placemarks.join('') +
+            '</Document></kml>';
+        zip.file('doc.kml', kml);
+
+        const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.google-earth.kmz' });
+        const fname = `Weekly Activity ${(week.date || '').replace(/-/g, '.')}.kmz`;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = fname;
+        document.body.appendChild(a); a.click();
+        setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+        if (typeof window.logAudit === 'function') window.logAudit('export', 'weekly', fname, `${photoCount} photos`);
+        window.notify(
+            `KMZ exported (${photoCount} photo${photoCount === 1 ? '' : 's'})`
+            + (skipped ? ` — ${skipped} observation(s) without GPS coordinates were left out of the map.` : '.'),
+            'success'
+        );
+    } catch (e) {
+        console.error('Weekly KMZ export failed:', e);
+        window.notify('Could not export the KMZ: ' + e.message, 'error');
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────────
 // Generic line-list editor (Main Activity / Others / section notes)
 // ─────────────────────────────────────────────────────────────────────
 const wkRenderLineEditor = (arr, placeholder, onChange) => {
@@ -1079,6 +1166,14 @@ const wkRenderWeekEditor = (host, yearStr, week) => {
     btnExport.innerHTML = '⬇️ Export to Word';
     btnExport.onclick = () => downloadWeeklyActivityDoc(yearStr, week.id);
     header.appendChild(btnExport);
+
+    const btnKmz = document.createElement('button');
+    btnKmz.className = 'btn-secondary';
+    btnKmz.style.cssText = 'padding:0.4rem 0.9rem; font-size:0.85rem;';
+    btnKmz.innerHTML = '🌍 Export KMZ';
+    btnKmz.title = 'Download a KMZ (Google Earth) with the GPS track + geotagged photos';
+    btnKmz.onclick = () => downloadWeeklyActivityKmz(yearStr, week.id);
+    header.appendChild(btnKmz);
 
     if (editable) {
         const btnSave = document.createElement('button');
@@ -1442,6 +1537,7 @@ const wkRenderObservations = (yearStr, week, host) => {
 window.renderWeeklyActivity = renderWeeklyActivity;
 window.saveWeeklyActivityData = saveWeeklyActivityData;
 window.downloadWeeklyActivityDoc = downloadWeeklyActivityDoc;
+window.downloadWeeklyActivityKmz = downloadWeeklyActivityKmz;
 
 // Flush offline-captured photos to Firebase the moment the network returns.
 window.addEventListener('online', () => { try { wkFlushPendingPhotos(); } catch (e) {} });
