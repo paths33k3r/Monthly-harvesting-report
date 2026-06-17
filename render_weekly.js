@@ -45,6 +45,28 @@ const wkCleanBlock = (s) => String(s || '').replace(/^\s*(blk|block)\s*/i, '').t
 // alone no longer flags a week.)
 const wkIsArchivedAge = (week) => !!(week && week.archive && week.archive.archivedToDrive);
 
+// Capture the device's current GPS position for in-app field logging. Resolves
+// { lat, lng } as numbers (rounded to ~0.1 m) or rejects with a user-friendly
+// message. Works offline — GPS needs no internet. High accuracy, 15 s timeout.
+const wkGetLocation = () => new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+        reject(new Error('This device/browser does not support GPS location.'));
+        return;
+    }
+    navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({
+            lat: +pos.coords.latitude.toFixed(6),
+            lng: +pos.coords.longitude.toFixed(6)
+        }),
+        (err) => reject(new Error(
+            err && err.code === 1
+                ? 'Location permission denied — allow location access for this site and try again.'
+                : 'Could not get a GPS fix. Make sure location is turned on (and you are outdoors), then try again.'
+        )),
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+    );
+});
+
 // ─────────────────────────────────────────────────────────────────────
 // State helpers
 // ─────────────────────────────────────────────────────────────────────
@@ -203,10 +225,11 @@ const wkWithTimeout = (promise, ms, label) => Promise.race([
 // Store an (already-resized) image blob under shared/weekly_images/<path> and
 // return its DB path + MIME type. The path — not the bytes — is what gets saved
 // on the observation/mapImage record.
+// Realtime DB keys may not contain . # $ [ ] — sanitise the file name into a path.
+const wkImgPath = (yearStr, weekId, name) => `${yearStr}/${weekId}/${String(name).replace(/[.#$\[\]]/g, '_')}`;
+
 const wkUploadBlob = async (yearStr, weekId, name, blob) => {
-    // Realtime DB keys may not contain . # $ [ ] — sanitise the file name.
-    const key = String(name).replace(/[.#$\[\]]/g, '_');
-    const path = `${yearStr}/${weekId}/${key}`;
+    const path = wkImgPath(yearStr, weekId, name);
     const dataUrl = await wkBlobToDataUrl(blob);
     if (window._weeklyDb) await window._weeklyDb.ref(`${WK_IMG_ROOT}/${path}`).set(dataUrl);
     _wkImageCache[path] = dataUrl;
@@ -218,6 +241,8 @@ const wkUploadBlob = async (yearStr, weekId, name, blob) => {
 const wkLoadImage = async (path) => {
     if (!path) return null;
     if (_wkImageCache[path]) return _wkImageCache[path];
+    // Local on-phone copy (offline-captured, or not yet uploaded) before the network.
+    try { const rec = await wkIdbGet(path); if (rec && rec.dataUrl) { _wkImageCache[path] = rec.dataUrl; return rec.dataUrl; } } catch (e) {}
     if (!window._weeklyDb) return null;
     try {
         const snap = await window._weeklyDb.ref(`${WK_IMG_ROOT}/${path}`).once('value');
@@ -227,12 +252,127 @@ const wkLoadImage = async (path) => {
     return null;
 };
 
-// Best-effort delete of a stored image (DB node + cache).
+// Best-effort delete of a stored image (on-phone copy + DB node + cache).
 const wkDeleteStorage = async (path) => {
     if (!path) return;
     delete _wkImageCache[path];
+    try { await wkIdbDelete(path); } catch (e) { /* no local copy */ }
     if (!window._weeklyDb) return;
     try { await window._weeklyDb.ref(`${WK_IMG_ROOT}/${path}`).remove(); } catch (e) { /* already gone */ }
+};
+
+// ─────────────────────────────────────────────────────────────────────
+// On-phone photo store (IndexedDB) — offline durability
+//
+// Captured photos are written to the phone's own disk FIRST, so they survive
+// going offline (and a page reload), and are kept until the photo/observation is
+// deleted. When online, pending photos upload to Firebase in the background;
+// wkLoadImage falls back to this store so offline-captured photos always display.
+// Degrades gracefully (try/catch) where IndexedDB is unavailable (e.g. private mode).
+// ─────────────────────────────────────────────────────────────────────
+const WK_IDB_NAME = 'weeklyPhotos';
+const WK_IDB_STORE = 'photos';
+let _wkIdbPromise = null;
+
+const wkIdbOpen = () => {
+    if (_wkIdbPromise) return _wkIdbPromise;
+    _wkIdbPromise = new Promise((resolve, reject) => {
+        if (!('indexedDB' in window)) { reject(new Error('IndexedDB unavailable')); return; }
+        const req = indexedDB.open(WK_IDB_NAME, 1);
+        req.onupgradeneeded = () => {
+            const db = req.result;
+            if (!db.objectStoreNames.contains(WK_IDB_STORE)) {
+                const os = db.createObjectStore(WK_IDB_STORE, { keyPath: 'path' });
+                os.createIndex('byUploaded', 'uploaded', { unique: false });
+            }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+    return _wkIdbPromise;
+};
+
+const wkIdbPut = async (rec) => {
+    const db = await wkIdbOpen();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(WK_IDB_STORE, 'readwrite');
+        tx.objectStore(WK_IDB_STORE).put(rec);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+    });
+};
+
+const wkIdbGet = async (path) => {
+    const db = await wkIdbOpen();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(WK_IDB_STORE, 'readonly');
+        const r = tx.objectStore(WK_IDB_STORE).get(path);
+        r.onsuccess = () => resolve(r.result || null);
+        r.onerror = () => reject(r.error);
+    });
+};
+
+const wkIdbDelete = async (path) => {
+    const db = await wkIdbOpen();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(WK_IDB_STORE, 'readwrite');
+        tx.objectStore(WK_IDB_STORE).delete(path);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+    });
+};
+
+// All photos still awaiting upload (uploaded === 0).
+const wkIdbPending = async () => {
+    const db = await wkIdbOpen();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(WK_IDB_STORE, 'readonly');
+        const r = tx.objectStore(WK_IDB_STORE).index('byUploaded').getAll(0);
+        r.onsuccess = () => resolve(r.result || []);
+        r.onerror = () => reject(r.error);
+    });
+};
+
+// Resize-already-done blob → store on the phone, mark pending upload, prime cache.
+const wkStorePhotoLocal = async (yearStr, weekId, name, blob) => {
+    const path = wkImgPath(yearStr, weekId, name);
+    const dataUrl = await wkBlobToDataUrl(blob);
+    const type = blob.type || 'image/jpeg';
+    _wkImageCache[path] = dataUrl;
+    try { await wkIdbPut({ path, dataUrl, type, year: yearStr, weekId, uploaded: 0, createdAt: Date.now() }); }
+    catch (e) { console.warn('On-phone photo store failed', e); }
+    return { path, type };
+};
+
+// Push one locally-stored photo to Firebase; mark it uploaded on success. No-op
+// (returns false) when offline — the photo stays pending for the next flush.
+const wkUploadOne = async (path) => {
+    if (!window._weeklyDb || !navigator.onLine) return false;
+    let rec = null;
+    try { rec = await wkIdbGet(path); } catch (e) {}
+    const dataUrl = (rec && rec.dataUrl) || _wkImageCache[path];
+    if (!dataUrl) return false;
+    try {
+        await wkWithTimeout(window._weeklyDb.ref(`${WK_IMG_ROOT}/${path}`).set(dataUrl), 30000, 'Photo upload');
+        if (rec) { rec.uploaded = 1; try { await wkIdbPut(rec); } catch (e) {} }
+        return true;
+    } catch (e) { console.warn('Photo upload deferred (will retry)', path, e); return false; }
+};
+
+// Upload every pending (offline-captured) photo — called on reconnect / view open.
+let _wkFlushing = false;
+const wkFlushPendingPhotos = async () => {
+    if (_wkFlushing || !navigator.onLine || !window._weeklyDb) return;
+    _wkFlushing = true;
+    try {
+        let pending = [];
+        try { pending = await wkIdbPending(); } catch (e) { pending = []; }
+        let done = 0;
+        for (const rec of pending) { if (await wkUploadOne(rec.path)) done++; }
+        if (done && typeof window.notify === 'function') {
+            window.notify(`Uploaded ${done} offline photo${done === 1 ? '' : 's'} now that you're back online.`, 'success');
+        }
+    } finally { _wkFlushing = false; }
 };
 
 // ─────────────────────────────────────────────────────────────────────
@@ -382,6 +522,8 @@ const wkImportTrackFile = async (file, yearStr, week) => {
 let _wkMap = null;
 let _wkTileLayer = null;
 let _wkTilesReady = false;
+// Live GPS recording session (in-app foreground tracking). Only one at a time.
+let _wkTrack = null;
 
 const wkRenderMap = async (containerId, week) => {
     await wkEnsureLeaflet();
@@ -399,8 +541,9 @@ const wkRenderMap = async (containerId, week) => {
     _wkTileLayer.addTo(map);
 
     const latlngs = (week.track && week.track.coords || []).map(([lng, lat]) => [lat, lng]);
+    let trackLine = null;
     if (latlngs.length) {
-        window.L.polyline(latlngs, { color: '#ff3b30', weight: 4, opacity: 0.9 }).addTo(map);
+        trackLine = window.L.polyline(latlngs, { color: '#ff3b30', weight: 4, opacity: 0.9 }).addTo(map);
     }
     // Vector circle dots (not marker-icon images) — these render reliably in the
     // leaflet-image snapshot and don't taint the export canvas. The numbered
@@ -416,8 +559,163 @@ const wkRenderMap = async (containerId, week) => {
     if (pts.length) map.fitBounds(window.L.latLngBounds(pts).pad(0.15));
     else map.setView([3.0, 113.0], 6); // fallback (roughly Borneo)
 
+    // If a live GPS recording is running for THIS week, hand the track line to the
+    // recorder so incoming points keep extending it (survives editor re-renders).
+    if (_wkTrack && _wkTrack.active && _wkTrack.weekId === week.id) {
+        if (!trackLine) trackLine = window.L.polyline([], { color: '#ff3b30', weight: 4, opacity: 0.9 }).addTo(map);
+        _wkTrack.liveLine = trackLine;
+    }
+
     _wkMap = map;
     return map;
+};
+
+// ─────────────────────────────────────────────────────────────────────
+// Live GPS tracking (in-app, foreground)
+//
+// Records the device path with navigator.geolocation.watchPosition into
+// week.track.coords ([lng,lat] pairs — the same shape the KMZ import produces),
+// draws it live on the map, and keeps the screen awake with the Wake Lock API.
+// GPS works with no internet, so recording is fully offline-capable; points are
+// persisted to Firebase periodically and on stop. NB: a browser only tracks while
+// the app is open and the screen is on — pocket/screen-off tracking needs a native
+// GPS app (import its KMZ instead).
+// ─────────────────────────────────────────────────────────────────────
+
+// Great-circle distance in metres between two lng/lat points (jitter filter).
+const wkDistM = (aLng, aLat, bLng, bLat) => {
+    const R = 6371000, toR = Math.PI / 180;
+    const dLat = (bLat - aLat) * toR, dLng = (bLng - aLng) * toR;
+    const s = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * toR) * Math.cos(bLat * toR) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+};
+
+const wkTrackStatus = (acc) => {
+    if (!_wkTrack || !_wkTrack.statusEl) return;
+    const coords = (_wkTrack.week.track && _wkTrack.week.track.coords) || [];
+    let s = `● Recording — ${coords.length} point${coords.length === 1 ? '' : 's'}`;
+    if (isFinite(acc)) s += ` (±${Math.round(acc)} m)`;
+    _wkTrack.statusEl.textContent = s;
+    _wkTrack.statusEl.style.color = '#ef4444';
+};
+
+const wkSetTrackButtonRecording = (btn) => {
+    btn.textContent = '⏹ Stop tracking';
+    btn.style.background = '#ef4444';
+    btn.style.borderColor = '#ef4444';
+    btn.style.color = '#fff';
+};
+
+// Wake Lock auto-releases when the tab is hidden; re-acquire it on return.
+const wkWakeReacquire = async () => {
+    if (document.visibilityState === 'visible' && _wkTrack && _wkTrack.active && 'wakeLock' in navigator) {
+        try { _wkTrack.wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { /* best effort */ }
+    }
+};
+
+const wkStartTracking = async (yearStr, week, ctx) => {
+    if (!window.isSecureContext) {
+        window.notify('Live GPS tracking needs a secure (https) connection. Open the app over https on the phone, then try again.', 'error');
+        return;
+    }
+    if (!navigator.geolocation) { window.notify('This device/browser does not support GPS.', 'error'); return; }
+    if (_wkTrack && _wkTrack.active) { window.notify('A recording is already running. Stop it first.', 'warn'); return; }
+    if (week.track && week.track.coords && week.track.coords.length) {
+        if (!confirm(`This week already has a track (${week.track.coords.length} points). Start a new recording and replace it?`)) return;
+    }
+    week.track = { coords: [], source: 'In-app GPS ' + new Date().toISOString().slice(0, 16).replace('T', ' ') };
+
+    let wakeLock = null;
+    try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { console.warn('Wake lock denied', e); }
+
+    const onPos = (pos) => {
+        const lat = +pos.coords.latitude.toFixed(6);
+        const lng = +pos.coords.longitude.toFixed(6);
+        const acc = pos.coords.accuracy;
+        const coords = week.track.coords;
+        const last = coords[coords.length - 1];
+        // Drop stationary jitter: ignore a fix < 1.5 m from the previous point.
+        if (last && wkDistM(last[0], last[1], lng, lat) < 1.5) { wkTrackStatus(acc); return; }
+        coords.push([lng, lat]);
+        if (_wkTrack && _wkTrack.liveLine) { try { _wkTrack.liveLine.addLatLng([lat, lng]); } catch (e) {} }
+        wkTrackStatus(acc);
+        // Persist every 8 new points so a crash/close loses little.
+        if (_wkTrack && (coords.length - _wkTrack.lastSavedN) >= 8) { _wkTrack.lastSavedN = coords.length; saveWeeklyActivityData(); }
+    };
+    const onErr = (err) => {
+        if (err && err.code === 1) { window.notify('Location permission denied — recording stopped.', 'error'); wkStopTracking(); return; }
+        if (_wkTrack && _wkTrack.statusEl) { _wkTrack.statusEl.textContent = '● recording — waiting for GPS…'; _wkTrack.statusEl.style.color = '#ef4444'; }
+    };
+    const watchId = navigator.geolocation.watchPosition(onPos, onErr, { enableHighAccuracy: true, maximumAge: 1000, timeout: 30000 });
+
+    _wkTrack = {
+        active: true, weekId: week.id, year: yearStr, week,
+        watchId, wakeLock, liveLine: null, lastSavedN: 0,
+        statusEl: ctx.statusEl, btnEl: ctx.btnEl, host: ctx.host
+    };
+    document.addEventListener('visibilitychange', wkWakeReacquire);
+    wkSetTrackButtonRecording(ctx.btnEl);
+    wkTrackStatus();
+    // Wire the live line onto the current map (if it's already up for this week).
+    wkRenderMap('wk-map', week).catch(() => {});
+    if (typeof window.logAudit === 'function') window.logAudit('start', 'weekly', 'GPS tracking started', week.id);
+};
+
+const wkStopTracking = async () => {
+    if (!_wkTrack) return;
+    const t = _wkTrack;
+    try { if (t.watchId != null) navigator.geolocation.clearWatch(t.watchId); } catch (e) {}
+    try { if (t.wakeLock) await t.wakeLock.release(); } catch (e) {}
+    document.removeEventListener('visibilitychange', wkWakeReacquire);
+    _wkTrack = null;
+
+    const week = t.week, n = (week.track && week.track.coords) ? week.track.coords.length : 0;
+    saveWeeklyActivityData();
+    if (typeof window.logAudit === 'function') window.logAudit('create', 'weekly', 'GPS track recorded', n + ' pts');
+    window.notify(n ? `Recording stopped — ${n} GPS points saved.` : 'Recording stopped — no points were captured.', n ? 'success' : 'warn');
+    // Re-render so the map redraws and fits to the recorded track.
+    if (t.host) wkRenderWeekEditor(t.host, t.year, week);
+};
+
+// Start/Stop control shown above the map. Re-binds to a live session on re-render.
+const wkRenderTrackingControl = (yearStr, week, host) => {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap; margin-bottom:0.5rem;';
+
+    const recordingThis = !!(_wkTrack && _wkTrack.active && _wkTrack.weekId === week.id);
+    const recordingOther = !!(_wkTrack && _wkTrack.active && _wkTrack.weekId !== week.id);
+
+    const btn = document.createElement('button');
+    btn.style.cssText = 'padding:0.4rem 0.9rem; border-radius:8px; cursor:pointer; font-size:0.83rem; font-weight:500; border:1px solid var(--accent); background:var(--accent); color:#fff;';
+    btn.textContent = recordingThis ? '⏹ Stop tracking' : '▶ Start tracking';
+    btn.disabled = recordingOther;
+    btn.title = recordingOther
+        ? 'A recording is already running on another week — stop it first.'
+        : 'Record your path live with the phone GPS (keep this screen on). Works offline.';
+    if (recordingThis) wkSetTrackButtonRecording(btn);
+
+    const status = document.createElement('span');
+    status.style.cssText = 'font-size:0.8rem; color:var(--text-secondary);';
+    if (recordingOther) status.textContent = 'Recording in progress on another week…';
+    else if (!recordingThis) {
+        const n = (week.track && week.track.coords) ? week.track.coords.length : 0;
+        status.textContent = n ? `Track saved (${n} points).` : 'No track yet.';
+    }
+
+    btn.onclick = () => {
+        if (_wkTrack && _wkTrack.active && _wkTrack.weekId === week.id) wkStopTracking();
+        else wkStartTracking(yearStr, week, { statusEl: status, btnEl: btn, host });
+    };
+
+    // If a session for this week is live, point it at the freshly-rendered controls.
+    if (recordingThis) { _wkTrack.statusEl = status; _wkTrack.btnEl = btn; _wkTrack.host = host; wkTrackStatus(); }
+
+    const hint = document.createElement('span');
+    hint.style.cssText = 'font-size:0.74rem; color:var(--text-secondary);';
+    hint.textContent = '📍 Keep the app open & screen on while recording.';
+
+    wrap.appendChild(btn); wrap.appendChild(status); wrap.appendChild(hint);
+    return wrap;
 };
 
 // Rasterize the live map div to a PNG Blob. Waits for Esri tiles to finish
@@ -624,6 +922,8 @@ const renderWeeklyActivity = () => {
     if (!wrapper) return;
     wrapper.innerHTML = '';
     wkEnsure();
+    // Retry any photos captured offline in an earlier session (no-op if all synced).
+    wkFlushPendingPhotos();
 
     const yearStr = wkCurrentYear();
     wkEnsureYear(yearStr);
@@ -842,6 +1142,7 @@ const wkRenderWeekEditor = (host, yearStr, week) => {
 
     // Map section
     host.appendChild(wkSectionLabel('Activity Track Map'));
+    if (editable) host.appendChild(wkRenderTrackingControl(yearStr, week, host));
     const mapWrap = document.createElement('div');
     mapWrap.style.cssText = 'margin-bottom:0.5rem;';
     const mapDiv = document.createElement('div');
@@ -1024,15 +1325,15 @@ const wkRenderObservations = (yearStr, week, host) => {
             photoInput.type = 'file'; photoInput.accept = 'image/*'; photoInput.style.display = 'none';
             photoInput.onchange = async () => {
                 const f = photoInput.files && photoInput.files[0]; if (!f) return;
-                const prev = photoLbl.textContent; photoLbl.textContent = '⏳ uploading…';
+                const prev = photoLbl.textContent; photoLbl.textContent = '⏳ saving…';
                 try {
-                    const up = await wkWithTimeout(wkUploadBlob(yearStr, week.id, `${o.id}.jpg`, await wkResizeImage(f)), 30000, 'Photo save');
-                    if (o.photoPath && o.photoPath !== up.path) await wkDeleteStorage(o.photoPath);
-                    o.photoPath = up.path; o.photoType = up.type;
+                    const local = await wkStorePhotoLocal(yearStr, week.id, `${o.id}.jpg`, await wkResizeImage(f));
+                    o.photoPath = local.path; o.photoType = local.type;
                     saveWeeklyActivityData(); wkRenderWeekEditor(host, yearStr, week);
+                    wkUploadOne(local.path).catch(() => {});   // background upload (no-op offline)
                 } catch (e) {
                     console.error(e); photoLbl.textContent = prev;
-                    window.notify('Could not save the photo: ' + e.message + '\n\nCheck your connection and that you are logged in, then try again.', 'error');
+                    window.notify('Could not save the photo on this device: ' + e.message, 'error');
                 }
             };
             photoLbl.appendChild(photoInput);
@@ -1060,14 +1361,77 @@ const wkRenderObservations = (yearStr, week, host) => {
     });
 
     if (editable) {
+        const addRow = document.createElement('div');
+        addRow.style.cssText = 'display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center; margin-top:0.25rem;';
+
+        // 📷 Capture here — one-tap in-app field capture: open the device camera,
+        // take a photo, and tag it with the current GPS position, all into a new
+        // observation. This is the in-app alternative to importing a KMZ that was
+        // recorded in a separate GPS app — useful for logging a finding on the spot.
+        const capLbl = document.createElement('label');
+        capLbl.textContent = '📷 Capture here (photo + GPS)';
+        capLbl.title = 'Take a photo with the camera and tag it with your current GPS location';
+        capLbl.style.cssText = 'align-self:flex-start; padding:0.4rem 0.8rem; border:1px solid var(--accent); border-radius:8px; background:var(--accent); color:#fff; cursor:pointer; font-size:0.83rem; font-weight:500;';
+        const capInput = document.createElement('input');
+        capInput.type = 'file'; capInput.accept = 'image/*'; capInput.capture = 'environment';
+        capInput.style.display = 'none';
+        capInput.onchange = async () => {
+            const f = capInput.files && capInput.files[0];
+            capInput.value = '';
+            if (!f) return;
+            capLbl.style.pointerEvents = 'none';
+            capLbl.style.opacity = '0.7';
+            capLbl.textContent = '⏳ capturing…';
+
+            // Create + persist the observation up front so the entry (and the GPS
+            // fix) can never be lost to a slow or failed photo upload — the same
+            // "save before the photo" guarantee the KMZ import relies on.
+            const obs = { id: wkUid(), block: '', caption: '', notes: '', lat: null, lng: null, photoPath: null, photoType: null };
+            week.observations.push(obs);
+            saveWeeklyActivityData();
+
+            // GPS and the photo upload run in parallel — GPS works offline; the
+            // upload may time out offline (wkWithTimeout) without losing the entry.
+            let gpsMsg = '';
+            const gpsP = wkGetLocation()
+                .then(loc => { obs.lat = loc.lat; obs.lng = loc.lng; })
+                .catch(e => { gpsMsg = e.message; });
+            let stored = false;
+            try {
+                const local = await wkStorePhotoLocal(yearStr, week.id, `${obs.id}.jpg`, await wkResizeImage(f));
+                obs.photoPath = local.path; obs.photoType = local.type;
+                stored = true;
+            } catch (e) { console.error(e); }
+            await gpsP;
+
+            saveWeeklyActivityData();
+            if (typeof window.logAudit === 'function') window.logAudit('create', 'weekly', 'Field capture', obs.id);
+            wkRenderWeekEditor(host, yearStr, week);
+            // The photo is now safe on the phone — upload in the background (no-op offline).
+            if (stored) wkUploadOne(obs.photoPath).catch(() => {});
+
+            if (!stored) {
+                window.notify('Could not save the photo on this device — please try again.', 'error');
+            } else if (gpsMsg) {
+                window.notify('Photo saved on the phone' + (navigator.onLine ? '' : ' (will upload when back online)') + ', but location was not captured: ' + gpsMsg, 'warn');
+            } else {
+                window.notify('Observation captured. Photo saved on the phone' + (navigator.onLine ? ' and uploading…' : ' — it will upload when you are back online.'), 'success');
+            }
+        };
+        capLbl.appendChild(capInput);
+        addRow.appendChild(capLbl);
+
         const addBtn = document.createElement('button');
         addBtn.textContent = '➕ Add observation';
+        addBtn.title = 'Add a blank observation to fill in manually';
         addBtn.style.cssText = 'align-self:flex-start; padding:0.4rem 0.8rem; border:1px dashed var(--border-color); border-radius:8px; background:transparent; cursor:pointer; font-size:0.83rem; color:var(--text-secondary);';
         addBtn.onclick = () => {
             week.observations.push({ id: wkUid(), block: '', caption: '', notes: '', lat: null, lng: null, photoPath: null, photoType: null });
             saveWeeklyActivityData(); wkRenderWeekEditor(host, yearStr, week);
         };
-        box.appendChild(addBtn);
+        addRow.appendChild(addBtn);
+
+        box.appendChild(addRow);
     }
     return box;
 };
@@ -1078,3 +1442,6 @@ const wkRenderObservations = (yearStr, week, host) => {
 window.renderWeeklyActivity = renderWeeklyActivity;
 window.saveWeeklyActivityData = saveWeeklyActivityData;
 window.downloadWeeklyActivityDoc = downloadWeeklyActivityDoc;
+
+// Flush offline-captured photos to Firebase the moment the network returns.
+window.addEventListener('online', () => { try { wkFlushPendingPhotos(); } catch (e) {} });
