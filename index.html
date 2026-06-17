@@ -209,55 +209,27 @@
                     <li class="nav-group-label">Maintenance</li>
 
                     <li class="nav-item" data-menu-key="maintenance">
+                        <a href="#" id="sidebar-spraying" class="nav-link">
+                            <span class="nav-icon">🌱</span><span class="nav-label">Spraying Chemical Usage</span>
+                        </a>
+                    </li>
+                    <li class="nav-item" data-menu-key="maintenance">
+                        <a href="#" id="sidebar-manuring" class="nav-link">
+                            <span class="nav-icon">🌿</span><span class="nav-label">Manuring Fertilizer Usage</span>
+                        </a>
+                    </li>
+
+                    <li class="nav-item" data-menu-key="maintenance">
                         <div class="nav-item-header has-children">
-                            <span class="nav-icon">🌿</span><span class="nav-label">Field Maintenance</span>
+                            <span class="nav-icon">🌾</span><span class="nav-label">Field Maintenance</span>
                             <span class="nav-chevron">▼</span>
                         </div>
                         <ul class="nav-submenu">
                             <li class="nav-item">
-                                <div class="nav-item-header has-children">
-                                    <span class="nav-label">🌱 Spraying</span>
-                                    <span class="nav-chevron">▼</span>
-                                </div>
-                                <ul class="nav-submenu" id="sidebar-spraying-sub">
-                                    <li class="nav-item">
-                                        <a href="#" id="sidebar-spraying" class="nav-link"><span class="nav-label">📋 Record</span></a>
-                                    </li>
-                                    <!-- JS: 📊 Gantt Chart when spraying logs exist -->
-                                </ul>
-                            </li>
-                            <li class="nav-item">
-                                <div class="nav-item-header has-children">
-                                    <span class="nav-label">🌿 Manuring</span>
-                                    <span class="nav-chevron">▼</span>
-                                </div>
-                                <ul class="nav-submenu" id="sidebar-manuring-sub">
-                                    <li class="nav-item">
-                                        <a href="#" id="sidebar-manuring" class="nav-link"><span class="nav-label">📋 Record</span></a>
-                                    </li>
-                                    <!-- JS: 📊 Gantt Chart when manuring logs exist -->
-                                </ul>
-                            </li>
-                            <li class="nav-item">
-                                <div class="nav-item-header has-children">
-                                    <span class="nav-label">🔪 Slashing</span>
-                                    <span class="nav-chevron">▼</span>
-                                </div>
-                                <ul class="nav-submenu" id="sidebar-slashing-sub">
-                                    <!-- JS: 📊 Gantt Chart when slashing logs exist -->
-                                </ul>
-                            </li>
-                            <li class="nav-item">
-                                <div class="nav-item-header has-children">
-                                    <span class="nav-label">✂️ Pruning</span>
-                                    <span class="nav-chevron">▼</span>
-                                </div>
-                                <ul class="nav-submenu" id="sidebar-pruning-sub">
-                                    <!-- JS: 📊 Gantt Chart when pruning logs exist -->
-                                </ul>
-                            </li>
-                            <li class="nav-item">
                                 <a href="#" id="sidebar-mnt-worklog" class="nav-link"><span class="nav-label">📝 Work Log</span></a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="#" id="sidebar-mnt-gantt" class="nav-link"><span class="nav-label">📊 Gantt Chart</span></a>
                             </li>
                         </ul>
                     </li>
@@ -567,7 +539,7 @@
     </div>
 
     <script src="templates.js"></script>
-    <script src="render_dashboard.js?v=12"></script>
+    <script src="render_dashboard.js?v=13"></script>
     <script src="ffbData.js"></script>
     <script src="rainfallData.js"></script>
     <script src="render_rainfall.js"></script>
@@ -575,16 +547,16 @@
     <script src="render_current_vs_prev.js"></script>
     <script src="render_audit.js?v=3"></script>
     <script src="render_ironhorse.js?v=45"></script>
-    <script src="render_maintenance.js?v=8"></script>
+    <script src="render_maintenance.js?v=9"></script>
     <script src="render_weekly.js?v=16"></script>
     <script src="render_wages.js?v=4"></script>
-    <script src="render_wages_ledger.js?v=2"></script>
+    <script src="render_wages_ledger.js?v=4"></script>
     <script src="render_spraying.js?v=14"></script>
     <script src="render_manuring.js?v=13"></script>
     <script src="render_reports.js?v=24"></script>
     <script src="app_boot.js?v=1"></script>
     <script src="app_user_mgmt.js?v=5"></script>
-    <script src="script.js?v=64"></script>
+    <script src="script.js?v=65"></script>
     <script src="ui_enhancements.js?v=10"></script>
     <script>
         // Vertical sidebar accordion: expand/collapse groups. Clicking a header
