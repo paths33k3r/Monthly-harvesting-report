@@ -1544,6 +1544,50 @@ select.edit-input:focus {
 
 #offline-badge.show { display: inline-flex; }
 
+/* ===================================================================
+   Phone "field mode" — lock small screens to the Weekly report, touch-sized.
+   Toggled by field_mode.js adding .field-mode to <body>. Stands alone (does
+   not rely on the max-width media query, so it also covers landscape phones).
+   =================================================================== */
+/* Hide all navigation + harvesting-specific chrome */
+body.field-mode .sidebar,
+body.field-mode #mobile-nav-btn,
+body.field-mode #mobile-nav-backdrop,
+body.field-mode #global-search-btn,
+body.field-mode #print-pdf-btn,
+body.field-mode #global-back-btn,
+body.field-mode .stat-badge,
+body.field-mode #header-user-info,
+body.field-mode .subtitle { display: none !important; }
+
+/* Full-width single-column layout */
+body.field-mode .app-layout { display: block; }
+body.field-mode .app-container { width: 100%; margin: 0; }
+body.field-mode main { padding: 0.6rem; }
+body.field-mode .report-wrapper { padding: 0.6rem; }
+
+/* Compact, sticky header */
+body.field-mode header { padding: 0.55rem 0.75rem; position: sticky; top: 0; z-index: 60; }
+body.field-mode header h1 { font-size: 1.05rem; }
+body.field-mode .header-content { flex-wrap: wrap; gap: 0.5rem; }
+body.field-mode .header-right { gap: 0.4rem; flex-wrap: wrap; }
+
+/* Header Logout (injected by field_mode.js) — only shown in field mode */
+#field-logout-btn { display: none; }
+body.field-mode #field-logout-btn { display: inline-flex; padding: 0.4rem 0.8rem; }
+
+/* Bigger touch targets in the Weekly view */
+body.field-mode #weekly-activity-wrapper input,
+body.field-mode #weekly-activity-wrapper select,
+body.field-mode #weekly-activity-wrapper textarea,
+body.field-mode #weekly-activity-wrapper button,
+body.field-mode #weekly-activity-wrapper label.btn-secondary { font-size: 0.95rem; }
+body.field-mode #weekly-activity-wrapper button,
+body.field-mode #weekly-activity-wrapper label.btn-secondary { min-height: 42px; }
+
+/* Slightly shorter map so the controls below stay in reach on a phone */
+body.field-mode #wk-map { height: 300px !important; }
+
 /* ---------- print: clean report output ---------- */
 @media print {
 
