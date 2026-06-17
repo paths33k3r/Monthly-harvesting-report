@@ -680,6 +680,7 @@ const wkStopTracking = async () => {
 // Start/Stop control shown above the map. Re-binds to a live session on re-render.
 const wkRenderTrackingControl = (yearStr, week, host) => {
     const wrap = document.createElement('div');
+    wrap.className = 'wk-track-ctl';
     wrap.style.cssText = 'display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap; margin-bottom:0.5rem;';
 
     const recordingThis = !!(_wkTrack && _wkTrack.active && _wkTrack.weekId === week.id);
@@ -1018,6 +1019,7 @@ const renderWeeklyActivity = () => {
 
     // ── Toolbar ──────────────────────────────────────────────────────
     const toolbar = document.createElement('div');
+    toolbar.className = 'wk-toolbar';
     toolbar.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:1.25rem; flex-wrap:wrap;';
 
     const leftGroup = document.createElement('div');
@@ -1067,9 +1069,11 @@ const renderWeeklyActivity = () => {
 
     // ── Week list (left) + editor (right) ─────────────────────────────
     const layout = document.createElement('div');
+    layout.className = 'wk-layout';
     layout.style.cssText = 'display:flex; gap:1.25rem; align-items:flex-start; flex-wrap:wrap;';
 
     const listCol = document.createElement('div');
+    listCol.className = 'wk-list';
     listCol.style.cssText = 'flex:0 0 230px; display:flex; flex-direction:column; gap:0.4rem;';
     const weeks = wkWeeksFor(yearStr);
     if (!weeks.length) {
@@ -1091,6 +1095,7 @@ const renderWeeklyActivity = () => {
     layout.appendChild(listCol);
 
     const editCol = document.createElement('div');
+    editCol.className = 'wk-edit';
     editCol.style.cssText = 'flex:1 1 560px; min-width:320px;';
     const week = wkFindWeek(yearStr, window.state.weeklyWeekId);
     if (!week) {
@@ -1144,6 +1149,7 @@ const wkRenderWeekEditor = (host, yearStr, week) => {
 
     // Header: date + day + actions
     const header = document.createElement('div');
+    header.className = 'wk-editor-header';
     header.style.cssText = 'display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap; margin-bottom:1rem; padding-bottom:0.75rem; border-bottom:1px solid var(--border-color);';
 
     const dateLbl = document.createElement('span');
@@ -1158,7 +1164,7 @@ const wkRenderWeekEditor = (host, yearStr, week) => {
     dateInput.onchange = () => { week.date = dateInput.value; week.day = wkDayFromDate(week.date); dayBadge.textContent = week.day; saveWeeklyActivityData(); };
     header.appendChild(dateLbl); header.appendChild(dateInput); header.appendChild(dayBadge);
 
-    const spacer = document.createElement('div'); spacer.style.flex = '1'; header.appendChild(spacer);
+    const spacer = document.createElement('div'); spacer.className = 'wk-header-spacer'; spacer.style.flex = '1'; header.appendChild(spacer);
 
     const btnExport = document.createElement('button');
     btnExport.className = 'btn-secondary';
@@ -1326,10 +1332,12 @@ const wkRenderObservations = (yearStr, week, host) => {
 
     (week.observations || []).forEach((o, idx) => {
         const card = document.createElement('div');
+        card.className = 'wk-obs-card';
         card.style.cssText = 'display:flex; gap:0.8rem; padding:0.75rem; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-card); flex-wrap:wrap;';
 
         // Thumbnail — load the image lazily from the DB image cache.
         const thumb = document.createElement('div');
+        thumb.className = 'wk-obs-thumb';
         thumb.style.cssText = 'flex:0 0 120px; height:90px; border-radius:6px; overflow:hidden; background:var(--bg-secondary); display:flex; align-items:center; justify-content:center; font-size:0.7rem; color:var(--text-secondary);';
         if (o.photoPath) {
             thumb.textContent = '…';
@@ -1346,6 +1354,7 @@ const wkRenderObservations = (yearStr, week, host) => {
 
         // Fields
         const fields = document.createElement('div');
+        fields.className = 'wk-obs-fields';
         fields.style.cssText = 'flex:1 1 260px; display:flex; flex-direction:column; gap:0.4rem;';
 
         const topRow = document.createElement('div');
@@ -1412,6 +1421,7 @@ const wkRenderObservations = (yearStr, week, host) => {
 
         if (editable) {
             const actions = document.createElement('div');
+            actions.className = 'wk-obs-actions';
             actions.style.cssText = 'display:flex; flex-direction:column; gap:0.3rem;';
             const photoLbl = document.createElement('label');
             photoLbl.style.cssText = 'font-size:0.75rem; color:var(--text-secondary); cursor:pointer; border:1px solid var(--border-color); border-radius:6px; padding:0.25rem 0.45rem; text-align:center;';

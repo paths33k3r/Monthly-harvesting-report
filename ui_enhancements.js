@@ -730,7 +730,24 @@
     function initOffline() {
         if ('serviceWorker' in navigator &&
             (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
-            navigator.serviceWorker.register('sw.js').catch(() => { /* offline support is best-effort */ });
+            navigator.serviceWorker.register('sw.js').then(reg => {
+                // Auto-pick-up new deploys: when an updated worker finishes installing
+                // (and one was already running, i.e. this is an update — not the first
+                // install), reload once so the page runs the fresh code instead of a
+                // stale cache. Avoids the "I deployed but it looks the same" trap.
+                reg.addEventListener('updatefound', () => {
+                    const nw = reg.installing;
+                    if (!nw) return;
+                    nw.addEventListener('statechange', () => {
+                        if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+                            if (typeof window.notify === 'function') window.notify('Updated to the latest version — refreshing…', 'info', 1500);
+                            setTimeout(() => location.reload(), 1200);
+                        }
+                    });
+                });
+                // Check for a new version periodically while the app is open.
+                setInterval(() => { try { reg.update(); } catch (e) {} }, 60000);
+            }).catch(() => { /* offline support is best-effort */ });
         }
 
         let badge = document.getElementById('offline-badge');

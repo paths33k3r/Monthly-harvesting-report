@@ -1586,7 +1586,49 @@ body.field-mode #weekly-activity-wrapper button,
 body.field-mode #weekly-activity-wrapper label.btn-secondary { min-height: 42px; }
 
 /* Slightly shorter map so the controls below stay in reach on a phone */
-body.field-mode #wk-map { height: 300px !important; }
+body.field-mode #wk-map { height: 300px !important; max-width: 100% !important; }
+
+/* Weekly view — phone layout restructure (inline styles need !important) */
+/* Toolbar: stack the year group + New Week; each fills the width (no dead space) */
+body.field-mode .wk-toolbar { flex-direction: column; align-items: stretch; gap: 0.55rem; }
+body.field-mode .wk-toolbar > div { width: 100%; flex-wrap: nowrap; }
+body.field-mode .wk-toolbar > div > div { flex: 1 1 auto; }   /* the Year selector group */
+/* the <select> carries an inline width:auto, so override needs !important */
+body.field-mode .wk-toolbar select { flex: 1 1 auto !important; width: 100% !important; min-width: 0; }
+body.field-mode .wk-toolbar > button { width: 100%; }          /* New Week */
+
+/* Week list becomes a horizontal swipe strip; editor sits full-width below it */
+body.field-mode .wk-layout { flex-direction: column; gap: 0.75rem; }
+body.field-mode .wk-list {
+    flex: 1 1 100% !important;
+    flex-direction: row !important;
+    overflow-x: auto;
+    padding-bottom: 0.3rem;
+    -webkit-overflow-scrolling: touch;
+}
+body.field-mode .wk-list > button { flex: 0 0 auto; min-width: 9rem; }
+body.field-mode .wk-edit { flex: 1 1 100% !important; min-width: 0 !important; width: 100%; }
+
+/* Editor header: date input fills its row; the spacer becomes a line-break so
+   the four action buttons drop onto their own tidy 2-up grid below. */
+body.field-mode .wk-editor-header { gap: 0.5rem; }
+body.field-mode .wk-editor-header input[type="date"] { flex: 1 1 auto; min-width: 0; }
+body.field-mode .wk-header-spacer { flex: 1 0 100% !important; height: 0 !important; margin: 0 !important; padding: 0 !important; }
+body.field-mode .wk-editor-header button { flex: 1 1 42%; justify-content: center; }
+
+/* Live-tracking control: button fills the width, status/hint sit below it */
+body.field-mode .wk-track-ctl { flex-direction: column; align-items: stretch; }
+body.field-mode .wk-track-ctl > button { width: 100%; }
+
+/* Observation cards: stack a big photo over the fields over the actions */
+body.field-mode .wk-obs-card { flex-direction: column; flex-wrap: nowrap; }
+body.field-mode .wk-obs-thumb {
+    flex: 0 0 auto !important; width: 100% !important; height: 200px !important;
+}
+body.field-mode .wk-obs-thumb img { width: 100% !important; height: 100% !important; object-fit: cover; }
+body.field-mode .wk-obs-fields { flex: 1 1 auto !important; }
+body.field-mode .wk-obs-actions { flex-direction: row !important; }
+body.field-mode .wk-obs-actions > * { flex: 1 1 auto; text-align: center; }
 
 /* ---------- print: clean report output ---------- */
 @media print {
