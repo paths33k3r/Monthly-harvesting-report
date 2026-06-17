@@ -2,7 +2,8 @@
 // Runs in GitHub Actions daily — no browser or PC needed.
 // Reads all Firebase Realtime Database data and uploads a JSON backup to Google Drive.
 
-import admin from 'firebase-admin';
+import { initializeApp, getApps, cert } from 'firebase-admin/app';
+import { getDatabase } from 'firebase-admin/database';
 import { google } from 'googleapis';
 import { writeFileSync } from 'fs';
 
@@ -29,14 +30,20 @@ async function runBackup() {
     }
 
     // --- Step 1: Read from Firebase Realtime Database ---
-    if (!admin.apps.length) {
-        admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount),
+    // Use the modular firebase-admin API (firebase-admin/app + /database).
+    // The legacy default-export namespace (`admin.apps` / `admin.database()`)
+    // changed shape in a newer release and broke this script on 2026-06-09
+    // ("Cannot read properties of undefined (reading 'length')" at admin.apps).
+    // The modular subpath exports are the stable, recommended interface and
+    // are pinned via package.json so an upstream release can't silently break us.
+    if (!getApps().length) {
+        initializeApp({
+            credential: cert(serviceAccount),
             databaseURL: "https://ffb-harvesting-report-default-rtdb.asia-southeast1.firebasedatabase.app"
         });
     }
 
-    const db = admin.database();
+    const db = getDatabase();
 
     console.log("  Reading database...");
     const snapshot = await db.ref('/').once('value');

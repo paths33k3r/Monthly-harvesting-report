@@ -21,7 +21,10 @@ jobs:
           node-version: '24'
 
       - name: Install Dependencies
-        run: npm install firebase-admin googleapis
+        # Pin the major versions so an upstream release can't silently break the
+        # backup again (an unpinned `npm install firebase-admin` picked up a
+        # release on 2026-06-09 whose changed default export crashed the script).
+        run: npm install firebase-admin@^13.0.0 googleapis@^171.4.0
 
       - name: Run Backup Script
         run: node scripts/cloudBackup.js
