@@ -1,0 +1,11 @@
+{
+    "name": "Weekly Field Report",
+    "short_name": "Field Report",
+    "description": "Phone-native weekly field report — GPS capture, photos, tracking",
+    "start_url": "./field.html",
+    "scope": "./",
+    "display": "standalone",
+    "orientation": "portrait",
+    "background_color": "#0e7c5a",
+    "theme_color": "#0e7c5a"
+}

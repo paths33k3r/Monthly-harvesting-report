@@ -15,13 +15,17 @@
 
    Bump VERSION to invalidate all caches after big changes.
    ============================================================ */
-const VERSION = 'v4';
+const VERSION = 'v8';
 const SHELL_CACHE = 'shell-' + VERSION;
 const CDN_CACHE = 'cdn-' + VERSION;
 
 const SHELL_PRECACHE = [
     './',
     './index.html',
+    './field.html',
+    './field.css',
+    './field_boot.js',
+    './field.manifest.json',
     './style.css',
     './script.js',
     './app_boot.js',
