@@ -29,6 +29,8 @@
     const WL_MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
     const WL_MAX_ROWS_SHOWN = 500;   // default DOM rows per category; "Show all" expands (totals always cover everything)
     const _wlShowAll = new Set();    // scheme keys the user has expanded to full
+    const _wlFilters = {};           // scheme → { colKey: filterText } — per-column header filters
+    const wlClearAllFilters = () => { Object.keys(_wlFilters).forEach(k => delete _wlFilters[k]); };
 
     // HTML-escape DB/user free text before innerHTML (shared data → untrusted).
     const wlEsc = (s) => (typeof window.escapeHtml === 'function' ? window.escapeHtml(s) : String(s == null ? '' : s));
@@ -259,6 +261,7 @@
           <p style="color:var(--text-secondary); margin:0 0 1.1rem; font-size:0.85rem;">
             Detailed monthly actuals imported from Excel — Harvester, Driver &amp; Loader, and Job Card payments.
             Download the template, fill it (or use your existing report), then import.
+            <br>Type in the boxes under any column header to filter rows (e.g. by gang, block or employee) — the table count and total update to the matching rows.
           </p>
 
           <div style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:center; margin-bottom:1.1rem;">
@@ -275,8 +278,8 @@
           <div id="wl-body"></div>
         </div>`;
 
-        host.querySelector('#wl-year').onchange = (e) => { state.wagesLedgerYear = e.target.value; window.renderWagesLedgerView(); };
-        host.querySelector('#wl-month').onchange = (e) => { state.wagesLedgerMonth = e.target.value; window.renderWagesLedgerView(); };
+        host.querySelector('#wl-year').onchange = (e) => { state.wagesLedgerYear = e.target.value; wlClearAllFilters(); window.renderWagesLedgerView(); };
+        host.querySelector('#wl-month').onchange = (e) => { state.wagesLedgerMonth = e.target.value; wlClearAllFilters(); window.renderWagesLedgerView(); };
 
         host.querySelector('#wl-dl-template').onclick = async () => {
             const btn = host.querySelector('#wl-dl-template');
@@ -334,6 +337,25 @@
         const gangRows = Object.entries(gangTotals).sort((a, b) => b[1] - a[1])
             .map(([g, v]) => `<tr><td style="padding:3px 8px;">${wlEsc(g)}</td><td style="padding:3px 8px; text-align:right;">${wlRM(v)}</td></tr>`).join('');
 
+        // Job Card payments broken down by job activity (jobcard scheme only).
+        const jobActivityTotals = {};
+        const jobActivityCounts = {};
+        (m.jobcard || []).forEach(row => {
+            const act = String(row.jobActivity || '').trim() || '(no activity)';
+            jobActivityTotals[act] = (jobActivityTotals[act] || 0) + wlRowPay('jobcard', row);
+            jobActivityCounts[act] = (jobActivityCounts[act] || 0) + 1;
+        });
+        const jobActivityRows = Object.entries(jobActivityTotals).sort((a, b) => b[1] - a[1])
+            .map(([a, v]) => `<tr><td style="padding:3px 8px;">${wlEsc(a)} <span style="color:var(--text-secondary); font-size:0.82em;">(${jobActivityCounts[a]})</span></td><td style="padding:3px 8px; text-align:right;">${wlRM(v)}</td></tr>`).join('');
+        const jobCardActivityBlock = (m.jobcard && m.jobcard.length)
+            ? `<div style="flex:1; min-width:260px;">
+                 <div style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:4px;">Job Card — by activity</div>
+                 <div style="max-height:220px; overflow:auto; border:1px solid var(--border-color,#e3e3e3); border-radius:6px;">
+                   <table style="width:100%; border-collapse:collapse; font-size:0.85rem; color:var(--text-primary);">${jobActivityRows}</table>
+                 </div>
+               </div>`
+            : '';
+
         const summary = `
         <div style="${CARD} background:var(--bg-main,#f7f9f7); border:2px solid var(--accent-color,#16a34a);">
           <h3 style="margin:0 0 0.7rem; font-size:1rem; color:var(--text-primary);">Summary — ${wlEsc(month)} ${wlEsc(year)}</h3>
@@ -349,55 +371,146 @@
                 <table style="width:100%; border-collapse:collapse; font-size:0.85rem; color:var(--text-primary);">${gangRows}</table>
               </div>
             </div>
+            ${jobCardActivityBlock}
           </div>
         </div>`;
 
-        const sections = SCHEME_KEYS.map((sk, i) => wlRenderTable(sk, m[sk] || [], schemeTotals[sk], counts[i])).join('');
+        const sections = SCHEME_KEYS.map(sk => wlRenderTable(sk)).join('');
         body.innerHTML = summary + sections;
 
-        // "Show all / Show fewer" per-category toggle
-        body.querySelectorAll('.wl-toggle-rows').forEach(btn => {
-            btn.onclick = () => {
-                const sk = btn.dataset.scheme;
+        // Delegated handlers (survive the partial tbody/note re-renders so the
+        // filter inputs keep focus while you type):
+        //  • typing in a column-header filter box → patch just that table
+        //  • Show all / Show fewer toggle
+        //  • Clear-filters button
+        body.oninput = (e) => {
+            const inp = e.target.closest && e.target.closest('.wl-col-filter');
+            if (!inp) return;
+            const sk = inp.dataset.scheme, col = inp.dataset.col;
+            (_wlFilters[sk] || (_wlFilters[sk] = {}))[col] = inp.value;
+            wlUpdateTable(sk);
+        };
+        body.onclick = (e) => {
+            const tgl = e.target.closest && e.target.closest('.wl-toggle-rows');
+            if (tgl) {
+                const sk = tgl.dataset.scheme;
                 if (_wlShowAll.has(sk)) _wlShowAll.delete(sk); else _wlShowAll.add(sk);
-                wlRenderBody(year, month);
-            };
-        });
+                wlUpdateTable(sk);
+                return;
+            }
+            const clr = e.target.closest && e.target.closest('.wl-clear-filter');
+            if (clr) {
+                const sk = clr.dataset.scheme;
+                _wlFilters[sk] = {};
+                body.querySelectorAll(`.wl-col-filter[data-scheme="${sk}"]`).forEach(i => { i.value = ''; });
+                wlUpdateTable(sk);
+            }
+        };
     };
 
-    const wlRenderTable = (scheme, rows, total, count) => {
-        const spec = SCHEMES[scheme];
-        if (!count) return '';
+    // ── Per-column header filters ───────────────────────────────────────
+    // Plain (un-escaped) display text for a cell — used for both rendering
+    // and contains-matching, so "what you see is what you filter".
+    const wlCellPlain = (c, row) => {
+        const v = row[c.key];
+        if (c.type === 'money') return (v === '' || v == null) ? '' : wlNum(v).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        if (c.type === 'num') return (v === '' || v == null) ? '' : String(v);
+        return String(v == null ? '' : v);
+    };
+    // Numerics are HTML-safe; escape everything else (text/date may be untrusted).
+    const wlFmtCell = (c, row) => {
+        const t = wlCellPlain(c, row);
+        return (c.type === 'money' || c.type === 'num') ? t : wlEsc(t);
+    };
+    const wlActiveFilters = (scheme) =>
+        Object.entries(_wlFilters[scheme] || {}).filter(([, v]) => String(v).trim() !== '');
+    const wlFilterRows = (scheme, rows) => {
+        const active = wlActiveFilters(scheme);
+        if (!active.length) return rows;
+        const byKey = {}; SCHEMES[scheme].cols.forEach(c => { byKey[c.key] = c; });
+        const needles = active.map(([k, v]) => [byKey[k], String(v).toLowerCase().trim()]).filter(([c]) => c);
+        return rows.filter(row => needles.every(([c, needle]) => wlCellPlain(c, row).toLowerCase().includes(needle)));
+    };
+
+    // Everything a table render/update needs, derived from current state + filters.
+    const wlTableModel = (scheme) => {
+        const m = wlEnsureMonth(window.state.wagesLedgerYear, window.state.wagesLedgerMonth);
+        const rows = m[scheme] || [];
+        const filtered = wlFilterRows(scheme, rows);
+        const isFiltered = wlActiveFilters(scheme).length > 0;
         const showAll = _wlShowAll.has(scheme);
-        const shown = showAll ? rows : rows.slice(0, WL_MAX_ROWS_SHOWN);
-        const head = spec.cols.map(c => `<th style="padding:5px 8px; text-align:${c.type === 'text' ? 'left' : 'right'}; white-space:nowrap; border-bottom:2px solid var(--border-color,#ccc); position:sticky; top:0; background:var(--bg-card,#fff);">${wlEsc(c.header)}</th>`).join('');
-        const fmtCell = (c, row) => {
-            const v = row[c.key];
-            if (c.type === 'money') return v === '' || v == null ? '' : wlNum(v).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            if (c.type === 'num') return v === '' || v == null ? '' : wlEsc(v);
-            return wlEsc(v);
-        };
-        const bodyRows = shown.map(row => `<tr>${spec.cols.map(c => `<td style="padding:4px 8px; text-align:${c.type === 'text' ? 'left' : 'right'}; white-space:nowrap; border-bottom:1px solid var(--border-color,#eee);">${fmtCell(c, row)}</td>`).join('')}</tr>`).join('');
-        const moreNote = rows.length > WL_MAX_ROWS_SHOWN
-            ? `<div style="font-size:0.78rem; color:var(--text-secondary); padding:6px 10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                 <span>Showing ${showAll ? 'all ' + rows.length : 'first ' + WL_MAX_ROWS_SHOWN + ' of ' + rows.length} rows — all rows are stored and counted in the totals above.</span>
-                 <button class="wl-toggle-rows" data-scheme="${scheme}" style="font-size:0.78rem; padding:0.2rem 0.6rem; border:1px solid var(--border-color,#ccc); border-radius:4px; background:var(--bg-card,#fff); color:var(--text-primary); cursor:pointer;">${showAll ? 'Show fewer' : 'Show all ' + rows.length}</button>
-               </div>` : '';
+        const shown = showAll ? filtered : filtered.slice(0, WL_MAX_ROWS_SHOWN);
+        const fullTotal = rows.reduce((s, r) => s + wlRowPay(scheme, r), 0);
+        const filteredTotal = isFiltered ? filtered.reduce((s, r) => s + wlRowPay(scheme, r), 0) : fullTotal;
+        return { rows, filtered, isFiltered, showAll, shown, fullTotal, filteredTotal, count: rows.length };
+    };
+    const wlCountText = (model) => model.isFiltered ? `· ${model.filtered.length} of ${model.count} rows` : `· ${model.count} rows`;
+    const wlTotalLabel = (model) => model.isFiltered
+        ? `${wlRM(model.filteredTotal)} <span style="font-weight:400; color:var(--text-secondary); font-size:0.76rem;">filtered &middot; ${wlRM(model.fullTotal)} total</span>`
+        : wlRM(model.fullTotal);
+
+    const wlRowsHTML = (scheme, shown) => {
+        const cols = SCHEMES[scheme].cols;
+        if (!shown.length) return `<tr><td colspan="${cols.length}" style="padding:16px; text-align:center; color:var(--text-secondary);">No rows match the column filters.</td></tr>`;
+        return shown.map(row => `<tr>${cols.map(c => `<td style="padding:4px 8px; text-align:${c.type === 'text' ? 'left' : 'right'}; white-space:nowrap; border-bottom:1px solid var(--border-color,#eee);">${wlFmtCell(c, row)}</td>`).join('')}</tr>`).join('');
+    };
+    const wlMoreNoteHTML = (scheme, model) => {
+        if (model.filtered.length <= WL_MAX_ROWS_SHOWN) return '';
+        const shownTxt = model.showAll ? 'all ' + model.filtered.length : 'first ' + WL_MAX_ROWS_SHOWN + ' of ' + model.filtered.length;
+        return `<div style="font-size:0.78rem; color:var(--text-secondary); padding:6px 10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                  <span>Showing ${shownTxt} ${model.isFiltered ? 'matching ' : ''}rows — all rows remain stored and counted in the totals above.</span>
+                  <button class="wl-toggle-rows" data-scheme="${scheme}" style="font-size:0.78rem; padding:0.2rem 0.6rem; border:1px solid var(--border-color,#ccc); border-radius:4px; background:var(--bg-card,#fff); color:var(--text-primary); cursor:pointer;">${model.showAll ? 'Show fewer' : 'Show all ' + model.filtered.length}</button>
+                </div>`;
+    };
+
+    const wlRenderTable = (scheme) => {
+        const spec = SCHEMES[scheme];
+        const model = wlTableModel(scheme);
+        if (!model.count) return '';
+        // Each <th> stacks the column label over a filter input — one sticky
+        // header row, so no offset math for a separate filter row.
+        const head = spec.cols.map(c => {
+            const align = c.type === 'text' ? 'left' : 'right';
+            const val = (_wlFilters[scheme] && _wlFilters[scheme][c.key]) || '';
+            return `<th style="padding:5px 8px; text-align:${align}; white-space:nowrap; border-bottom:2px solid var(--border-color,#ccc); position:sticky; top:0; background:var(--bg-card,#fff); vertical-align:top; z-index:1;">
+                      <div style="margin-bottom:4px;">${wlEsc(c.header)}</div>
+                      <input type="text" class="wl-col-filter" data-scheme="${scheme}" data-col="${wlEsc(c.key)}" value="${wlEsc(val)}" placeholder="🔎" title="Filter ${wlEsc(c.header)}" style="width:100%; min-width:64px; box-sizing:border-box; font-weight:400; font-size:0.72rem; padding:2px 5px; border:1px solid var(--border-color,#ccc); border-radius:3px; background:var(--bg-card,#fff); color:var(--text-primary); text-align:${align};">
+                    </th>`;
+        }).join('');
 
         return `
         <div style="${CARD} padding:0; overflow:hidden;">
-          <div style="display:flex; align-items:center; justify-content:space-between; padding:0.8rem 1.1rem; background:var(--bg-main,#f3f5f3); border-bottom:1px solid var(--border-color,#e0e0e0);">
-            <h3 style="margin:0; font-size:0.98rem; color:var(--text-primary);">${wlEsc(spec.label)} <span style="color:var(--text-secondary); font-weight:400;">· ${count} rows</span></h3>
-            <div style="font-weight:700; color:var(--text-primary);">${wlRM(total)}</div>
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:0.8rem 1.1rem; background:var(--bg-main,#f3f5f3); border-bottom:1px solid var(--border-color,#e0e0e0);">
+            <h3 style="margin:0; font-size:0.98rem; color:var(--text-primary);">${wlEsc(spec.label)} <span id="wl-count-${scheme}" style="color:var(--text-secondary); font-weight:400;">${wlCountText(model)}</span></h3>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <button class="wl-clear-filter" data-scheme="${scheme}" id="wl-clear-${scheme}" title="Clear all column filters for this table" style="display:${model.isFiltered ? 'inline-block' : 'none'}; font-size:0.74rem; padding:0.2rem 0.55rem; border:1px solid var(--border-color,#ccc); border-radius:4px; background:var(--bg-card,#fff); color:var(--text-primary); cursor:pointer;">✕ Clear filters</button>
+              <div id="wl-total-${scheme}" style="font-weight:700; color:var(--text-primary); text-align:right;">${wlTotalLabel(model)}</div>
+            </div>
           </div>
           <div style="max-height:420px; overflow:auto;">
             <table style="width:100%; border-collapse:collapse; font-size:0.82rem; color:var(--text-primary);">
               <thead><tr>${head}</tr></thead>
-              <tbody>${bodyRows}</tbody>
+              <tbody id="wl-tbody-${scheme}">${wlRowsHTML(scheme, model.shown)}</tbody>
             </table>
           </div>
-          ${moreNote}
+          <div id="wl-more-${scheme}">${wlMoreNoteHTML(scheme, model)}</div>
         </div>`;
+    };
+
+    // Patch a single table in place — preserves the filter inputs (focus/caret)
+    // because the <thead> is never re-rendered, only the tbody/labels/note.
+    const wlUpdateTable = (scheme) => {
+        const model = wlTableModel(scheme);
+        const tb = document.getElementById('wl-tbody-' + scheme);
+        if (tb) tb.innerHTML = wlRowsHTML(scheme, model.shown);
+        const ct = document.getElementById('wl-count-' + scheme);
+        if (ct) ct.textContent = wlCountText(model);
+        const tot = document.getElementById('wl-total-' + scheme);
+        if (tot) tot.innerHTML = wlTotalLabel(model);
+        const more = document.getElementById('wl-more-' + scheme);
+        if (more) more.innerHTML = wlMoreNoteHTML(scheme, model);
+        const clr = document.getElementById('wl-clear-' + scheme);
+        if (clr) clr.style.display = model.isFiltered ? 'inline-block' : 'none';
     };
 
     // =====================================================================

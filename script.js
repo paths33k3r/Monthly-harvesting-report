@@ -1377,56 +1377,9 @@ const runMainApplication = () => {
                 sidebarGangYearList.appendChild(liAddYear);
             }
 
-            // Activity-specific Gantt shortcuts under Maintenance (Slashing / Pruning).
-            // Only shown when the Work Log has entries for that activity.
-            const renderActivityGantt = (containerId, activityName) => {
-                const container = document.getElementById(containerId);
-                if (!container) return;
-                // Only manage our own dynamically-added items; keep any static links (e.g. Record).
-                container.querySelectorAll('.mnt-dynamic-gantt').forEach(n => n.remove());
-                const mdata = state.maintenance || {};
-                // Keyword-aware match: "Slash"/"Slashing" both count as Slashing.
-                const canon = (typeof window.mntCanonActivity === 'function')
-                    ? window.mntCanonActivity
-                    : (n) => String(n == null ? '' : n).trim();
-                const years = Object.keys(mdata).filter(y => {
-                    const yd = mdata[y];
-                    return yd && Array.isArray(yd.entries) &&
-                        yd.entries.some(e => canon(e.activity).toLowerCase() === activityName.toLowerCase());
-                }).sort((a, b) => parseInt(b) - parseInt(a));
-
-                if (years.length === 0) {
-                    const li = document.createElement('li');
-                    li.className = 'nav-item mnt-dynamic-gantt';
-                    li.innerHTML = `<span class="nav-link" style="color:var(--text-secondary); font-style:italic; cursor:default;">No ${activityName.toLowerCase()} logs yet</span>`;
-                    container.appendChild(li);
-                    return;
-                }
-
-                const li = document.createElement('li');
-                li.className = 'nav-item mnt-dynamic-gantt';
-                if (state.activeViewType === 'maintenance_gantt' && state.maintGanttFilter === activityName) {
-                    li.classList.add('active');
-                }
-                const a = document.createElement('a');
-                a.href = '#';
-                a.className = 'nav-link';
-                a.innerHTML = `📊 Gantt Chart`;
-                a.onclick = (ev) => {
-                    ev.preventDefault();
-                    state.maintGanttFilter = activityName;
-                    if (!years.includes(state.maintYear)) state.maintYear = years[0];
-                    state.activeViewType = 'maintenance_gantt';
-                    renderSidebar();
-                    renderTable();
-                };
-                li.appendChild(a);
-                container.appendChild(li);
-            };
-            renderActivityGantt('sidebar-spraying-sub', 'Spraying');
-            renderActivityGantt('sidebar-manuring-sub', 'Manuring');
-            renderActivityGantt('sidebar-slashing-sub', 'Slashing');
-            renderActivityGantt('sidebar-pruning-sub', 'Pruning');
+            // (Per-activity Gantt shortcuts removed — the sidebar now has a single
+            //  Field Maintenance → Gantt Chart link; activities are chosen with the
+            //  Gantt view's own activity filter.)
 
 
             // Render Performance Navigation
@@ -3878,6 +3831,17 @@ const runMainApplication = () => {
                     sidebarMntWorklog.onclick = (e) => {
                         e.preventDefault();
                         state.activeViewType = 'maintenance_worklog';
+                        renderSidebar();
+                        renderTable();
+                    };
+                }
+
+                const sidebarMntGantt = document.getElementById('sidebar-mnt-gantt');
+                if (sidebarMntGantt) {
+                    sidebarMntGantt.onclick = (e) => {
+                        e.preventDefault();
+                        state.maintGanttFilter = '__all__';   // single Gantt link → show all activities
+                        state.activeViewType = 'maintenance_gantt';
                         renderSidebar();
                         renderTable();
                     };

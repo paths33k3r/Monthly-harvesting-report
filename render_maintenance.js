@@ -682,12 +682,17 @@ function renderMaintenanceGantt() {
     const optHtml = (list, selected, allLabel) => ['__all__', ...list]
         .map(v => `<option value="${mEsc(v)}" ${v === selected ? 'selected' : ''}>${v === '__all__' ? mEsc(allLabel) : (allLabel === 'All blocks' ? 'Blk ' + mEsc(v) : mEsc(v))}</option>`).join('');
 
+    const canEdit = mntCanEdit();
+    const fillBtn = canEdit
+        ? `<button id="mnt-gantt-fill-jc" class="btn-secondary" style="padding:0.4rem 0.7rem;" title="Generate Gantt bars from this month's Job Card actuals (Rate of Wages → Wage Ledger)">🧾 Fill from Job Card</button>`
+        : '';
     const extra = `<label style="font-size:0.85rem; color:var(--text-secondary);">Show</label>
                    <select id="mnt-gantt-filter" class="edit-input" style="padding:0.4rem 0.6rem;">${optHtml(yd.activityTypes, activeFilter, 'All activities')}</select>
                    <label style="font-size:0.85rem; color:var(--text-secondary);">Gang</label>
                    <select id="mnt-gantt-gang" class="edit-input" style="padding:0.4rem 0.6rem;">${optHtml(gangOpts, gangFilter, 'All gangs')}</select>
                    <label style="font-size:0.85rem; color:var(--text-secondary);">Block</label>
-                   <select id="mnt-gantt-block" class="edit-input" style="padding:0.4rem 0.6rem;">${optHtml(blockOpts, blockFilter, 'All blocks')}</select>`;
+                   <select id="mnt-gantt-block" class="edit-input" style="padding:0.4rem 0.6rem;">${optHtml(blockOpts, blockFilter, 'All blocks')}</select>
+                   ${fillBtn}`;
     wrapper.appendChild(mntBuildToolbar('Maintenance Gantt', 'gantt', { extraHtml: extra }));
 
     setTimeout(() => {
@@ -697,6 +702,8 @@ function renderMaintenanceGantt() {
         if (g) g.onchange = () => { window.state.maintGanttGang = g.value; renderMaintenanceGantt(); };
         const b = document.getElementById('mnt-gantt-block');
         if (b) b.onchange = () => { window.state.maintGanttBlock = b.value; renderMaintenanceGantt(); };
+        const fb = document.getElementById('mnt-gantt-fill-jc');
+        if (fb) fb.onclick = () => mntFillFromJobCard(year, month);
     }, 0);
 
     const dim = mntDaysInMonth(year, month);
@@ -829,6 +836,101 @@ function renderMaintenanceGantt() {
     wrapper.appendChild(legend);
 }
 window.renderMaintenanceGantt = renderMaintenanceGantt;
+
+// =====================================================================
+// Fill the Gantt from Job Card actuals (Rate of Wages → Wage Ledger)
+// ---------------------------------------------------------------------
+// Converts state.wagesLedger[year][month].jobcard rows into maintenance
+// Work Log entries (which the Gantt is built from). Rows are aggregated by
+// gang|activity|block|dateStart|dateEnd; persons = distinct employees in
+// that bucket (so the Gantt's manpower/day reads as headcount). Derived
+// entries are tagged source:'jobcard' + sourceYear/sourceMonth so a re-run
+// REPLACES the previous job-card fill for that month and never disturbs
+// manually-entered rows.
+// =====================================================================
+function mntFillFromJobCard(yearStr, month) {
+    const ledger = window.state.wagesLedger
+        && window.state.wagesLedger[yearStr]
+        && window.state.wagesLedger[yearStr][month];
+    const rows = (ledger && Array.isArray(ledger.jobcard)) ? ledger.jobcard : [];
+    if (!rows.length) {
+        window.notify(`No Job Card data for ${month} ${yearStr}. Import it under Rate of Wages → Wage Ledger first.`, 'warn');
+        return;
+    }
+
+    const yd = mntEnsureYear(yearStr);
+
+    // Resolve a job activity to the year's activity list (add new ones so they
+    // get a colour/legend/filter entry, mirroring the Excel import behaviour).
+    const resolveActivity = (raw) => {
+        const val = String(raw || '').trim();
+        if (!val) return 'Other';
+        const existing = yd.activityTypes.find(a => a.toLowerCase() === val.toLowerCase());
+        if (existing) return existing;
+        const canon = mntActivityFromText(val);
+        if (canon) return yd.activityTypes.find(a => a.toLowerCase() === canon.toLowerCase()) || canon;
+        yd.activityTypes.push(val);
+        return val;
+    };
+
+    // Accept only real ISO dates; ignore anything else.
+    const iso = (v) => { const s = String(v == null ? '' : v).slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : ''; };
+
+    const buckets = {};
+    let skipped = 0;
+    rows.forEach((r, i) => {
+        const gang = String(r.gang || '').trim();
+        const dateStart = iso(r.startDate) || iso(r.jobDate) || iso(r.completeDate);
+        const dateEnd = iso(r.completeDate) || iso(r.startDate) || iso(r.jobDate) || dateStart;
+        if (!gang || !dateStart) { skipped++; return; }
+        const block = mntCleanBlock(r.block);
+        const activity = resolveActivity(r.jobActivity);
+        const key = `${gang}||${activity}||${block}||${dateStart}||${dateEnd}`;
+        if (!buckets[key]) buckets[key] = { gang, activity, block, dateStart, dateEnd, emps: new Set(), count: 0 };
+        const emp = String(r.employee || '').trim();
+        buckets[key].emps.add(emp || ('#row' + i));
+        buckets[key].count++;
+    });
+
+    const bucketKeys = Object.keys(buckets);
+    if (!bucketKeys.length) {
+        window.notify(`No usable Job Card rows for ${month} ${yearStr} (each needs at least a gang and a date).`, 'warn');
+        return;
+    }
+
+    const existingDerived = yd.entries.filter(e => e.source === 'jobcard' && e.sourceYear === yearStr && e.sourceMonth === month);
+    const proceed = confirm(
+        `Fill the Gantt for ${month} ${yearStr} from Job Card data:\n\n` +
+        `• ${rows.length} job card row(s) → ${bucketKeys.length} work bar(s)\n` +
+        (skipped ? `• ${skipped} row(s) skipped (missing gang or date)\n` : '') +
+        (existingDerived.length ? `\n⚠ This REPLACES ${existingDerived.length} previously job-card-filled entr${existingDerived.length === 1 ? 'y' : 'ies'} for this month. Manually-added entries are kept.` : '') +
+        `\n\nProceed?`
+    );
+    if (!proceed) return;
+
+    // Drop the previous job-card fill for this month, then add the fresh set.
+    yd.entries = yd.entries.filter(e => !(e.source === 'jobcard' && e.sourceYear === yearStr && e.sourceMonth === month));
+    bucketKeys.forEach(key => {
+        const b = buckets[key];
+        yd.entries.push({
+            id: mntUid(),
+            gang: b.gang, activity: b.activity, block: b.block,
+            dateStart: b.dateStart, dateEnd: b.dateEnd,
+            persons: b.emps.size || b.count,
+            round: '',
+            method: `From ${b.count} job card${b.count === 1 ? '' : 's'}`,
+            verified: false, verifiedBy: null,
+            createdBy: 'jobcard',
+            source: 'jobcard', sourceYear: yearStr, sourceMonth: month,
+        });
+    });
+
+    saveMaintenanceData(false);
+    if (typeof window.logAudit === 'function') window.logAudit('import', 'maintenance', `Job Card → Gantt: ${bucketKeys.length} bars for ${month} ${yearStr}`, yearStr);
+    renderMaintenanceGantt();
+    window.notify(`Filled ${bucketKeys.length} Gantt bar(s) from ${rows.length} job card row(s).`, 'success');
+}
+window.mntFillFromJobCard = mntFillFromJobCard;
 
 // =====================================================================
 // Import / Template
