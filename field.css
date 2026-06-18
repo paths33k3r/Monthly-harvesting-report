@@ -8,14 +8,15 @@
 * { box-sizing: border-box; }
 
 :root {
-    --accent: #0e7c5a;
-    --accent-hover: #0a5f45;
-    --accent-color: #0e7c5a;
-    --bg-main: #eef2f6;
+    /* Matched to the desktop app palette (style.css :root) */
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --accent-color: #2563eb;
+    --bg-main: #f8fafc;
     --bg-card: #ffffff;
-    --bg-secondary: #eef2f6;
+    --bg-secondary: #f1f5f9;
     --text-primary: #0f172a;
-    --text-secondary: #64748b;
+    --text-secondary: #475569;
     --border-color: #e2e8f0;
     --danger: #ef4444;
 }
@@ -35,7 +36,7 @@ body {
 .btn-danger { background: #fee2e2; color: var(--danger); border: none; padding: 0.6rem 1rem; border-radius: 10px; font-weight: 600; cursor: pointer; }
 
 /* ---- Login ---- */
-#login-overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 1.5rem; background: linear-gradient(160deg, #0e7c5a, #0a5f45); }
+#login-overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 1.5rem; background: linear-gradient(160deg, #2563eb, #1d4ed8); }
 .login-card { background: #fff; border-radius: 18px; padding: 2rem 1.5rem; width: 100%; max-width: 380px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25); text-align: center; }
 .login-logo { font-size: 2.6rem; }
 .login-card h1 { font-size: 1.3rem; margin: 0.5rem 0 0.25rem; }
@@ -103,7 +104,7 @@ main { padding: 0.85rem; max-width: 760px; margin: 0 auto; }
 #toast-host { position: fixed; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; gap: 0.5rem; padding: 1rem; pointer-events: none; z-index: 9999; }
 .toast { pointer-events: auto; max-width: 92%; background: #1e293b; color: #fff; padding: 0.7rem 1rem; border-radius: 10px; font-size: 0.9rem; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); opacity: 0; transform: translateY(10px); transition: opacity .25s, transform .25s; }
 .toast.show { opacity: 1; transform: none; }
-.toast-success { background: #0e7c5a; }
+.toast-success { background: #16a34a; }
 .toast-error { background: #b91c1c; }
 .toast-warn { background: #b45309; }
 .toast-undo { display: flex; align-items: center; gap: 0.75rem; }
