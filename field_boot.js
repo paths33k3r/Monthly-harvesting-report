@@ -43,15 +43,60 @@
     // app opens and works with no connection. Photos already persist in IndexedDB.
     const LS_WEEKLY = 'wk_cache_weekly';
     const LS_REPORTS = 'wk_cache_reports';
+    const LS_DIRTY = 'wk_cache_dirty';   // '1' = local edits not yet confirmed in the cloud
     try { const c = localStorage.getItem(LS_WEEKLY); if (c) window.state.weekly = JSON.parse(c); } catch (e) {}
     try { const r = localStorage.getItem(LS_REPORTS); if (r) window.state.reports = JSON.parse(r); } catch (e) {}
-    // Mirror every save into the cache (so offline captures survive a reload too).
+
+    // Every local save: cache it + mark DIRTY, then attempt the cloud write. Dirty
+    // is cleared only when the cloud write is CONFIRMED (the .set promise resolves),
+    // so edits made offline stay flagged as unsynced until they truly reach the
+    // server — and can never be overwritten by a stale server copy in the meantime.
     const _origSaveWeekly = window.saveWeeklyActivityData;
     window.saveWeeklyActivityData = function (silent) {
         try { localStorage.setItem(LS_WEEKLY, JSON.stringify(window.state.weekly)); } catch (e) {}
-        return typeof _origSaveWeekly === 'function' ? _origSaveWeekly.call(this, silent) : undefined;
+        try { localStorage.setItem(LS_DIRTY, '1'); } catch (e) {}
+        const p = (typeof _origSaveWeekly === 'function') ? _origSaveWeekly.call(this, silent) : Promise.resolve();
+        if (p && p.then) p.then(() => { try { localStorage.removeItem(LS_DIRTY); } catch (e) {} }).catch(() => {});
+        return p;
     };
+
     const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+
+    // Union-merge two weekly trees by week id; LOCAL wins on the same id (the phone
+    // was actively editing). Keeps BOTH offline-created and desktop-created weeks,
+    // so neither side's work is lost when they reconnect.
+    const mergeWeekly = (localW, serverW) => {
+        const out = JSON.parse(JSON.stringify(serverW || {}));
+        for (const year in (localW || {})) {
+            if (!out[year] || !Array.isArray(out[year].weeks)) { out[year] = localW[year]; continue; }
+            const weeks = out[year].weeks;
+            const idx = {}; weeks.forEach((w, i) => { if (w && w.id) idx[w.id] = i; });
+            (localW[year].weeks || []).forEach(lw => {
+                if (lw && lw.id && (lw.id in idx)) weeks[idx[lw.id]] = lw;  // local wins on same id
+                else weeks.push(lw);                                       // local-only week kept
+            });
+        }
+        return out;
+    };
+
+    const isDirty = () => { try { return localStorage.getItem(LS_DIRTY) === '1'; } catch (e) { return false; } };
+    const cacheWeekly = () => { try { localStorage.setItem(LS_WEEKLY, JSON.stringify(window.state.weekly)); } catch (e) {} };
+
+    // Push local (with offline edits) up to the cloud, merging with whatever is there
+    // so desktop-made weeks survive too. Clears DIRTY only on a confirmed write.
+    const syncUp = async () => {
+        if (!navigator.onLine || !isDirty()) return;
+        try {
+            const snap = await withTimeout(db.ref('shared/weekly_activity_data').once('value'), 12000);
+            const serverW = snap.val() ? JSON.parse(snap.val()) : {};
+            const merged = mergeWeekly(window.state.weekly, serverW);
+            window.state.weekly = merged; cacheWeekly();
+            await withTimeout(db.ref('shared/weekly_activity_data').set(JSON.stringify(merged)), 15000);
+            localStorage.removeItem(LS_DIRTY);
+            if (window.notify) window.notify('Offline changes synced.', 'success');
+            return true;
+        } catch (e) { console.warn('Sync up failed (will retry on next connection):', e); return false; }
+    };
 
     // --- Lightweight toast helpers (render_weekly.js calls these) ---
     const toastHost = () => document.getElementById('toast-host') || document.body;
@@ -130,17 +175,25 @@
             }
         } catch (e) { console.warn('Reports refresh skipped (offline?):', e); }
 
-        // Weekly reports — only pull from the cloud when online at startup, so an
-        // offline session keeps using the local cache and never clobbers offline edits.
-        if (navigator.onLine) {
+        if (!navigator.onLine) { renderNow(); return; }
+
+        if (isDirty()) {
+            // We have unsynced local edits — merge + push them up. NEVER overwrite the
+            // local copy with the server's (that was the data-loss bug).
+            await syncUp();
+        } else {
+            // No local changes — safe to take the server copy.
             try {
                 const wkSnap = await withTimeout(db.ref('shared/weekly_activity_data').once('value'), 12000);
                 const wkData = wkSnap.val();
-                if (wkData) { window.state.weekly = JSON.parse(wkData); try { localStorage.setItem(LS_WEEKLY, JSON.stringify(window.state.weekly)); } catch (e) {} }
+                if (wkData) { window.state.weekly = JSON.parse(wkData); cacheWeekly(); }
             } catch (e) { console.warn('Weekly refresh skipped (offline?):', e); }
         }
         renderNow();
     };
+
+    // When the connection returns mid-session, push any unsynced offline edits up.
+    window.addEventListener('online', () => { syncUp(); });
 
     // --- Auth state → render (cache) → refresh (cloud) ---
     let started = false;
