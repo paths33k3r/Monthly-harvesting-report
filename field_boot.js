@@ -37,6 +37,22 @@
     if (!window.state.weeklyYear) window.state.weeklyYear = String(new Date().getFullYear());
     if (!('weeklyWeekId' in window.state)) window.state.weeklyWeekId = null;
 
+    // --- Offline cache (localStorage) ---
+    // The Realtime DB keeps no on-disk copy, so a fresh offline load has no data.
+    // We mirror the (text-only) weekly record + block list into localStorage so the
+    // app opens and works with no connection. Photos already persist in IndexedDB.
+    const LS_WEEKLY = 'wk_cache_weekly';
+    const LS_REPORTS = 'wk_cache_reports';
+    try { const c = localStorage.getItem(LS_WEEKLY); if (c) window.state.weekly = JSON.parse(c); } catch (e) {}
+    try { const r = localStorage.getItem(LS_REPORTS); if (r) window.state.reports = JSON.parse(r); } catch (e) {}
+    // Mirror every save into the cache (so offline captures survive a reload too).
+    const _origSaveWeekly = window.saveWeeklyActivityData;
+    window.saveWeeklyActivityData = function (silent) {
+        try { localStorage.setItem(LS_WEEKLY, JSON.stringify(window.state.weekly)); } catch (e) {}
+        return typeof _origSaveWeekly === 'function' ? _origSaveWeekly.call(this, silent) : undefined;
+    };
+    const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+
     // --- Lightweight toast helpers (render_weekly.js calls these) ---
     const toastHost = () => document.getElementById('toast-host') || document.body;
     window.notify = function (msg, type, ms) {
@@ -96,34 +112,46 @@
 
     document.getElementById('btn-logout').onclick = () => auth.signOut();
 
-    // --- Auth state → load data → render ---
+    // --- Render now (from cache, instant, offline-safe), refresh from cloud after ---
+    const renderNow = () => {
+        if (typeof window.renderWeeklyActivity !== 'function') return;
+        try { window.renderWeeklyActivity(); }
+        catch (e) { console.error('Render failed:', e); window.notify('Could not load the weekly view: ' + e.message, 'error'); }
+    };
+
+    const refreshFromCloud = async () => {
+        // Blocks (reports) live in the main shared/app_state blob — best-effort refresh.
+        try {
+            const appSnap = await withTimeout(db.ref('shared/app_state').once('value'), 12000);
+            const appData = appSnap.val();
+            if (appData) {
+                const p = JSON.parse(appData);
+                if (p && p.reports) { window.state.reports = p.reports; try { localStorage.setItem(LS_REPORTS, JSON.stringify(p.reports)); } catch (e) {} }
+            }
+        } catch (e) { console.warn('Reports refresh skipped (offline?):', e); }
+
+        // Weekly reports — only pull from the cloud when online at startup, so an
+        // offline session keeps using the local cache and never clobbers offline edits.
+        if (navigator.onLine) {
+            try {
+                const wkSnap = await withTimeout(db.ref('shared/weekly_activity_data').once('value'), 12000);
+                const wkData = wkSnap.val();
+                if (wkData) { window.state.weekly = JSON.parse(wkData); try { localStorage.setItem(LS_WEEKLY, JSON.stringify(window.state.weekly)); } catch (e) {} }
+            } catch (e) { console.warn('Weekly refresh skipped (offline?):', e); }
+        }
+        renderNow();
+    };
+
+    // --- Auth state → render (cache) → refresh (cloud) ---
     let started = false;
-    auth.onAuthStateChanged(async (user) => {
+    auth.onAuthStateChanged((user) => {
         if (user) {
             loginOverlay.style.display = 'none';
             appMain.style.display = 'block';
             if (started) return;
             started = true;
-
-            // Blocks for the dropdowns come from the Planting Phase Record, which
-            // lives in the main shared/app_state blob — pull just `reports` from it.
-            try {
-                const appSnap = await db.ref('shared/app_state').once('value');
-                const appData = appSnap.val();
-                if (appData) { const p = JSON.parse(appData); if (p && p.reports) window.state.reports = p.reports; }
-            } catch (e) { console.warn('Reports load failed (blocks fall back to free text):', e); }
-
-            // The weekly reports themselves (shared with desktop).
-            try {
-                const wkSnap = await db.ref('shared/weekly_activity_data').once('value');
-                const wkData = wkSnap.val();
-                if (wkData) window.state.weekly = JSON.parse(wkData);
-            } catch (e) { console.warn('Weekly load failed:', e); }
-
-            if (typeof window.renderWeeklyActivity === 'function') {
-                try { window.renderWeeklyActivity(); }
-                catch (e) { console.error('Render failed:', e); window.notify('Could not load the weekly view: ' + e.message, 'error'); }
-            }
+            renderNow();         // instant UI from cache — works with no connection
+            refreshFromCloud();  // background; refreshes + re-renders when online
         } else {
             appMain.style.display = 'none';
             loginOverlay.style.display = 'flex';
