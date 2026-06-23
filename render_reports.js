@@ -869,6 +869,106 @@
     };
 
     // ══════════════════════════════════════════════════════════════════════
+    // GENERATE ALL REPORTS → single ZIP
+    // ══════════════════════════════════════════════════════════════════════
+
+    // Registry of every report the "Generate All" feature can bundle.
+    // `fn(year, month)` reuses each report's existing download generator; the
+    // file it would normally save is captured (see generateAllReports) and zipped.
+    const ALL_REPORT_DEFS = [
+        { key: 'ytd',      label: '📈 Harvesting Performance YTD', fn: (y, m) => window.downloadYtdReport(y, m) },
+        { key: 'rain',     label: '🌧 Rainfall',                   fn: (y, m) => window.downloadRainfallReport(y, m) },
+        { key: 'spray',    label: '🌿 Spraying (annual)',          fn: (y, m) => window.downloadSprayingReport(y, m) },
+        { key: 'manuring', label: '🌿 Manuring (annual)',          fn: (y, m) => window._downloadManuringExcel(y, m) },
+        { key: 'ih',       label: '🐎 Iron Horse — Cost per FFB MT', fn: (y) => window.downloadIronHorseCostPerFFBMt(y) },
+        { key: 'wages',    label: '💵 Rate of Wages',              fn: (y, m) => window.downloadWagesReport(y, m) },
+    ];
+
+    // Runs each selected report generator, transparently intercepts the file it
+    // produces (instead of saving it individually), and bundles everything into
+    // one ZIP. No generator is modified — we patch URL.createObjectURL + the
+    // anchor click for the duration of the run, then restore them.
+    window.generateAllReports = async (year, month, selectedKeys, onStep) => {
+        await ensureExcelJS();
+        await ensureJSZip();
+
+        const defs = ALL_REPORT_DEFS.filter(r => selectedKeys.includes(r.key));
+        const captured = [];                 // {filename, url} in click order
+        const blobMap = new Map();           // blob: url -> Blob (direct ref, survives revoke)
+
+        const origCreate = URL.createObjectURL;
+        const origRevoke = URL.revokeObjectURL;
+        const origClick  = HTMLAnchorElement.prototype.click;
+
+        URL.createObjectURL = function (obj) {
+            const u = origCreate.call(URL, obj);
+            if (obj instanceof Blob) blobMap.set(u, obj);
+            return u;
+        };
+        URL.revokeObjectURL = function () { /* deferred during capture — keep blobs alive */ };
+        HTMLAnchorElement.prototype.click = function () {
+            if (this.download && typeof this.href === 'string' && this.href.indexOf('blob:') === 0) {
+                captured.push({ filename: this.download || 'report.xlsx', url: this.href });
+                return; // suppress the individual download; we'll zip it instead
+            }
+            return origClick.apply(this, arguments);
+        };
+
+        const results = [];
+        try {
+            for (const r of defs) {
+                if (onStep) onStep(r.key, 'running');
+                const before = captured.length;
+                try {
+                    await r.fn(year, month);
+                    const ok = captured.length > before;
+                    results.push({ key: r.key, ok, error: ok ? null : 'no data' });
+                    if (onStep) onStep(r.key, ok ? 'done' : 'empty');
+                } catch (e) {
+                    results.push({ key: r.key, ok: false, error: (e && e.message) || String(e) });
+                    if (onStep) onStep(r.key, 'error', (e && e.message) || String(e));
+                }
+            }
+        } finally {
+            URL.createObjectURL = origCreate;
+            URL.revokeObjectURL = origRevoke;
+            HTMLAnchorElement.prototype.click = origClick;
+        }
+
+        // Bundle whatever was captured
+        const zip = new JSZip();
+        let fileCount = 0;
+        const usedNames = {};
+        for (const c of captured) {
+            const blob = blobMap.get(c.url);
+            if (!blob) continue;
+            let name = c.filename;
+            if (usedNames[name]) name = name.replace(/(\.[^.]+)?$/, `_${usedNames[name] + 1}$1`); // de-dupe
+            usedNames[c.filename] = (usedNames[c.filename] || 0) + 1;
+            zip.file(name, blob);
+            fileCount++;
+        }
+        // release the captured blob URLs now that we hold the Blobs
+        for (const u of blobMap.keys()) { try { origRevoke.call(URL, u); } catch (e) { /* ignore */ } }
+
+        if (fileCount === 0) return { zipDownloaded: false, fileCount: 0, results };
+
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        const zipName = `AntiGravity_Reports_${month}_${year}.zip`;
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(zipBlob);
+        a.download = zipName;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+
+        if (typeof window.logAudit === 'function') {
+            window.logAudit('download', 'reports', zipName, `Bundle of ${fileCount} report(s)`);
+        }
+        return { zipDownloaded: true, fileCount, zipName, results };
+    };
+
+    // ══════════════════════════════════════════════════════════════════════
     // REPORTS PANEL UI
     // ══════════════════════════════════════════════════════════════════════
 
@@ -886,6 +986,12 @@
             ...Object.keys(window.state.wages || {}).filter(k => /^\d{4}$/.test(k)),
             ...perfYears
         ])].sort((a, b) => parseInt(b) - parseInt(a));
+
+        // Combined year list for the "Generate All" card (union of every report's years)
+        const allYears = [...new Set([
+            ...perfYears, ...rainYears, ...sprayYears, ...manuringYears, ...ironHorseYears, ...wagesYears
+        ])].filter(k => /^\d{4}$/.test(k)).sort((a, b) => parseInt(b) - parseInt(a));
+        const curMonth = MONTHS[new Date().getMonth()];
 
         const yearOpts  = years => years.map(y => `<option value="${y}">${y}</option>`).join('');
         const monthOpts = () => MONTHS.map(m => `<option value="${m}">${m}</option>`).join('');
@@ -938,6 +1044,31 @@
           <p style="color:var(--text-secondary);margin:0 0 1.75rem;font-size:0.85rem;">
             Download formatted Excel reports matching the official templates.
           </p>
+
+          <div style="${CARD} border:2px solid var(--accent,#2563eb);">
+            <h3 style="margin:0 0 0.35rem;font-size:1.02rem;">🗂️ Generate All Reports — one ZIP</h3>
+            <p style="margin:0 0 0.9rem;color:var(--text-secondary);font-size:0.82rem;">
+              Pick a year and month, choose which reports to include, then download them all bundled
+              into a single ZIP. Annual reports (Spraying, Manuring, Iron Horse) use the year only.
+            </p>
+            ${allYears.length ? `
+            <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;margin-bottom:0.8rem;">
+              <label style="font-size:0.82rem;color:var(--text-secondary);">Year
+                <select id="sel-all-yr" style="${SS} margin-left:4px;">${yearOpts(allYears)}</select></label>
+              <label style="font-size:0.82rem;color:var(--text-secondary);">Month
+                <select id="sel-all-mo" style="${SS} margin-left:4px;">${monthOpts()}</select></label>
+              <button id="btn-all-toggle" type="button" style="${SS} cursor:pointer;">Select all / none</button>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.3rem 1rem;margin-bottom:0.95rem;font-size:0.85rem;">
+              ${ALL_REPORT_DEFS.map(r => `<label style="display:flex;align-items:center;gap:0.45rem;cursor:pointer;"><input type="checkbox" class="chk-all-rep" id="chk-all-${r.key}" value="${r.key}" checked> ${r.label}</label>`).join('')}
+            </div>
+            <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
+              <button id="btn-gen-all" class="btn-primary" style="padding:0.5rem 1.3rem;">⬇ Generate ZIP</button>
+              <span id="rep-all-status" style="font-size:0.82rem;color:var(--text-secondary);"></span>
+            </div>
+            <div id="rep-all-results" style="margin-top:0.6rem;font-size:0.8rem;color:var(--text-secondary);line-height:1.5;"></div>
+            ` : noDataMsg}
+          </div>
 
           <div style="${CARD}">
             <h3 style="margin:0 0 0.35rem;font-size:0.97rem;">📈 Harvesting Performance — Overall by Gang YTD</h3>
@@ -1010,6 +1141,54 @@
             The app must be served via HTTP (not file://) for template loading to work.
           </p>
         </div>`;
+
+        // ── Generate All Reports (ZIP) ──
+        const moAll = document.getElementById('sel-all-mo');
+        if (moAll) moAll.value = curMonth;          // default to current month
+        const btnAllToggle = document.getElementById('btn-all-toggle');
+        if (btnAllToggle) btnAllToggle.onclick = () => {
+            const boxes = Array.from(document.querySelectorAll('.chk-all-rep'));
+            const allOn = boxes.every(b => b.checked);
+            boxes.forEach(b => { b.checked = !allOn; });
+        };
+        const btnGenAll = document.getElementById('btn-gen-all');
+        if (btnGenAll) btnGenAll.onclick = async () => {
+            const yr = document.getElementById('sel-all-yr').value;
+            const mo = document.getElementById('sel-all-mo').value;
+            const keys = Array.from(document.querySelectorAll('.chk-all-rep')).filter(b => b.checked).map(b => b.value);
+            if (!yr || !mo) return;
+            if (!keys.length) { setStatus('rep-all-status', '⚠ Select at least one report.', true); return; }
+            const labelFor = {}; ALL_REPORT_DEFS.forEach(r => { labelFor[r.key] = r.label; });
+            const resEl = document.getElementById('rep-all-results');
+            const lines = {};
+            const paint = () => { if (resEl) resEl.innerHTML = keys.map(k => `<div>${lines[k] || ('• ' + labelFor[k] + ' — queued')}</div>`).join(''); };
+            keys.forEach(k => { lines[k] = '• ' + labelFor[k] + ' — queued'; });
+            paint();
+            btnGenAll.disabled = true;
+            const oldTxt = btnGenAll.textContent;
+            btnGenAll.textContent = '⏳ Generating…';
+            setStatus('rep-all-status', 'Building ZIP…');
+            try {
+                const summary = await window.generateAllReports(yr, mo, keys, (key, st, msg) => {
+                    const lbl = labelFor[key];
+                    if (st === 'running')      lines[key] = '⏳ ' + lbl + ' — generating…';
+                    else if (st === 'done')    lines[key] = '✅ ' + lbl;
+                    else if (st === 'empty')   lines[key] = '⚠ ' + lbl + ' — no data, skipped';
+                    else if (st === 'error')   lines[key] = '❌ ' + lbl + ' — ' + (msg || 'failed');
+                    paint();
+                });
+                if (summary.zipDownloaded) {
+                    setStatus('rep-all-status', `✅ ${summary.fileCount} report(s) zipped → ${summary.zipName}`);
+                } else {
+                    setStatus('rep-all-status', '⚠ Nothing to bundle — no data for the selected period.');
+                }
+            } catch (e) {
+                setStatus('rep-all-status', '❌ ' + ((e && e.message) || e));
+            } finally {
+                btnGenAll.disabled = false;
+                btnGenAll.textContent = oldTxt;
+            }
+        };
 
         const btnYtd = document.getElementById('btn-dl-ytd');
         if (btnYtd) btnYtd.onclick = () => {
