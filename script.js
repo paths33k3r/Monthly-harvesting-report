@@ -206,6 +206,65 @@ const runMainApplication = () => {
 
         const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+        // ── Reusable month-navigation arrows (shared by every single-month view) ──
+        // Returns {prevBtn, nextBtn} DOM <button>s. Disabled buttons are dimmed + unclickable.
+        window.makeMonthArrowEls = (hasPrev, hasNext, onPrev, onNext, opts) => {
+            const o = opts || {};
+            const h = o.height || '40px';
+            const mk = (label, enabled, handler, title) => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.textContent = label;
+                b.title = title;
+                b.setAttribute('aria-label', title);
+                b.style.cssText = `display:flex;align-items:center;justify-content:center;width:36px;height:${h};font-size:1.4rem;line-height:1;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--primary-color);font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,0.1);flex-shrink:0;`;
+                if (enabled) { b.style.cursor = 'pointer'; b.onclick = handler; }
+                else { b.disabled = true; b.style.opacity = '0.35'; b.style.cursor = 'default'; }
+                return b;
+            };
+            return {
+                prevBtn: mk('❮', hasPrev, onPrev, 'Previous month'),
+                nextBtn: mk('❯', hasNext, onNext, 'Next month')
+            };
+        };
+
+        // Compute the adjacent {year, month} across the given month + year lists.
+        // Crosses into the neighbouring year only when it exists; null at a hard boundary.
+        window.stepMonthAcross = (curYear, curMonth, monthsArr, yearsArr, delta) => {
+            let mi = monthsArr.indexOf(curMonth); if (mi < 0) mi = 0;
+            let y = curYear;
+            mi += delta;
+            if (mi < 0) {
+                const yi = yearsArr.indexOf(y);
+                if (yi > 0) { y = yearsArr[yi - 1]; mi = monthsArr.length - 1; } else return null;
+            } else if (mi > monthsArr.length - 1) {
+                const yi = yearsArr.indexOf(y);
+                if (yi > -1 && yi < yearsArr.length - 1) { y = yearsArr[yi + 1]; mi = 0; } else return null;
+            }
+            return { year: y, month: monthsArr[mi] };
+        };
+
+        // Step the shared Harvesting-Performance year/month (interval, perf, ytd, current_prev).
+        window.stepPerfMonth = (delta) => {
+            const years = Object.keys(state.reports).filter(k => /^\d{4}$/.test(k)).sort((a, b) => parseInt(a) - parseInt(b));
+            const next = window.stepMonthAcross(state.selectedReportYear, state.activePerfMonth, months, years, delta);
+            if (!next) return;
+            state.selectedReportYear = next.year;
+            state.activePerfMonth = next.month;
+            renderSidebar();
+            renderTable();
+            if (typeof recalculateTotals === 'function') recalculateTotals();
+        };
+
+        // {hasPrev, hasNext} for the shared performance year/month.
+        window.perfMonthNav = () => {
+            const years = Object.keys(state.reports).filter(k => /^\d{4}$/.test(k)).sort((a, b) => parseInt(a) - parseInt(b));
+            return {
+                hasPrev: !!window.stepMonthAcross(state.selectedReportYear, state.activePerfMonth, months, years, -1),
+                hasNext: !!window.stepMonthAcross(state.selectedReportYear, state.activePerfMonth, months, years, 1)
+            };
+        };
+
         const formatHA = (num) => Number(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
         const getActiveBlocks = () => {
@@ -2069,6 +2128,20 @@ const runMainApplication = () => {
 
             perfWrapper.innerHTML = ''; // Start clean
 
+            // Month navigation header (❮ Month Year ❯) — built fresh so it survives the empty-state reset below
+            const buildPerfNavRow = () => {
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex; align-items:center; gap:0.6rem; margin-bottom:1rem;';
+                const nav = window.perfMonthNav();
+                const a = window.makeMonthArrowEls(nav.hasPrev, nav.hasNext, () => window.stepPerfMonth(-1), () => window.stepPerfMonth(1));
+                const lbl = document.createElement('div');
+                lbl.style.cssText = 'font-weight:700; font-size:1.05rem; color:var(--text-primary); min-width:140px; text-align:center;';
+                lbl.textContent = `${month} ${year}`;
+                row.appendChild(a.prevBtn); row.appendChild(lbl); row.appendChild(a.nextBtn);
+                return row;
+            };
+            perfWrapper.appendChild(buildPerfNavRow());
+
             // Clear all performance data for this month/year
             const clearMonthBtn = document.createElement('button');
             clearMonthBtn.textContent = `🗑 Clear All Data for ${month} ${year}`;
@@ -2136,7 +2209,12 @@ const runMainApplication = () => {
             const gangs = [...allGangsInMonth].filter(b => b && b !== "Unassigned").sort();
 
             if (gangs.length === 0) {
-                perfWrapper.innerHTML = '<p style="padding: 2rem;">No harvesting gangs found for this year. Please assign blocks to gangs first.</p>';
+                perfWrapper.innerHTML = '';
+                perfWrapper.appendChild(buildPerfNavRow()); // keep arrows so the user can step away from an empty month
+                const p = document.createElement('p');
+                p.style.padding = '2rem';
+                p.textContent = 'No harvesting gangs found for this year. Please assign blocks to gangs first.';
+                perfWrapper.appendChild(p);
                 return;
             }
 
@@ -2639,31 +2717,38 @@ const runMainApplication = () => {
                             <span class="font-bold">ALL BLOCKS</span>
                         </div>
                     </div>
+                    <div style="display:flex; align-items:center; gap:0.6rem; margin-top:0.75rem;">
+                        <button id="interval-prev-month" title="Previous month" aria-label="Previous month"
+                            style="display:flex;align-items:center;justify-content:center;width:36px;height:40px;font-size:1.4rem;line-height:1;cursor:pointer;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--primary-color);font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,0.1);flex-shrink:0;">❮</button>
+                        <div style="font-weight:700; font-size:1.05rem; color:var(--text-primary); min-width:140px; text-align:center;">${month} ${year}</div>
+                        <button id="interval-next-month" title="Next month" aria-label="Next month"
+                            style="display:flex;align-items:center;justify-content:center;width:36px;height:40px;font-size:1.4rem;line-height:1;cursor:pointer;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--primary-color);font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,0.1);flex-shrink:0;">❯</button>
+                    </div>
                 </div>
                 <div class="summary-table-container" style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-                    <table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 0.85rem;">
-                        <thead>
-                            <tr style="border-bottom: 1px solid var(--border-color);">
-                                <th style="padding: 0.25rem 0.5rem; color: var(--text-muted); font-weight: 600;">FFB BUDGET</th>
-                                <th style="padding: 0.25rem 0.5rem; color: var(--text-muted); font-weight: 600;">1ST RD</th>
-                                <th style="padding: 0.25rem 0.5rem; color: var(--text-muted); font-weight: 600;">2ND RD</th>
-                                <th style="padding: 0.25rem 0.5rem; color: var(--text-muted); font-weight: 600;">3RD RD</th>
-                                <th style="padding: 0.25rem 0.5rem; color: var(--text-muted); font-weight: 600;">4TH RD</th>
-                                <th style="padding: 0.25rem 0.5rem; color: var(--primary-color); font-weight: 700;">TOTAL</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td id="interval-sum-budget" style="padding: 0.25rem 0.5rem; font-weight: 700; color: var(--text-primary);">0.00</td>
-                                <td id="interval-sum-r1" style="padding: 0.25rem 0.5rem; font-weight: 500;">0.00</td>
-                                <td id="interval-sum-r2" style="padding: 0.25rem 0.5rem; font-weight: 500;">0.00</td>
-                                <td id="interval-sum-r3" style="padding: 0.25rem 0.5rem; font-weight: 500;">0.00</td>
-                                <td id="interval-sum-r4" style="padding: 0.25rem 0.5rem; font-weight: 500;">0.00</td>
-                                <td id="interval-sum-total" style="padding: 0.25rem 0.5rem; font-weight: 700; color: var(--primary-color);">0.00</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+                        <table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 0.85rem;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid var(--border-color);">
+                                    <th style="padding: 0.25rem 0.5rem; color: var(--text-muted); font-weight: 600;">FFB BUDGET</th>
+                                    <th style="padding: 0.25rem 0.5rem; color: var(--text-muted); font-weight: 600;">1ST RD</th>
+                                    <th style="padding: 0.25rem 0.5rem; color: var(--text-muted); font-weight: 600;">2ND RD</th>
+                                    <th style="padding: 0.25rem 0.5rem; color: var(--text-muted); font-weight: 600;">3RD RD</th>
+                                    <th style="padding: 0.25rem 0.5rem; color: var(--text-muted); font-weight: 600;">4TH RD</th>
+                                    <th style="padding: 0.25rem 0.5rem; color: var(--primary-color); font-weight: 700;">TOTAL</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td id="interval-sum-budget" style="padding: 0.25rem 0.5rem; font-weight: 700; color: var(--text-primary);">0.00</td>
+                                    <td id="interval-sum-r1" style="padding: 0.25rem 0.5rem; font-weight: 500;">0.00</td>
+                                    <td id="interval-sum-r2" style="padding: 0.25rem 0.5rem; font-weight: 500;">0.00</td>
+                                    <td id="interval-sum-r3" style="padding: 0.25rem 0.5rem; font-weight: 500;">0.00</td>
+                                    <td id="interval-sum-r4" style="padding: 0.25rem 0.5rem; font-weight: 500;">0.00</td>
+                                    <td id="interval-sum-total" style="padding: 0.25rem 0.5rem; font-weight: 700; color: var(--primary-color);">0.00</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
             </div>
 
             <div class="table-container" style="overflow-x: auto; padding-bottom: 2rem;">
@@ -2688,6 +2773,19 @@ const runMainApplication = () => {
         `;
 
             intervalWrapper.appendChild(wrapper);
+
+            // --- Month navigation arrows (prev / next) — shared performance stepper ---
+            const _ivNav = window.perfMonthNav();
+            const _ivPrevBtn = document.getElementById('interval-prev-month');
+            const _ivNextBtn = document.getElementById('interval-next-month');
+            if (_ivPrevBtn) {
+                if (!_ivNav.hasPrev) { _ivPrevBtn.disabled = true; _ivPrevBtn.style.opacity = '0.35'; _ivPrevBtn.style.cursor = 'default'; }
+                else _ivPrevBtn.onclick = () => window.stepPerfMonth(-1);
+            }
+            if (_ivNextBtn) {
+                if (!_ivNav.hasNext) { _ivNextBtn.disabled = true; _ivNextBtn.style.opacity = '0.35'; _ivNextBtn.style.cursor = 'default'; }
+                else _ivNextBtn.onclick = () => window.stepPerfMonth(1);
+            }
 
             const tbody = document.getElementById(`interval-table-body-all`);
 

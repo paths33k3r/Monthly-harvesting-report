@@ -625,6 +625,25 @@ const renderIronHorseExpenses = () => {
         window.state.ihExpensesMonth = v; renderIronHorseExpenses();
     }));
 
+    // Prev/next month arrows
+    if (typeof window.makeMonthArrowEls === 'function' && typeof window.stepMonthAcross === 'function') {
+        const goto = (delta) => {
+            const next = window.stepMonthAcross(yearStr, monthStr, IH_MONTHS, expYears, delta);
+            if (!next) return;
+            window.state.ihExpensesYear = next.year;
+            window.state.ihExpensesMonth = next.month;
+            renderIronHorseExpenses();
+        };
+        const a = window.makeMonthArrowEls(
+            !!window.stepMonthAcross(yearStr, monthStr, IH_MONTHS, expYears, -1),
+            !!window.stepMonthAcross(yearStr, monthStr, IH_MONTHS, expYears, 1),
+            () => goto(-1), () => goto(1), { height: '34px' });
+        const arrowWrap = document.createElement('div');
+        arrowWrap.style.cssText = 'display:flex; align-items:center; gap:0.4rem;';
+        arrowWrap.appendChild(a.prevBtn); arrowWrap.appendChild(a.nextBtn);
+        leftGroup.appendChild(arrowWrap);
+    }
+
     toolbar.appendChild(leftGroup);
 
     // Right: action buttons

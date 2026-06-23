@@ -181,7 +181,28 @@ const mntBuildToolbar = (title, view, { showMonth = true, extraHtml = '' } = {})
         const ys = document.getElementById('mnt-year-sel');
         if (ys) ys.onchange = () => { window.state.maintYear = ys.value; rerender(); };
         const ms = document.getElementById('mnt-month-sel');
-        if (ms) ms.onchange = () => { window.state.maintMonth = ms.value; rerender(); };
+        if (ms) {
+            ms.onchange = () => { window.state.maintMonth = ms.value; rerender(); };
+            // Prev/next month arrows beside the Month selector
+            if (typeof window.makeMonthArrowEls === 'function' && typeof window.stepMonthAcross === 'function') {
+                const yNow = window.state.maintYear || year, mNow = window.state.maintMonth || month;
+                const yrs = mntAvailableYears();
+                const goto = (delta) => {
+                    const next = window.stepMonthAcross(window.state.maintYear || year, window.state.maintMonth || month, MNT_MONTHS, mntAvailableYears(), delta);
+                    if (!next) return;
+                    window.state.maintYear = next.year; window.state.maintMonth = next.month;
+                    rerender();
+                };
+                const a = window.makeMonthArrowEls(
+                    !!window.stepMonthAcross(yNow, mNow, MNT_MONTHS, yrs, -1),
+                    !!window.stepMonthAcross(yNow, mNow, MNT_MONTHS, yrs, 1),
+                    () => goto(-1), () => goto(1), { height: '32px' });
+                const wrap = document.createElement('span');
+                wrap.style.cssText = 'display:inline-flex; align-items:center; gap:0.35rem;';
+                wrap.appendChild(a.prevBtn); wrap.appendChild(a.nextBtn);
+                ms.insertAdjacentElement('afterend', wrap);
+            }
+        }
     }, 0);
 
     return bar;
