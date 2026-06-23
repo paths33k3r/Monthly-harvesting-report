@@ -1,7 +1,22 @@
 window.renderCurrentPrevReport = () => {
     const wrapper = document.getElementById('current-prev-wrapper');
     if (!wrapper) return;
-    
+
+    // Adds prev/next month arrows into the toolbar heading (works for both the
+    // data view and the empty-state view so the user can always step months).
+    const injectMonthArrows = () => {
+        if (typeof window.makeMonthArrowEls !== 'function' || typeof window.perfMonthNav !== 'function') return;
+        const tl = wrapper.querySelector('.toolbar-left') || wrapper.querySelector('.toolbar');
+        if (!tl) return;
+        tl.style.display = 'flex';
+        tl.style.alignItems = 'center';
+        tl.style.gap = '0.6rem';
+        const nav = window.perfMonthNav();
+        const a = window.makeMonthArrowEls(nav.hasPrev, nav.hasNext, () => window.stepPerfMonth(-1), () => window.stepPerfMonth(1), { height: '34px' });
+        tl.insertBefore(a.prevBtn, tl.firstChild);
+        tl.appendChild(a.nextBtn);
+    };
+
     const year = window.state.selectedReportYear;
     const month = window.state.activePerfMonth;
     
@@ -51,6 +66,7 @@ window.renderCurrentPrevReport = () => {
                 <p>Please import the Harvesting Interval Excel files for <strong>${month} ${year}</strong> and <strong>${prevMonth} ${prevYear}</strong> using the Data Management menu.</p>
             </div>
         `;
+        injectMonthArrows();
         return;
     }
 
@@ -262,6 +278,7 @@ window.renderCurrentPrevReport = () => {
     `;
 
     wrapper.innerHTML = html;
+    injectMonthArrows();
 
     // Expand All button
     const expandAllBtn = document.getElementById('perf-expand-all-btn');

@@ -349,6 +349,28 @@
         host.querySelector('#wg-year').onchange = (e) => { state.wagesYear = e.target.value; state.wagesGang = state.wagesGang; window.renderWagesView(); };
         host.querySelector('#wg-month').onchange = (e) => { state.wagesMonth = e.target.value; window.renderWagesView(); };
         host.querySelector('#wg-gang').onchange = (e) => { state.wagesGang = e.target.value; window.renderWagesView(); };
+
+        // Prev/next month arrows beside the Month selector
+        if (typeof window.makeMonthArrowEls === 'function' && typeof window.stepMonthAcross === 'function') {
+            const mSel = host.querySelector('#wg-month');
+            const mLabel = mSel ? mSel.closest('label') : null;
+            if (mLabel) {
+                const goto = (delta) => {
+                    const next = window.stepMonthAcross(year, month, WG_MONTHS, years, delta);
+                    if (!next) return;
+                    state.wagesYear = next.year; state.wagesMonth = next.month;
+                    window.renderWagesView();
+                };
+                const a = window.makeMonthArrowEls(
+                    !!window.stepMonthAcross(year, month, WG_MONTHS, years, -1),
+                    !!window.stepMonthAcross(year, month, WG_MONTHS, years, 1),
+                    () => goto(-1), () => goto(1), { height: '32px' });
+                const wrap = document.createElement('span');
+                wrap.style.cssText = 'display:inline-flex; align-items:center; gap:0.35rem; margin-left:2px;';
+                wrap.appendChild(a.prevBtn); wrap.appendChild(a.nextBtn);
+                mLabel.insertAdjacentElement('afterend', wrap);
+            }
+        }
         host.querySelector('#wg-dl-excel').onclick = async () => {
             const btn = host.querySelector('#wg-dl-excel');
             btn.disabled = true; const old = btn.textContent; btn.textContent = '⏳ Generating…';

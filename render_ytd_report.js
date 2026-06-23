@@ -258,6 +258,20 @@ window.renderYtdReport = () => {
 
     wrapper.innerHTML = html;
 
+    // Prev/next month arrows in the toolbar heading
+    if (typeof window.makeMonthArrowEls === 'function' && typeof window.perfMonthNav === 'function') {
+        const tl = wrapper.querySelector('.toolbar-left') || wrapper.querySelector('.toolbar');
+        if (tl) {
+            tl.style.display = 'flex';
+            tl.style.alignItems = 'center';
+            tl.style.gap = '0.6rem';
+            const nav = window.perfMonthNav();
+            const a = window.makeMonthArrowEls(nav.hasPrev, nav.hasNext, () => window.stepPerfMonth(-1), () => window.stepPerfMonth(1), { height: '34px' });
+            tl.insertBefore(a.prevBtn, tl.firstChild);
+            tl.appendChild(a.nextBtn);
+        }
+    }
+
     // Expand All button
     const expandAllBtn = document.getElementById('ytd-expand-all-btn');
     if (expandAllBtn) {
