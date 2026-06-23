@@ -564,7 +564,77 @@ const wkRenderMap = async (containerId, week) => {
     if (_wkTrack && _wkTrack.active && _wkTrack.weekId === week.id) {
         if (!trackLine) trackLine = window.L.polyline([], { color: '#ff3b30', weight: 4, opacity: 0.9 }).addTo(map);
         _wkTrack.liveLine = trackLine;
+        // Re-attach the live "follow" state to this freshly-built map
+        if (typeof _wkTrack.follow === 'undefined') _wkTrack.follow = true;
+        _wkTrack.posMarker = null; // the old dot belonged to the now-removed map
+        map.on('dragstart', () => { if (_wkTrack && _wkTrack.active) _wkTrack.follow = false; }); // stop following when the user pans
+        const cs = (week.track && week.track.coords) || [];
+        if (cs.length) {
+            const [lng, lat] = cs[cs.length - 1];
+            try {
+                _wkTrack.posMarker = window.L.circleMarker([lat, lng], { radius: 8, color: '#ffffff', weight: 3, fillColor: '#1d4ed8', fillOpacity: 1 })
+                    .addTo(map).bindTooltip('You are here', { direction: 'top' });
+            } catch (e) {}
+            if (_wkTrack.follow) { try { map.setView([lat, lng], Math.max(map.getZoom() || 0, 16)); } catch (e) {} }
+        }
     }
+
+    // ── Custom map controls: GPS "locate me" + open in Google Maps ──
+    // Both are Leaflet controls (class `leaflet-control`), so wkRasterizeMap's
+    // filter automatically keeps them OUT of the exported map image.
+    const wkBtnControl = (position, label, title, handler) => {
+        const Ctl = window.L.Control.extend({
+            options: { position },
+            onAdd: function () {
+                const wrap = window.L.DomUtil.create('div', 'leaflet-bar');
+                const a = window.L.DomUtil.create('a', '', wrap);
+                a.href = '#';
+                a.title = title;
+                a.setAttribute('role', 'button');
+                a.setAttribute('aria-label', title);
+                a.innerHTML = label;
+                a.style.cssText = 'width:30px;height:30px;line-height:30px;text-align:center;font-size:16px;text-decoration:none;';
+                window.L.DomEvent.disableClickPropagation(wrap);
+                window.L.DomEvent.on(a, 'click', (ev) => { window.L.DomEvent.preventDefault(ev); handler(); });
+                return wrap;
+            }
+        });
+        map.addControl(new Ctl());
+    };
+
+    // Show / move a "you are here" marker when GPS resolves.
+    let _locMarker = null, _locCircle = null;
+    map.on('locationfound', (e) => {
+        if (_locMarker) map.removeLayer(_locMarker);
+        if (_locCircle) map.removeLayer(_locCircle);
+        _locMarker = window.L.circleMarker(e.latlng, { radius: 7, color: '#fff', weight: 2, fillColor: '#1d4ed8', fillOpacity: 1 })
+            .addTo(map).bindTooltip('You are here', { direction: 'top' });
+        if (isFinite(e.accuracy) && e.accuracy > 0) {
+            _locCircle = window.L.circle(e.latlng, { radius: e.accuracy, color: '#1d4ed8', weight: 1, fillColor: '#1d4ed8', fillOpacity: 0.12 }).addTo(map);
+        }
+    });
+    map.on('locationerror', (e) => {
+        if (window.notify) window.notify((e && e.message) || 'Could not get your location. Allow location access and use https.', 'error');
+    });
+
+    // 📍 recenter on the phone's current GPS position (stacks under the zoom buttons)
+    wkBtnControl('topleft', '📍', 'Center on my current location (GPS)', () => {
+        // While recording this week, recenter on the latest fix and resume "follow"
+        if (_wkTrack && _wkTrack.active && _wkTrack.weekId === week.id) {
+            _wkTrack.follow = true;
+            const cs = (week.track && week.track.coords) || [];
+            if (cs.length) { const [lng, lat] = cs[cs.length - 1]; map.setView([lat, lng], Math.max(map.getZoom() || 0, 16)); return; }
+        }
+        if (!navigator.geolocation) { if (window.notify) window.notify('This device/browser has no GPS.', 'error'); return; }
+        map.locate({ setView: true, maxZoom: 17, enableHighAccuracy: true, timeout: 15000 });
+    });
+
+    // 🗺️ open whatever the map is centred on in Google Maps (new tab)
+    wkBtnControl('topright', '🗺️', 'Open this location in Google Maps', () => {
+        const c = map.getCenter();
+        const url = `https://www.google.com/maps/search/?api=1&query=${c.lat.toFixed(6)},${c.lng.toFixed(6)}`;
+        window.open(url, '_blank', 'noopener');
+    });
 
     _wkMap = map;
     return map;
@@ -613,6 +683,16 @@ const wkWakeReacquire = async () => {
     }
 };
 
+// Create-or-move the live "you are here" dot on the current map during recording.
+const wkShowLivePos = (lat, lng) => {
+    if (!_wkMap || !window.L || !_wkTrack) return;
+    if (_wkTrack.posMarker) { try { _wkTrack.posMarker.setLatLng([lat, lng]); return; } catch (e) { _wkTrack.posMarker = null; } }
+    try {
+        _wkTrack.posMarker = window.L.circleMarker([lat, lng], { radius: 8, color: '#ffffff', weight: 3, fillColor: '#1d4ed8', fillOpacity: 1 })
+            .addTo(_wkMap).bindTooltip('You are here', { direction: 'top' });
+    } catch (e) { /* ignore */ }
+};
+
 const wkStartTracking = async (yearStr, week, ctx) => {
     if (!window.isSecureContext) {
         window.notify('Live GPS tracking needs a secure (https) connection. Open the app over https on the phone, then try again.', 'error');
@@ -638,6 +718,14 @@ const wkStartTracking = async (yearStr, week, ctx) => {
         if (last && wkDistM(last[0], last[1], lng, lat) < 1.5) { wkTrackStatus(acc); return; }
         coords.push([lng, lat]);
         if (_wkTrack && _wkTrack.liveLine) { try { _wkTrack.liveLine.addLatLng([lat, lng]); } catch (e) {} }
+        // Live "you are here" dot + Google-Maps-style follow (until the user pans away)
+        wkShowLivePos(lat, lng);
+        if (_wkTrack && _wkTrack.follow && _wkMap) {
+            try {
+                if (coords.length <= 1) _wkMap.setView([lat, lng], Math.max(_wkMap.getZoom() || 0, 16));
+                else _wkMap.panTo([lat, lng], { animate: true });
+            } catch (e) {}
+        }
         wkTrackStatus(acc);
         // Persist every 8 new points so a crash/close loses little.
         if (_wkTrack && (coords.length - _wkTrack.lastSavedN) >= 8) { _wkTrack.lastSavedN = coords.length; saveWeeklyActivityData(); }
@@ -650,7 +738,7 @@ const wkStartTracking = async (yearStr, week, ctx) => {
 
     _wkTrack = {
         active: true, weekId: week.id, year: yearStr, week,
-        watchId, wakeLock, liveLine: null, lastSavedN: 0,
+        watchId, wakeLock, liveLine: null, posMarker: null, follow: true, lastSavedN: 0,
         statusEl: ctx.statusEl, btnEl: ctx.btnEl, host: ctx.host
     };
     document.addEventListener('visibilitychange', wkWakeReacquire);
@@ -666,6 +754,7 @@ const wkStopTracking = async () => {
     const t = _wkTrack;
     try { if (t.watchId != null) navigator.geolocation.clearWatch(t.watchId); } catch (e) {}
     try { if (t.wakeLock) await t.wakeLock.release(); } catch (e) {}
+    try { if (t.posMarker && _wkMap) _wkMap.removeLayer(t.posMarker); } catch (e) {} // remove the live dot
     document.removeEventListener('visibilitychange', wkWakeReacquire);
     _wkTrack = null;
 
