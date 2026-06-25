@@ -15,7 +15,7 @@
 
    Bump VERSION to invalidate all caches after big changes.
    ============================================================ */
-const VERSION = 'v11';
+const VERSION = 'v12';
 const SHELL_CACHE = 'shell-' + VERSION;
 const CDN_CACHE = 'cdn-' + VERSION;
 
@@ -107,12 +107,20 @@ self.addEventListener('fetch', (e) => {
                     return res;
                 })
                 .catch(() =>
-                    caches.match(req).then(hit =>
-                        hit ||
+                    caches.match(req).then(hit => {
+                        if (hit) return hit;
                         // ?v= changed while offline — serve the previous version
-                        caches.match(req, { ignoreSearch: true }).then(loose =>
-                            loose || (req.mode === 'navigate' ? caches.match('./index.html') : undefined))
-                    )
+                        return caches.match(req, { ignoreSearch: true }).then(loose => {
+                            if (loose) return loose;
+                            if (req.mode === 'navigate') {
+                                return caches.match('./index.html').then(idx =>
+                                    idx || new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain' } }));
+                            }
+                            // never resolve respondWith() with undefined — that throws
+                            // "Failed to convert value to 'Response'" (e.g. missing favicon)
+                            return new Response('', { status: 504, statusText: 'Offline (uncached)' });
+                        });
+                    })
                 )
         );
         return;
