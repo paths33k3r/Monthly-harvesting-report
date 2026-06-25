@@ -19,6 +19,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
     const db = firebase.database();
+    // Namespace every shared/* path by active workspace (Oil Palm / Tree
+    // Planting). firebase.database() is a singleton, so patching this one
+    // handle covers every module. Must run BEFORE any .ref() call.
+    if (typeof window._wsPatchDb === 'function') window._wsPatchDb(db);
     window._fb = { auth, db }; // shared with script.js (Phase 9 split)
 
     // --- LOGIN UI HANDLERS ---

@@ -100,6 +100,53 @@
 
       "backup_settings": {
         ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+      },
+
+      // ── Additional workspaces (e.g. Tree Planting) ──────────────────────
+      // The Oil Palm workspace keeps the legacy shared/<section> paths above.
+      // Every OTHER workspace stores the same sections under
+      // shared/ws/<workspaceId>/<section>. Logins & permissions are shared
+      // across all workspaces, so the per-section write rules are identical
+      // to their Oil Palm counterparts — just applied under the $ws wildcard.
+      "ws": {
+        "$ws": {
+          "app_state": {
+            ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('ffbBudget').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('planting').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('gangs').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('performance').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('rainfall').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+          },
+          "spraying_data": {
+            ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('maintenance').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+          },
+          "manuring_data": {
+            ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('maintenance').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+          },
+          "maintenance_data": {
+            ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('maintenance').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+          },
+          "ironhorse_data": {
+            ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('ironhorse').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+          },
+          "wages_data": {
+            ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('wages').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+          },
+          "wages_ledger_data": {
+            ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('wages').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+          },
+          "weekly_activity_data": {
+            ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('weekly').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+          },
+          "weekly_images": {
+            ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('weekly').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+          },
+          "audit_log": {
+            "$entryId": {
+              ".write": "auth != null && ((!data.exists() && newData.exists()) || (!newData.exists() && data.child('ts').val() < (now - 31536000000)) || root.child('user_roles').child(auth.uid).child('role').val() === 'admin')",
+              ".validate": "newData.hasChildren(['ts','user','action']) || !newData.exists()"
+            }
+          },
+          "backup_settings": {
+            ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+          }
+        }
       }
     }
   }

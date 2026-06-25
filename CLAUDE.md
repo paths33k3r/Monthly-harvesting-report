@@ -16,6 +16,7 @@ or open with VS Code Live Server (right-click index.html → Open with Live Serv
 | File | Purpose |
 |---|---|
 | `index.html` | Entry point — loads all scripts with `?v=N` cache-busting |
+| `workspace.js` | **Multi-workspace** (Oil Palm / Tree Planting) — namespaces every Firebase path, sidebar switcher + branding, per-workspace menu hiding. Loaded first. |
 | `script.js` | Main app logic, Firebase sync, UI rendering |
 | `render_reports.js` | **Excel report downloads** — YTD, Rainfall, Spraying |
 | `render_spraying.js` | Spraying section UI + `getDefaultSprayingData()` |
@@ -37,6 +38,43 @@ Feature branches are named by timestamp (e.g. `2026-05-29_08-51-21`), branched o
 - Main branch: `main`
 - Remote: https://github.com/paths33k3r/Monthly-harvesting-report.git
 - `git pull` then open with Live Server — no build step needed
+
+---
+
+## Multi-workspace — Oil Palm / Tree Planting (workspace.js)
+
+### Overview
+A single switcher in the sidebar header (`<select id="workspace-switcher">`, injected by `workspace.js`) toggles between two **fully isolated** workspaces: **🌴 Oil Palm** (the original app/data) and **🌳 Tree Planting** (new, starts empty). Same logins & permissions apply to both. The choice is **per-device** (`localStorage.active_workspace`) and switching does a **page reload** so no data bleeds across.
+
+### How isolation works (the core trick)
+The whole app uses ONE Firebase Realtime DB object (`firebase.database()` is a singleton; every `window._xxxDb` points at it). `workspace.js` patches that object's `.ref()` **once** (`window._wsPatchDb(db)`, called from `app_boot.js` immediately after the db is created — before any `.ref()` call). So **no per-module edits** are needed. Path rewrite (`window._wsPath`):
+- **Oil Palm** → legacy paths unchanged: `shared/app_state`, `shared/spraying_data`, … (zero migration, existing data untouched).
+- **Tree Planting** (any non-oil-palm id) → `shared/ws/<id>/app_state`, `shared/ws/<id>/spraying_data`, …
+- **Global paths NOT namespaced**: `user_roles/*`, `user_prefs/*`, `_ui_probe`, `users/<uid>/*` (legacy). Logins/permissions are shared.
+- Namespaced paths still contain `/shared/`, so the dirty-tracking patch (ui_enhancements.js) and the rules' `shared` read scope keep working.
+
+### Key globals (all defined in workspace.js)
+| Symbol | Purpose |
+|---|---|
+| `window.ACTIVE_WORKSPACE` | current id (`'oil_palm'` default), read from localStorage at load |
+| `window.WORKSPACES` | `{ id, label, logo, subtitle, hiddenAreas[], hiddenItems[] }` per workspace |
+| `window._wsPath(path)` | rewrites a `shared/*` path for the active workspace |
+| `window._isOilPalmWorkspace()` | guard used in script.js to skip Oil-Palm-only seeding |
+| `window._wsPatchDb(db)` | wraps `db.ref` (idempotent); called once in app_boot.js |
+| `window.switchWorkspace(id)` | confirm → set localStorage → reload |
+| `window.applyWorkspaceMenus()` | hides menus not in the active workspace; called in script.js after `applyRolePermissions()` |
+
+### Empty-workspace guards (script.js `init()`)
+So a fresh Tree Planting never inherits Oil Palm data, three reads are guarded with `_isOilPalmWorkspace()`: the `users/<uid>/app_state` & `users/<uid>/spraying_data` legacy migrations, and the `harvesting_app_state` localStorage fallback. `loadFreshData()` also skips the `grouped_data.json` block seed for non-oil-palm (blank planting record).
+
+### Per-workspace menu exclusivity (groundwork — default = full copy)
+`WORKSPACES[ws].hiddenAreas` (array of `data-menu-key` values, e.g. `ironhorse`, `wages`, `maintenance`) hides whole functional areas incl. submenus; `hiddenItems` (array of sidebar element ids, e.g. `sidebar-ytd`) hides single rows. Both default `[]` so every menu shows in both workspaces. `applyWorkspaceMenus()` marks rows it hides with `data-ws-hidden` and restores them on re-run, so it never reveals role-hidden items. **To make a report exclusive, add its key/id to the list** — no other code needed. (Deep-link `#nav=` / command-palette / Reports-panel guarding is NOT yet wired — a later refinement.)
+
+### Security rules
+`database.rules.json` adds a `shared/ws/$workspace/*` block mirroring the per-section Oil Palm rules. **Must be published in the Firebase console** (Realtime DB → Rules → Publish) — until then, all Tree Planting writes are denied by default-deny and saves silently fail.
+
+### Not yet workspace-aware
+`field.html` / `field_boot.js` (phone weekly-report companion) still targets Oil Palm's `shared/weekly_activity_data` only — separate entry point, deferred.
 
 ---
 

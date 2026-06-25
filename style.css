@@ -96,6 +96,7 @@ body {
 .sidebar-header {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 10px;
     padding: 16px 16px 12px;
 }
@@ -282,8 +283,28 @@ body {
 .sidebar-collapsed .sidebar-header h2,
 .sidebar-collapsed .nav-submenu,
 .sidebar-collapsed .sidebar-right-version,
+.sidebar-collapsed .workspace-switcher,
 .sidebar-collapsed .sidebar-right-link .nav-label {
     display: none;
+}
+
+/* Workspace switcher (Oil Palm / Tree Planting) in the sidebar header */
+.workspace-switcher {
+    flex: 1 1 100%;
+    margin-top: 10px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+.workspace-switcher:focus {
+    outline: none;
+    border-color: var(--accent);
 }
 
 .sidebar-collapsed .nav-link,

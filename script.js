@@ -4084,6 +4084,9 @@ const runMainApplication = () => {
                     // Load user role and apply permissions
                     loadUserRole(auth.currentUser.uid).then(() => {
                         applyRolePermissions();
+                        // Hide any menus not part of the active workspace (after
+                        // permissions, so the two don't fight). No-op by default.
+                        if (window.applyWorkspaceMenus) window.applyWorkspaceMenus();
                         checkFirstLogin();
                         autoBackupCheck();
                         setupActivityBackupListener();
@@ -4091,12 +4094,23 @@ const runMainApplication = () => {
                 };
 
                 const loadFreshData = async () => {
+                    state.reports = {};
+                    state.reports["2025"] = [];
+
+                    // Non-Oil-Palm workspaces (e.g. Tree Planting) start with a
+                    // BLANK planting record — never seed the Oil Palm block list.
+                    if (!window._isOilPalmWorkspace || !window._isOilPalmWorkspace()) {
+                        state.selectedReportYear = "2025";
+                        state.activeViewType = 'report_year';
+                        state.activeViewValue = "2025";
+                        finishInit();
+                        saveState(true);
+                        return;
+                    }
+
                     const res = await fetch('grouped_data.json');
                     if (!res.ok) throw new Error("Failed to load block data.");
                     const data = await res.json();
-
-                    state.reports = {};
-                    state.reports["2025"] = [];
 
                     if (data.groups) {
                         data.groups.forEach(group => {
@@ -4123,7 +4137,10 @@ const runMainApplication = () => {
                 };
 
                 const loadLocalOrFresh = async () => {
-                    const savedStateStr = localStorage.getItem('harvesting_app_state');
+                    // The legacy localStorage cache belongs to Oil Palm only —
+                    // never load it into another (empty) workspace.
+                    const savedStateStr = (window._isOilPalmWorkspace && window._isOilPalmWorkspace())
+                        ? localStorage.getItem('harvesting_app_state') : null;
                     if (savedStateStr) {
                         try {
                             Object.assign(state, JSON.parse(savedStateStr));
@@ -4150,8 +4167,9 @@ const runMainApplication = () => {
                          Object.keys(sharedParsed.reports    || {}).length > 0 ||
                          Object.keys(sharedParsed.rainfall   || {}).length > 0);
 
-                    if (!sharedHasData) {
+                    if (!sharedHasData && window._isOilPalmWorkspace && window._isOilPalmWorkspace()) {
                         // Migration: pull from old per-user path and promote to shared
+                        // (Oil Palm only — the legacy path is Oil Palm's data).
                         const oldSnap = await db.ref('users/' + auth.currentUser.uid + '/app_state').once('value');
                         const oldData = oldSnap.val();
                         if (oldData) {
@@ -4186,8 +4204,8 @@ const runMainApplication = () => {
                         Object.keys(sharedSprayParsed).some(k => /^\d{4}$/.test(k) &&
                             (sharedSprayParsed[k].phases || []).some(p => (p.blocks || []).length > 0));
 
-                    if (!sharedSprayHasData) {
-                        // Migration: pull from old per-user path
+                    if (!sharedSprayHasData && window._isOilPalmWorkspace && window._isOilPalmWorkspace()) {
+                        // Migration: pull from old per-user path (Oil Palm only).
                         const oldSpraySnap = await db.ref('users/' + auth.currentUser.uid + '/spraying_data').once('value');
                         const oldSprayData = oldSpraySnap.val();
                         if (oldSprayData) {
