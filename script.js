@@ -22,6 +22,7 @@ const runMainApplication = () => {
             maintenance: {}, // { "2026": { activityTypes, gangs:{}, entries:[] } } — loaded from shared/maintenance_data
             wages: {}, // { "2026": { penaltyPerBunch, gangs:{} } } — loaded from shared/wages_data
             wagesLedger: {}, // { "2026": { "APR": { harvester:[], driverLoader:[], jobcard:[] } } } — loaded from shared/wages_ledger_data
+            treeLogs: {}, // { company, codes:{categories,species,grades}, years:{ "2024": { batches:[] } } } — loaded from shared/tree_logs_data
             selectedReportYear: null,
             activeViewType: 'report_year',
             activeViewValue: null,
@@ -1779,6 +1780,7 @@ const runMainApplication = () => {
             const weeklyWrapper      = document.getElementById('weekly-activity-wrapper');
             const wagesWrapper       = document.getElementById('wages-wrapper');
             const wagesLedgerWrapper = document.getElementById('wages-ledger-wrapper');
+            const treeLogsWrapper    = document.getElementById('tree-logs-wrapper');
             if (ffbWrapper) ffbWrapper.innerHTML = ''; // Clear FFB budget widgets
             if (rainfallWrapper) rainfallWrapper.innerHTML = ''; // Clear Rainfall widgets
             if (ytdWrapper) ytdWrapper.innerHTML = '';
@@ -1797,6 +1799,7 @@ const runMainApplication = () => {
             if (weeklyWrapper)      { weeklyWrapper.innerHTML = '';     weeklyWrapper.classList.add('hidden'); }
             if (wagesWrapper)       { wagesWrapper.innerHTML = '';      wagesWrapper.classList.add('hidden'); }
             if (wagesLedgerWrapper) { wagesLedgerWrapper.innerHTML = ''; wagesLedgerWrapper.classList.add('hidden'); }
+            if (treeLogsWrapper)    { treeLogsWrapper.innerHTML = '';   treeLogsWrapper.classList.add('hidden'); }
             if (userMgmtWrapper) { userMgmtWrapper.innerHTML = ''; userMgmtWrapper.classList.add('hidden'); }
             if (excelReportsWrapper) { excelReportsWrapper.innerHTML = ''; excelReportsWrapper.classList.add('hidden'); }
             const auditLogWrapper = document.getElementById('audit-log-wrapper');
@@ -1830,7 +1833,7 @@ const runMainApplication = () => {
                 ihAssetsWrapper, ihExpensesWrapper, ihCostPerHaWrapper,
                 gangOverviewWrapper, selectorWrapper,
                 mntGangsWrapper, mntWorklogWrapper, mntGanttWrapper,
-                weeklyWrapper, wagesWrapper, wagesLedgerWrapper,
+                weeklyWrapper, wagesWrapper, wagesLedgerWrapper, treeLogsWrapper,
                 userMgmtWrapper, excelReportsWrapper, auditLogWrapper,
                 dashboardWrapper
             ];
@@ -1950,6 +1953,10 @@ const runMainApplication = () => {
                 showView(wagesLedgerWrapper, () => {
                     if (typeof window.renderWagesLedgerView === 'function') window.renderWagesLedgerView();
                 }, 'wages');
+            } else if (state.activeViewType === 'tree_logs') {
+                showView(treeLogsWrapper, () => {
+                    if (typeof window.renderTreeLogs === 'function') window.renderTreeLogs();
+                }, 'treelogs');
             } else if (state.activeViewType === 'audit_log') {
                 showView(auditLogWrapper, () => {
                     if (typeof window.renderAuditLog === 'function') window.renderAuditLog();
@@ -3832,6 +3839,17 @@ const runMainApplication = () => {
                     };
                 }
 
+                // ── Tree Logs Recording nav handler ─────────────────────
+                const sidebarTreeLogs = document.getElementById('sidebar-tree-logs');
+                if (sidebarTreeLogs) {
+                    sidebarTreeLogs.onclick = (e) => {
+                        e.preventDefault();
+                        if (!state.treeLogs) state.treeLogs = {};
+                        state.activeViewType = 'tree_logs';
+                        renderSidebar(); renderTable();
+                    };
+                }
+
                 // ── Audit Log nav handler ───────────────────────────────
                 const sidebarAuditLog = document.getElementById('sidebar-audit-log');
                 if (sidebarAuditLog) {
@@ -4317,6 +4335,22 @@ const runMainApplication = () => {
                 } catch (e) {
                     console.warn("Could not load Wage Ledger data:", e.message);
                     if (!state.wagesLedger) state.wagesLedger = {};
+                }
+
+                // Load Tree Logs data (delivery batches + species detail — shared across all users)
+                window._treeLogsDb = db;
+                try {
+                    const tlSnap = await db.ref('shared/tree_logs_data').once('value');
+                    const tlData = tlSnap.val();
+                    if (tlData) {
+                        state.treeLogs = JSON.parse(tlData);
+                        console.log("Tree logs data loaded from cloud.");
+                    } else if (!state.treeLogs) {
+                        state.treeLogs = {};
+                    }
+                } catch (e) {
+                    console.warn("Could not load Tree Logs data:", e.message);
+                    if (!state.treeLogs) state.treeLogs = {};
                 }
 
                 // Load Maintenance data (gangs, work log, gantt — shared across all users)

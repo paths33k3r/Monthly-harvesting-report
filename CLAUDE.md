@@ -26,6 +26,7 @@ or open with VS Code Live Server (right-click index.html → Open with Live Serv
 | `render_maintenance.js` | Maintenance Gangs, Work Log & Gantt Chart (digitises the hand-written Gantt sheets) |
 | `render_wages.js` | **Rate of Wages** — per-gang/month payment calc (FFB rate × net MT − daily-rate blocks − penalty) + Excel report |
 | `render_weekly.js` | **Weekly Activity** — track-driven field report: KMZ/KML/GPX import, Leaflet satellite map, photo storage, Word `.docx` export |
+| `render_tree_logs.js` | **Tree Logs Recording** (Tree Planting workspace only) — ACMG-style master summary of all delivery batches, KU-style species/grade drilldown, manual entry, Excel import/template/export, analytics |
 | `Report samples/` | Excel templates used as base for downloads |
 
 ## Cache busting
@@ -186,6 +187,47 @@ Top-level sidebar menu **💵 Rate of Wages** (id `sidebar-wages`, between Iron 
 } } }
 ```
 - Reuses the **`wages`** menu key (no new permission). DB rule `shared/wages_ledger_data` mirrors `wages_data` in `database.rules.json` (must be published in the Firebase console to take effect). View wired in script.js: `state.activeViewType === 'wages_ledger'`, wrapper `wages-ledger-wrapper`, in `_switchableWrappers` + clear/hide lists, loaded in `init()` after `wages_data`.
+
+---
+
+## Tree Logs Recording module (render_tree_logs.js)
+
+### Overview
+Top-level sidebar menu **🪵 Tree Logs Recording** (id `sidebar-tree-logs`, first item under **Operations**). **Tree-Planting-workspace only** — Oil Palm hides it via `WORKSPACES.oil_palm.hiddenAreas = ['treelogs']`. Digitises the user's "Logs Species Summary" workbook, which has two sheet shapes:
+- **KU… sheets** = one **delivery batch** with a *detailed* species/grade breakdown (`SPECIES CATEGORY | SPECIES | GRADE | QUANTITY (PCS) | VOLUME (MT)`, grouped by category+grade with Sub-Totals + a Grand Total).
+- **ACMG… sheets** = monthly *summary-only* lists of batches that have no detail sheet (just `NO. | DELIVERY DATE | BATCH NO. | QTY | VOLUME`), tagged to one species (Acacia Mangium).
+
+### What it does (maps to the 4 user requirements)
+1. New menu **Tree Logs Recording**.
+2. **Master view** = ACMG-style summary of **all** batches for the selected year, grouped by delivery month with per-month sub-totals + a year Grand Total (detailed *and* summary-only batches in one list).
+3. Clicking a 📋 **detailed batch** drills into a **KU-style** species/grade breakdown (grouped sub-totals + grand total); Σ summary-only batches just show totals.
+4. **Manual entry** (per-batch choice of *Detailed* lines vs *Summary only* totals) + **Import / Template / Export** Excel.
+Plus: **Analytics** (qty+volume by species/grade/category) and **editable Code Lists**.
+
+### View wiring (single view type, internal modes)
+- `state.activeViewType === 'tree_logs'`; wrapper `tree-logs-wrapper`; in `_switchableWrappers` + clear/hide lists; view branch beside `wages_ledger`; sidebar handler near the Wage Ledger / Audit handlers. All in script.js.
+- One view type; a **module-local** `_tlMode` (`list | detail | edit | analytics | codes`) + `_tlDetailId` / `_tlEditId` drive internal navigation (re-renders into the same wrapper, like Weekly). Selected year persisted in `state.treeLogsYear`.
+- Edit-gated by menu key **`treelogs`** (`window._canEdit('treelogs')`, in `ALL_MENU_KEYS` + user-management `allMenuOptions`). Edit affordances are gated directly on `tlCanEdit()` (not only `_applyReadOnly`, since internal mode switches don't re-run it). Template + Export available to read-only users.
+
+### Data structure (`state.treeLogs`) → Firebase `shared/tree_logs_data` (`window._treeLogsDb`)
+```js
+{ company: "POLIMA FOREST BINTULU SDN BHD",
+  codes: { categories:["MLH","MKK","SLGB"], grades:["REG","SG","SSG","BSG"], species:[…22…] }, // editable; seeded from the workbook
+  years: { "2024": { batches: [
+    { id, batchNo:"KU0524A01", deliveryDate:"2024-05-28", detailed:true,
+      lines:[ { category:"MLH", species:"MLH", grade:"BSG", qty:219, volume:54.582 }, … ],
+      createdAt, updatedAt, updatedBy },
+    { id, batchNo:"KU0825AP01", deliveryDate:"2025-08-26", detailed:false,
+      species:"ACMG", totalQty:57, totalVolume:14.79, … }   // summary-only
+  ] } } }
+```
+- DB rule `shared/tree_logs_data` (+ the `ws/$ws` mirror) added in `database.rules.json` gated by `treelogs` — **must be published in the Firebase console** or Tree Planting writes are denied.
+
+### Import / Template / Export (ExcelJS, lazy-loaded via `tlEnsureExcelJS`)
+- **Import** (`window.importTreeLogs(file, fallbackYear)`, edit-gated) walks every sheet; **classifies** each by header signature (`SPECIES CATEGORY`+`GRADE` → KU detail; `BATCH NO.`+a delivery-date header → ACMG summary), tracks the current year from `YEAR 20xx` divider sheets, and assigns each batch a year via **divider → delivery-date year → batch-code year (`KU<mm><yy>`) → fallback**. KU parse carries the category down within a (cat,grade) group and skips Sub-Total/Grand-Total rows; ACMG parse reads the species code from the `LOGS SPECIES: … (XXX)` title. **Merge is idempotent**: matches existing by (year, batchNo) → updates in place, else appends; `confirm()` shows new-vs-update counts. New category/species/grade codes seen on import are auto-added to the code lists. Skips the hidden `Lists` sheet and any `… TEMPLATE` sheet. (Algorithm validated against the real 63-sheet workbook: 106 batches = 56 detailed + 50 summary-only, zero grand-total mismatches.)
+- **Template** (`window.downloadTreeLogsTemplate(year)`) — importable blank workbook: a `Detail Batch (KU)` sheet + a `Summary (ACMG)` sheet (header layouts the importer recognises) with category/species/grade list-validation dropdowns fed by a hidden `Lists` sheet.
+- **Export** (`window.downloadTreeLogsReport(year)`) — a `Summary {year}` sheet (ACMG layout) + one KU-style sheet per detailed batch. `window.downloadTreeLogsBatch(year,id)` exports a single batch's KU sheet.
+- Saved via `window.saveTreeLogsData(silent)`. Deletes use `window.notifyUndo` (session-long Recently-deleted recovery).
 
 ---
 
