@@ -383,484 +383,272 @@
     };
 
     // ══════════════════════════════════════════════════════════════════════
-    // 3. SPRAYING GLY+ALLY ANNUAL REPORT
-    //    Template: "Spraying Maintenance 2025.xlsx"
-    //    Sheet:    "GLY + ALLY 20225 (2)"
-    //
-    //    Structure: split into JAN-JUN (rows 1-145) and JUL-DEC (rows 146-285)
-    //    Each phase section: label + header + 2 empty + sub-header + blocks (3 rows each) + totals
-    //    JUL-DEC section has an extra TOTAL column (cols S/T = 19/20) = full-year sum per block
+    // 3. SPRAYING GLY + ALLY ANNUAL REPORT  (built from scratch via ExcelJS)
+    //    Mirrors the on-screen Spraying layout: GLY, ALY and every extra
+    //    chemical inline per month, split into JAN–JUN and JUL–DEC half-pages,
+    //    grouped by phase. Restrained monotone (grayscale) styling. This
+    //    replaces the old GLY/ALY-only template, which could not represent the
+    //    user's extra chemicals (they were dropped from the Excel entirely).
     // ══════════════════════════════════════════════════════════════════════
-
-    const SPRAY_PHASES = [
-        { op: "OP2010",
-          janjun: { start: 11,  nlg: 47,  ha: 48,  blocks: ["1","2","3","4","5","6","7","8","9","11","12","23"] },
-          juldec: { start: 151, nlg: 187, ha: 188, blocks: ["1","2","3","4","5","6","7","8","9","11","12","23"] } },
-        { op: "OP2011",
-          janjun: { start: 54,  nlg: 75,  ha: 76,  blocks: ["10","13","14","15","16","17","18"] },
-          juldec: { start: 194, nlg: 215, ha: 216, blocks: ["10","13","14","15","16","17","18"] } },
-        { op: "OP2012",
-          janjun: { start: 82,  nlg: 97,  ha: 98,  blocks: ["19","20","21","22","24"] },
-          juldec: { start: 222, nlg: 237, ha: 238, blocks: ["19","20","21","22","24"] } },
-        { op: "OP2015",
-          janjun: { start: 104, nlg: 131, ha: 132, blocks: ["25","26A","26B","27","28","29","30","31","32"] },
-          juldec: { start: 244, nlg: 271, ha: 272, blocks: ["25","26A","26B","27","28","29","30","31","32"] } },
-        { op: "OP2016",
-          janjun: { start: 138, nlg: 144, ha: 145, blocks: ["33","39"] },
-          juldec: { start: 278, nlg: 284, ha: 285, blocks: ["33","39"] } }
-    ];
-
-    // Column numbers (1-indexed) for GLY in each month slot
-    const JJ_COLS = { JAN:7, FEB:9, MAR:11, APR:13, MAY:15, JUN:17 };  // ALY = GLY+1
-    const JD_COLS = { JUL:7, AUG:9, SEP:11, OCT:13, NOV:15, DEC:17 };  // ALY = GLY+1
-    const TOTAL_GLY_COL = 19;  // col S in JUL-DEC section = full-year GLY total
-    const TOTAL_ALY_COL = 20;  // col T in JUL-DEC section = full-year ALY total
-    const JJ_MONTHS = ["JAN","FEB","MAR","APR","MAY","JUN"];
-    const JD_MONTHS = ["JUL","AUG","SEP","OCT","NOV","DEC"];
-
-    function getSprayBlk(year, blockId) {
-        if (!window.state.spraying || !window.state.spraying[year]) return null;
-        for (const ph of (window.state.spraying[year].phases || [])) {
-            const b = (ph.blocks || []).find(b => String(b.blockNo) === String(blockId));
-            if (b) return b;
-        }
-        return null;
-    }
-
-    function fillHalf(ws, section, colMap, halfMonths, year) {
-        const tGly={}, tAly={}, tHGly={}, tHAly={};
-        halfMonths.forEach(m => { tGly[m]=0; tAly[m]=0; tHGly[m]=0; tHAly[m]=0; });
-        let grandGly=0, grandAly=0, grandHGly=0, grandHAly=0;
-        let totalHaPrev=0, totalHaPresent=0;
-        const isJulDec = halfMonths[0] === 'JUL';
-
-        section.blocks.forEach((blockId, bIdx) => {
-            const base = section.start + bIdx * 3;
-            const rRow = base, nRow = base + 1, hRow = base + 2;
-            const blk  = getSprayBlk(year, blockId);
-
-            // Clear all month data columns for this block
-            halfMonths.forEach(m => {
-                const g = colMap[m];
-                ws.getCell(rRow, g).value   = null; ws.getCell(rRow, g+1).value = null;
-                ws.getCell(nRow, g).value   = null; ws.getCell(nRow, g+1).value = null;
-                ws.getCell(hRow, g).value   = null; ws.getCell(hRow, g+1).value = null;
-            });
-            if (isJulDec) {
-                ws.getCell(nRow, TOTAL_GLY_COL).value = null; ws.getCell(nRow, TOTAL_ALY_COL).value = null;
-                ws.getCell(hRow, TOTAL_GLY_COL).value = null; ws.getCell(hRow, TOTAL_ALY_COL).value = null;
-            }
-
-            if (!blk) return;
-
-            // Update Ha Previous / Ha Present on the Round row
-            const haPrev    = parseFloat(blk.haPrevious) || 0;
-            const haPresent = parseFloat(blk.haPresent)  || 0;
-            ws.getCell(rRow, 4).value = haPrev    || null;
-            ws.getCell(rRow, 5).value = haPresent || null;
-            totalHaPrev    += haPrev;
-            totalHaPresent += haPresent;
-
-            halfMonths.forEach(m => {
-                const md  = (blk.months || {})[m] || {};
-                const g   = colMap[m];
-                const rG  = (md.roundGly !== undefined && md.roundGly !== '') ? (parseFloat(md.roundGly) || md.roundGly) : null;
-                const rA  = (md.roundAly !== undefined && md.roundAly !== '') ? (parseFloat(md.roundAly) || md.roundAly) : null;
-                const lG  = parseFloat(md.litresGly) || 0;
-                const gA  = parseFloat(md.gmAly)     || 0;
-                const hG  = parseFloat(md.haGly)     || 0;
-                const hA  = parseFloat(md.haAly)     || 0;
-
-                if (rG !== null) ws.getCell(rRow, g).value   = rG;
-                if (rA !== null) ws.getCell(rRow, g+1).value = rA;
-                if (lG > 0)     ws.getCell(nRow, g).value   = lG;
-                if (gA > 0)     ws.getCell(nRow, g+1).value = gA;
-                if (hG > 0)     ws.getCell(hRow, g).value   = hG;
-                if (hA > 0)     ws.getCell(hRow, g+1).value = hA;
-
-                tGly[m]  += lG; tAly[m]  += gA;
-                tHGly[m] += hG; tHAly[m] += hA;
-            });
-
-            // For JUL-DEC section: TOTAL column = full-year sum (all 12 months)
-            if (isJulDec) {
-                let bGly=0, bAly=0, bHGly=0, bHAly=0;
-                MONTHS_UP.forEach(m => {
-                    const md = (blk.months || {})[m] || {};
-                    bGly  += parseFloat(md.litresGly) || 0;
-                    bAly  += parseFloat(md.gmAly)     || 0;
-                    bHGly += parseFloat(md.haGly)     || 0;
-                    bHAly += parseFloat(md.haAly)     || 0;
-                });
-                ws.getCell(nRow, TOTAL_GLY_COL).value = bGly  || null;
-                ws.getCell(nRow, TOTAL_ALY_COL).value = bAly  || null;
-                ws.getCell(hRow, TOTAL_GLY_COL).value = bHGly || null;
-                ws.getCell(hRow, TOTAL_ALY_COL).value = bHAly || null;
-                grandGly  += bGly;  grandAly  += bAly;
-                grandHGly += bHGly; grandHAly += bHAly;
-            }
-        });
-
-        // Phase total rows
-        halfMonths.forEach(m => {
-            const g = colMap[m];
-            ws.getCell(section.nlg, g).value   = tGly[m]  || 0;
-            ws.getCell(section.nlg, g+1).value = tAly[m]  || 0;
-            ws.getCell(section.ha,  g).value   = tHGly[m] || 0;
-            ws.getCell(section.ha,  g+1).value = tHAly[m] || 0;
-        });
-        // Ha totals in the No.Litre/GM total row (col D/E)
-        ws.getCell(section.nlg, 4).value = parseFloat(totalHaPrev.toFixed(2))    || null;
-        ws.getCell(section.nlg, 5).value = parseFloat(totalHaPresent.toFixed(2)) || null;
-
-        if (isJulDec) {
-            ws.getCell(section.nlg, TOTAL_GLY_COL).value = grandGly  || 0;
-            ws.getCell(section.nlg, TOTAL_ALY_COL).value = grandAly  || 0;
-            ws.getCell(section.ha,  TOTAL_GLY_COL).value = grandHGly || 0;
-            ws.getCell(section.ha,  TOTAL_ALY_COL).value = grandHAly || 0;
-        }
-    }
-
-    // Build a simple worksheet XML for extra chemicals (inline strings + numbers)
-    function buildExtraChemSheetXml(year, activeMonths, extraChemicals) {
-        const sprayData = window.state.spraying && window.state.spraying[year];
-
-        function cl(n) { let s=''; while(n>0){n--;s=String.fromCharCode(65+n%26)+s;n=Math.floor(n/26);}return s; }
-        function esc(v) { return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-        function sCell(c,r,v){ return `<c r="${cl(c)}${r}" t="inlineStr"><is><t>${esc(v)}</t></is></c>`; }
-        function nCell(c,r,v){ const n=parseFloat(v); return isNaN(n)||n===0 ? `<c r="${cl(c)}${r}"/>` : `<c r="${cl(c)}${r}"><v>${n}</v></c>`; }
-
-        const rows = [];
-        // Header row
-        let hRow = `<row r="1">${sCell(1,1,'Phase')}${sCell(2,1,'Block')}${sCell(3,1,'Month')}`;
-        extraChemicals.forEach((c,i) => { hRow += sCell(4+i, 1, `${c.name} (${c.uom})`); });
-        hRow += `</row>`;
-        rows.push(hRow);
-
-        let rIdx = 2;
-        if (sprayData) {
-            (sprayData.phases || []).forEach(ph => {
-                (ph.blocks || []).forEach(blk => {
-                    activeMonths.forEach(m => {
-                        const extras = blk.months?.[m]?.extras || {};
-                        if (!extraChemicals.some(c => extras[c.name] !== undefined && extras[c.name] !== '')) return;
-                        let dRow = `<row r="${rIdx}">${sCell(1,rIdx,ph.phaseName)}${sCell(2,rIdx,blk.blockNo)}${sCell(3,rIdx,m)}`;
-                        extraChemicals.forEach((c,i) => { dRow += nCell(4+i, rIdx, extras[c.name] ?? ''); });
-                        dRow += `</row>`;
-                        rows.push(dRow);
-                        rIdx++;
-                    });
-                });
-            });
-        }
-
-        return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
-            + `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`
-            + `<sheetData>${rows.join('')}</sheetData></worksheet>`;
-    }
-
     window.downloadSprayingReport = async (year, month) => {
         setStatus('rep-spray-status', 'Generating…');
         try {
-            await ensureJSZip();
+            await ensureExcelJS();
 
-            // Bypass ExcelJS entirely — manipulate XML directly to preserve all formatting
-            // (merged cells, borders, col widths, col C hidden) from the template unchanged.
-            console.log('[Spraying v13] fetching template for year', year);
-            const resp = await fetch(encodeURI('Report samples/Spraying Maintenance 2025.xlsx'));
-            if (!resp.ok) throw new Error(`Could not load template (${resp.status})`);
-            const zip = await JSZip.loadAsync(await resp.arrayBuffer());
-            console.log('[Spraying v13] zip files:', Object.keys(zip.files).filter(f => f.startsWith('xl/worksheets')));
-            let xml = await zip.files['xl/worksheets/sheet4.xml'].async('string');
-            console.log('[Spraying v13] sheet4.xml length:', xml.length);
-
-            // Strip shared formulas so Excel won't recalculate over our written values
-            xml = xml.replace(/<f t="shared" ref="[^"]*" si="\d+">[^<]*<\/f>/g, '');
-            xml = xml.replace(/<f t="shared" ref="[^"]*" si="\d+"\/>/g, '');
-            xml = xml.replace(/<f t="shared" si="\d+"\/>/g, '');
-            xml = xml.replace(/<f>[^<]*<\/f>/g, '');
-
-            // Guard: require spraying data before blanking the template
             const sprayData = window.state.spraying && window.state.spraying[year];
             if (!sprayData || !(sprayData.phases || []).some(p => (p.blocks || []).length > 0)) {
                 setStatus('rep-spray-status', `❌ No spraying data for ${year}. Enter data in the Spraying section first.`, true);
                 return;
             }
+            const extraChemicals = sprayData.extraChemicals || [];
+            const cutIdx = month ? MONTHS_UP.indexOf(month.toUpperCase()) : 11;  // '' = full year
 
-            // Filter months up to and including the selected month
-            const cutIdx     = month ? MONTHS_UP.indexOf(month.toUpperCase()) : 11;
-            const activeJJ   = JJ_MONTHS.filter(m => MONTHS_UP.indexOf(m) <= cutIdx);
-            const activeJD   = JD_MONTHS.filter(m => MONTHS_UP.indexOf(m) <= cutIdx);
-            const activeFull = MONTHS_UP.filter((_, i) => i <= cutIdx);
+            // ── Monotone (grayscale) palette ──────────────────────────────────
+            const C = {
+                phaseFill:    'FF374151',  // gray-700 (phase bar, TOTAL group, subtotal accents)
+                headFill:     'FF4B5563',  // gray-600 (column headers)
+                subFill:      'FFE5E7EB',  // gray-200 (GLY/ALY sub-headers)
+                subExtraFill: 'FFD1D5DB',  // gray-300 (extra-chemical sub-headers — italic to set apart)
+                zebra:        'FFF9FAFB',  // gray-50  (alternate block shading)
+                totalFill:    'FFD1D5DB',  // gray-300 (subtotal row)
+            };
+            const white = { argb: 'FFFFFFFF' };
+            const dark  = { argb: 'FF111827' };
+            const thin  = { style: 'thin', color: { argb: 'FFB0B4BA' } };
+            const allThin = { top: thin, bottom: thin, left: thin, right: thin };
 
-            // Convert 1-indexed column number → letter(s)
-            function colLetter(n) {
-                let s = '';
-                while (n > 0) { n--; s = String.fromCharCode(65 + n % 26) + s; n = Math.floor(n / 26); }
-                return s;
+            const num = v => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+            function styleCell(cell, opt) {
+                opt = opt || {};
+                if (opt.fill) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: opt.fill } };
+                if (opt.font) cell.font = opt.font;
+                cell.alignment = Object.assign({ vertical: 'middle', horizontal: 'center', wrapText: true }, opt.align || {});
+                cell.border = opt.border || allThin;
+                if (opt.numFmt) cell.numFmt = opt.numFmt;
             }
 
-            // Set or clear a numeric cell value directly in the sheet XML.
-            // Skips string cells (t="s"). Strips any formula — we own the value.
-            function setNum(row, col, value) {
-                const ref = colLetter(col) + row;
-                const numStr = (value !== null && value !== undefined) ? String(Math.round(value * 1e9) / 1e9) : null;
-                let matched = false;
+            const wb = new window.ExcelJS.Workbook();
+            wb.creator = 'Monthly Harvesting Report';
+            wb.created = new Date();
+            const ws = wb.addWorksheet(`GLY + ALLY ${year}`, {
+                views: [{ state: 'frozen', xSplit: 4, ySplit: 0 }],
+                pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+            });
 
-                // Self-closing cell <c r="REF" attrs/>
-                xml = xml.replace(new RegExp(`<c r="${ref}"([^>]*)\\/>`), (m, attrs) => {
-                    matched = true;
-                    if (/t="s"/.test(attrs)) return m;
-                    return numStr ? `<c r="${ref}"${attrs}><v>${numStr}</v></c>` : m;
-                });
+            const nExtra       = extraChemicals.length;
+            const colsPerMonth = 2 + nExtra;                 // GLY, ALY, + extras
+            const FIXED        = 4;                            // Block, HaPrev, HaPresent, Particular
+            const HALF_MONTHS  = 6;
+            const T_BASE       = FIXED + 1 + HALF_MONTHS * colsPerMonth;   // first col of TOTAL group
+            const lastCol      = T_BASE + colsPerMonth - 1;
 
-                if (!matched) {
-                    // Cell with content <c r="REF" attrs>...</c>  (value, formula, or both)
-                    xml = xml.replace(new RegExp(`<c r="${ref}"([^>]*)>([\\s\\S]*?)<\\/c>`), (m, attrs, _content) => {
-                        matched = true;
-                        if (/t="s"/.test(attrs)) return m;
-                        attrs = attrs.replace(/\s+t="[^"]*"/, '');
-                        return numStr ? `<c r="${ref}"${attrs}><v>${numStr}</v></c>` : `<c r="${ref}"${attrs}/>`;
-                    });
+            ws.getColumn(1).width = 8;    // Block No
+            ws.getColumn(2).width = 9;    // Ha Prev
+            ws.getColumn(3).width = 9;    // Ha Present
+            ws.getColumn(4).width = 13;   // Particular
+            for (let c = 5; c <= lastCol; c++) ws.getColumn(c).width = 9;
+
+            let r = 1;
+            // ── Title block ───────────────────────────────────────────────────
+            [
+                ['POLIMA FOREST BINTULU SDN. BHD.', 13, dark],
+                ['ESTATE MONTHLY REPORT — LADANG BATANG KAYAN', 10, { argb: 'FF374151' }],
+                [`GLYPHOSATE & ALLY SPRAYING SELECT — ${year}`, 11, { argb: 'FF374151' }],
+            ].forEach(([text, size, color], i) => {
+                ws.mergeCells(r, 1, r, lastCol);
+                const cell = ws.getCell(r, 1);
+                cell.value = text;
+                cell.font = { bold: true, size, color };
+                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                ws.getRow(r).height = i === 0 ? 20 : 16;
+                r++;
+            });
+            r++;  // spacer
+
+            const HALVES = [
+                { label: 'JAN – JUN', months: ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN'] },
+                { label: 'JUL – DEC', months: ['JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'] },
+            ];
+            const SUB_ROWS = ['Round', 'No.Litre / GM', 'Ha'];
+            const glyVal   = (md, si) => si === 0 ? md.roundGly : si === 1 ? md.litresGly : md.haGly;
+            const alyVal   = (md, si) => si === 0 ? md.roundAly : si === 1 ? md.gmAly     : md.haAly;
+            const extraVal = (md, ch, si) => {
+                const ex = md.extras || {};
+                return si === 0 ? ex[ch.name + '_round'] : si === 1 ? ex[ch.name] : ex[ch.name + '_ha'];
+            };
+            const active = m => MONTHS_UP.indexOf(m) <= cutIdx;
+
+            function renderHeader(half) {
+                const top = r, sub = r + 1;
+                const fixedLabels = ['BLOCK NO', 'HA PREV', 'HA PRESENT', 'PARTICULAR'];
+                for (let c = 1; c <= FIXED; c++) {
+                    ws.mergeCells(top, c, sub, c);
+                    styleCell(ws.getCell(top, c), { fill: C.headFill, font: { bold: true, size: 8, color: white } });
+                    ws.getCell(top, c).value = fixedLabels[c - 1];
                 }
-
-                // Cell absent from XML entirely (empty template cell) — insert into the row
-                if (!matched && numStr) {
-                    xml = xml.replace(new RegExp(`(<row\\b[^>]* r="${row}"[^>]*>)([\\s\\S]*?)(<\\/row>)`), (m, open, content, close) => {
-                        const newCell = `<c r="${ref}"><v>${numStr}</v></c>`;
-                        let placed = false;
-                        const updated = content.replace(/<c r="([A-Z]+)\d+"/g, (cm, cRef) => {
-                            if (placed) return cm;
-                            const cCol = cRef.split('').reduce((acc, ch) => acc * 26 + ch.charCodeAt(0) - 64, 0);
-                            if (cCol > col) { placed = true; return newCell + cm; }
-                            return cm;
-                        });
-                        return open + (placed ? updated : content + newCell) + close;
+                const writeGroup = (base, label, groupFill) => {
+                    ws.mergeCells(top, base, top, base + colsPerMonth - 1);
+                    styleCell(ws.getCell(top, base), { fill: groupFill, font: { bold: true, size: 8, color: white } });
+                    ws.getCell(top, base).value = label;
+                    styleCell(ws.getCell(sub, base),     { fill: C.subFill, font: { bold: true, size: 7, color: dark } });
+                    ws.getCell(sub, base).value     = 'GLY\n(LITRE)';
+                    styleCell(ws.getCell(sub, base + 1), { fill: C.subFill, font: { bold: true, size: 7, color: dark } });
+                    ws.getCell(sub, base + 1).value = 'ALY\n(GM)';
+                    extraChemicals.forEach((ch, xi) => {
+                        styleCell(ws.getCell(sub, base + 2 + xi), { fill: C.subExtraFill, font: { bold: true, italic: true, size: 7, color: dark } });
+                        ws.getCell(sub, base + 2 + xi).value = `${ch.name}\n(${ch.uom})`;
                     });
-                }
+                };
+                half.months.forEach((m, mi) => writeGroup(FIXED + 1 + mi * colsPerMonth, m, C.headFill));
+                writeGroup(T_BASE, 'TOTAL', C.phaseFill);
+                ws.getRow(top).height = 14;
+                ws.getRow(sub).height = 22;
+                r += 2;
             }
 
-            // Mirror of fillHalf but writing directly to XML
-            // clearMonths = full half (JAN-JUN or JUL-DEC) — always cleared to remove template data
-            // activeMonths = filtered subset — only these months get data written
-            function fillHalfXml(section, colMap, clearMonths, activeMonths, allActive) {
-                const tGly={}, tAly={}, tHGly={}, tHAly={};
-                clearMonths.forEach(m => { tGly[m]=0; tAly[m]=0; tHGly[m]=0; tHAly[m]=0; });
-                let grandGly=0, grandAly=0, grandHGly=0, grandHAly=0;
-                let totalHaPrev=0, totalHaPresent=0;
-                const isJulDec = clearMonths[0] === 'JUL';
+            function renderPhaseHalf(phase, half) {
+                renderHeader(half);
 
-                section.blocks.forEach((blockId, bIdx) => {
-                    const base = section.start + bIdx * 3;
-                    const rRow = base, nRow = base + 1, hRow = base + 2;
-                    const blk  = getSprayBlk(year, blockId);
+                (phase.blocks || []).forEach((blk, bi) => {
+                    const r0 = r;
+                    const zebra = bi % 2 === 1 ? C.zebra : 'FFFFFFFF';
+                    for (let c = 1; c <= 3; c++) ws.mergeCells(r0, c, r0 + 2, c);
+                    styleCell(ws.getCell(r0, 1), { fill: zebra, font: { bold: true, size: 9, color: dark }, numFmt: '@' });
+                    ws.getCell(r0, 1).value = blk.blockNo != null ? String(blk.blockNo) : '';
+                    styleCell(ws.getCell(r0, 2), { fill: zebra, font: { size: 8, color: dark }, numFmt: '0.00', align: { horizontal: 'right' } });
+                    ws.getCell(r0, 2).value = num(blk.haPrevious);
+                    styleCell(ws.getCell(r0, 3), { fill: zebra, font: { size: 8, color: dark }, numFmt: '0.00', align: { horizontal: 'right' } });
+                    ws.getCell(r0, 3).value = num(blk.haPresent);
 
-                    // Always clear all cells for this half so template data is wiped
-                    clearMonths.forEach(m => {
-                        const g = colMap[m];
-                        setNum(rRow, g, null); setNum(rRow, g+1, null);
-                        setNum(nRow, g, null); setNum(nRow, g+1, null);
-                        setNum(hRow, g, null); setNum(hRow, g+1, null);
-                    });
-                    if (isJulDec) {
-                        setNum(nRow, TOTAL_GLY_COL, null); setNum(nRow, TOTAL_ALY_COL, null);
-                        setNum(hRow, TOTAL_GLY_COL, null); setNum(hRow, TOTAL_ALY_COL, null);
-                    }
-
-                    if (!blk) return;
-
-                    const haPrev    = parseFloat(blk.haPrevious) || 0;
-                    const haPresent = parseFloat(blk.haPresent)  || 0;
-                    setNum(rRow, 4, haPrev    || null);
-                    setNum(rRow, 5, haPresent || null);
-                    totalHaPrev    += haPrev;
-                    totalHaPresent += haPresent;
-
-                    // Only write data for months up to the selected month
-                    activeMonths.forEach(m => {
+                    // Per-block TOTAL group = this half's litre/GM sums for the block
+                    let bG = 0, bA = 0; const bX = {}; extraChemicals.forEach(ch => bX[ch.name] = 0);
+                    half.months.forEach(m => {
+                        if (!active(m)) return;
                         const md = (blk.months || {})[m] || {};
-                        const g  = colMap[m];
-                        const rG = (md.roundGly !== undefined && md.roundGly !== '') ? (parseFloat(md.roundGly) || md.roundGly) : null;
-                        const rA = (md.roundAly !== undefined && md.roundAly !== '') ? (parseFloat(md.roundAly) || md.roundAly) : null;
-                        const lG = parseFloat(md.litresGly) || 0;
-                        const gA = parseFloat(md.gmAly)     || 0;
-                        const hG = parseFloat(md.haGly)     || 0;
-                        const hA = parseFloat(md.haAly)     || 0;
-
-                        if (rG !== null) setNum(rRow, g,   rG);
-                        if (rA !== null) setNum(rRow, g+1, rA);
-                        if (lG > 0)     setNum(nRow, g,   lG);
-                        if (gA > 0)     setNum(nRow, g+1, gA);
-                        if (hG > 0)     setNum(hRow, g,   hG);
-                        if (hA > 0)     setNum(hRow, g+1, hA);
-
-                        tGly[m] += lG; tAly[m] += gA;
-                        tHGly[m] += hG; tHAly[m] += hA;
+                        bG += num(md.litresGly) || 0; bA += num(md.gmAly) || 0;
+                        extraChemicals.forEach(ch => { bX[ch.name] += num((md.extras || {})[ch.name]) || 0; });
                     });
 
-                    if (isJulDec) {
-                        let bGly=0, bAly=0, bHGly=0, bHAly=0;
-                        allActive.forEach(m => {
+                    SUB_ROWS.forEach((label, si) => {
+                        const rr = r0 + si;
+                        const fmt = si === 0 ? '0.##' : '#,##0.##';
+                        styleCell(ws.getCell(rr, FIXED), { fill: zebra, font: { size: 8, color: dark }, align: { horizontal: 'left' } });
+                        ws.getCell(rr, FIXED).value = label;
+                        half.months.forEach((m, mi) => {
+                            const base = FIXED + 1 + mi * colsPerMonth;
                             const md = (blk.months || {})[m] || {};
-                            bGly  += parseFloat(md.litresGly) || 0;
-                            bAly  += parseFloat(md.gmAly)     || 0;
-                            bHGly += parseFloat(md.haGly)     || 0;
-                            bHAly += parseFloat(md.haAly)     || 0;
+                            const on = active(m);
+                            styleCell(ws.getCell(rr, base),     { fill: zebra, font: { size: 8, color: dark }, numFmt: fmt });
+                            ws.getCell(rr, base).value     = on ? num(glyVal(md, si)) : null;
+                            styleCell(ws.getCell(rr, base + 1), { fill: zebra, font: { size: 8, color: dark }, numFmt: fmt });
+                            ws.getCell(rr, base + 1).value = on ? num(alyVal(md, si)) : null;
+                            extraChemicals.forEach((ch, xi) => {
+                                styleCell(ws.getCell(rr, base + 2 + xi), { fill: zebra, font: { size: 8, color: dark }, numFmt: fmt });
+                                ws.getCell(rr, base + 2 + xi).value = on ? num(extraVal(md, ch, si)) : null;
+                            });
                         });
-                        setNum(nRow, TOTAL_GLY_COL, bGly);
-                        setNum(nRow, TOTAL_ALY_COL, bAly);
-                        setNum(hRow, TOTAL_GLY_COL, bHGly);
-                        setNum(hRow, TOTAL_ALY_COL, bHAly);
-                        grandGly += bGly; grandAly += bAly;
-                        grandHGly += bHGly; grandHAly += bHAly;
-                    }
+                        // TOTAL group — only the No.Litre/GM row carries the block half-total
+                        if (si === 1) {
+                            styleCell(ws.getCell(rr, T_BASE),     { fill: zebra, font: { bold: true, size: 8, color: dark }, numFmt: '#,##0.##' });
+                            ws.getCell(rr, T_BASE).value     = bG || null;
+                            styleCell(ws.getCell(rr, T_BASE + 1), { fill: zebra, font: { bold: true, size: 8, color: dark }, numFmt: '#,##0.##' });
+                            ws.getCell(rr, T_BASE + 1).value = bA || null;
+                            extraChemicals.forEach((ch, xi) => {
+                                styleCell(ws.getCell(rr, T_BASE + 2 + xi), { fill: zebra, font: { bold: true, size: 8, color: dark }, numFmt: '#,##0.##' });
+                                ws.getCell(rr, T_BASE + 2 + xi).value = bX[ch.name] || null;
+                            });
+                        } else {
+                            for (let c = T_BASE; c <= lastCol; c++) styleCell(ws.getCell(rr, c), { fill: zebra, font: { size: 8 } });
+                        }
+                    });
+                    r += 3;
                 });
 
-                // Write section totals for all clearMonths — inactive months write 0, clearing template values
-                clearMonths.forEach(m => {
-                    const g = colMap[m];
-                    setNum(section.nlg, g,   tGly[m]  || 0);
-                    setNum(section.nlg, g+1, tAly[m]  || 0);
-                    setNum(section.ha,  g,   tHGly[m] || 0);
-                    setNum(section.ha,  g+1, tHAly[m] || 0);
-                });
-                setNum(section.nlg, 4, parseFloat(totalHaPrev.toFixed(2))    || null);
-                setNum(section.nlg, 5, parseFloat(totalHaPresent.toFixed(2)) || null);
-                if (isJulDec) {
-                    setNum(section.nlg, TOTAL_GLY_COL, grandGly  || 0);
-                    setNum(section.nlg, TOTAL_ALY_COL, grandAly  || 0);
-                    setNum(section.ha,  TOTAL_GLY_COL, grandHGly || 0);
-                    setNum(section.ha,  TOTAL_ALY_COL, grandHAly || 0);
-                }
-            }
-
-            let cellsWritten = 0;
-            const _origSetNum = setNum;
-            // patch setNum to count writes
-            const _patchedSetNum = setNum;
-            SPRAY_PHASES.forEach(ph => {
-                fillHalfXml(ph.janjun, JJ_COLS, JJ_MONTHS, activeJJ, activeFull);
-                fillHalfXml(ph.juldec, JD_COLS, JD_MONTHS, activeJD, activeFull);
-            });
-            console.log('[Spraying v14] xml length after writes:', xml.length);
-
-            // Row 286: grand Ha totals
-            let grandHaPrev=0, grandHaPresent=0;
-            SPRAY_PHASES.forEach(ph => {
-                ph.janjun.blocks.forEach(id => {
-                    const blk = getSprayBlk(year, id);
-                    if (!blk) return;
-                    grandHaPrev    += parseFloat(blk.haPrevious) || 0;
-                    grandHaPresent += parseFloat(blk.haPresent)  || 0;
-                });
-            });
-            setNum(286, 4, parseFloat(grandHaPrev.toFixed(2)));
-            setNum(286, 5, parseFloat(grandHaPresent.toFixed(2)));
-
-            // Rows 292-293 (JAN-JUN overall) and 297-298 (JUL-DEC overall + TOTAL)
-            const sumJJ = { gly:{}, aly:{}, hGly:{}, hAly:{} };
-            const sumJD = { gly:{}, aly:{}, hGly:{}, hAly:{} };
-            activeJJ.forEach(m => { sumJJ.gly[m]=0; sumJJ.aly[m]=0; sumJJ.hGly[m]=0; sumJJ.hAly[m]=0; });
-            activeJD.forEach(m => { sumJD.gly[m]=0; sumJD.aly[m]=0; sumJD.hGly[m]=0; sumJD.hAly[m]=0; });
-            let grandTotGly=0, grandTotAly=0, grandTotHGly=0, grandTotHAly=0;
-            if (sprayData) {
-                (sprayData.phases || []).forEach(ph => {
-                    (ph.blocks || []).forEach(blk => {
-                        activeJJ.forEach(m => {
-                            const md = (blk.months || {})[m] || {};
-                            sumJJ.gly[m]  += parseFloat(md.litresGly) || 0;
-                            sumJJ.aly[m]  += parseFloat(md.gmAly)     || 0;
-                            sumJJ.hGly[m] += parseFloat(md.haGly)     || 0;
-                            sumJJ.hAly[m] += parseFloat(md.haAly)     || 0;
-                        });
-                        activeJD.forEach(m => {
-                            const md = (blk.months || {})[m] || {};
-                            sumJD.gly[m]  += parseFloat(md.litresGly) || 0;
-                            sumJD.aly[m]  += parseFloat(md.gmAly)     || 0;
-                            sumJD.hGly[m] += parseFloat(md.haGly)     || 0;
-                            sumJD.hAly[m] += parseFloat(md.haAly)     || 0;
-                        });
-                        activeFull.forEach(m => {
-                            const md = (blk.months || {})[m] || {};
-                            grandTotGly  += parseFloat(md.litresGly) || 0;
-                            grandTotAly  += parseFloat(md.gmAly)     || 0;
-                            grandTotHGly += parseFloat(md.haGly)     || 0;
-                            grandTotHAly += parseFloat(md.haAly)     || 0;
+                // ── Phase TOTAL block (two rows: No.Litre/GM and Ha) ──────────
+                // Mirrors the printed report footer: an italic "Total" with the Ha
+                // Previous / Ha Present phase sums, then per-month column sums of
+                // litres·GM (row 1) and Ha (row 2), including the extra chemicals.
+                const tr1 = r, tr2 = r + 1;       // No.Litre/GM row, Ha row
+                const totFont  = { bold: true, size: 8, color: dark };
+                const totFontI = { bold: true, italic: true, size: 8, color: dark };
+                const setTot = (row, col, val, opt) => {
+                    styleCell(ws.getCell(row, col), Object.assign({ fill: C.totalFill, font: totFont, numFmt: '0.00' }, opt || {}));
+                    ws.getCell(row, col).value = val;
+                };
+                // "Total" label in the Block No column, both rows
+                ws.mergeCells(tr1, 1, tr2, 1);
+                styleCell(ws.getCell(tr1, 1), { fill: C.totalFill, font: totFontI, align: { horizontal: 'center' } });
+                ws.getCell(tr1, 1).value = 'Total';
+                // Ha Previous / Ha Present phase sums (cols 2 & 3), merged across both rows
+                let sumHaPrev = 0, sumHaPresent = 0;
+                (phase.blocks || []).forEach(blk => { sumHaPrev += num(blk.haPrevious) || 0; sumHaPresent += num(blk.haPresent) || 0; });
+                ws.mergeCells(tr1, 2, tr2, 2);
+                styleCell(ws.getCell(tr1, 2), { fill: C.totalFill, font: totFontI, numFmt: '0.00', align: { horizontal: 'right' } });
+                ws.getCell(tr1, 2).value = Math.round(sumHaPrev * 100) / 100 || null;
+                ws.mergeCells(tr1, 3, tr2, 3);
+                styleCell(ws.getCell(tr1, 3), { fill: C.totalFill, font: totFontI, numFmt: '0.00', align: { horizontal: 'right' } });
+                ws.getCell(tr1, 3).value = Math.round(sumHaPresent * 100) / 100 || null;
+                // Particular labels
+                styleCell(ws.getCell(tr1, FIXED), { fill: C.totalFill, font: totFont, align: { horizontal: 'left' } });
+                ws.getCell(tr1, FIXED).value = 'No.Litre / GM';
+                styleCell(ws.getCell(tr2, FIXED), { fill: C.totalFill, font: totFont, align: { horizontal: 'left' } });
+                ws.getCell(tr2, FIXED).value = 'Ha';
+                // Per-month sums — litres/GM on row 1, Ha on row 2
+                let gG = 0, gA = 0, gHG = 0, gHA = 0;
+                const gXl = {}, gXh = {}; extraChemicals.forEach(ch => { gXl[ch.name] = 0; gXh[ch.name] = 0; });
+                half.months.forEach((m, mi) => {
+                    const base = FIXED + 1 + mi * colsPerMonth;
+                    const on = active(m);
+                    let lG = 0, gA_ = 0, hG = 0, hA = 0;
+                    const exL = {}, exH = {}; extraChemicals.forEach(ch => { exL[ch.name] = 0; exH[ch.name] = 0; });
+                    if (on) (phase.blocks || []).forEach(blk => {
+                        const md = (blk.months || {})[m] || {};
+                        lG += num(md.litresGly) || 0; gA_ += num(md.gmAly) || 0;
+                        hG += num(md.haGly) || 0; hA += num(md.haAly) || 0;
+                        extraChemicals.forEach(ch => {
+                            exL[ch.name] += num((md.extras || {})[ch.name]) || 0;
+                            exH[ch.name] += num((md.extras || {})[ch.name + '_ha']) || 0;
                         });
                     });
+                    gG += lG; gA += gA_; gHG += hG; gHA += hA;
+                    extraChemicals.forEach(ch => { gXl[ch.name] += exL[ch.name]; gXh[ch.name] += exH[ch.name]; });
+                    setTot(tr1, base,     on ? lG  : null);
+                    setTot(tr1, base + 1, on ? gA_ : null);
+                    setTot(tr2, base,     on ? hG  : null);
+                    setTot(tr2, base + 1, on ? hA  : null);
+                    extraChemicals.forEach((ch, xi) => {
+                        setTot(tr1, base + 2 + xi, on ? exL[ch.name] : null);
+                        setTot(tr2, base + 2 + xi, on ? exH[ch.name] : null);
+                    });
                 });
-            }
-            // Use full month lists here so inactive months write 0, clearing any template values
-            JJ_MONTHS.forEach(m => {
-                const g = JJ_COLS[m];
-                setNum(292, g,   sumJJ.gly[m]  || 0);
-                setNum(292, g+1, sumJJ.aly[m]  || 0);
-                setNum(293, g,   sumJJ.hGly[m] || 0);
-                setNum(293, g+1, sumJJ.hAly[m] || 0);
-            });
-            JD_MONTHS.forEach(m => {
-                const g = JD_COLS[m];
-                setNum(297, g,   sumJD.gly[m]  || 0);
-                setNum(297, g+1, sumJD.aly[m]  || 0);
-                setNum(298, g,   sumJD.hGly[m] || 0);
-                setNum(298, g+1, sumJD.hAly[m] || 0);
-            });
-            setNum(297, TOTAL_GLY_COL, grandTotGly  || 0);
-            setNum(297, TOTAL_ALY_COL, grandTotAly  || 0);
-            setNum(298, TOTAL_GLY_COL, grandTotHGly || 0);
-            setNum(298, TOTAL_ALY_COL, grandTotHAly || 0);
-
-            // Remove autoFilter (dropdown arrows) from sheet XML
-            xml = xml.replace(/<autoFilter[^>]*\/>/g, '');
-            xml = xml.replace(/<autoFilter[^>]*>[\s\S]*?<\/autoFilter>/g, '');
-
-            zip.file('xl/worksheets/sheet4.xml', xml);
-
-            // Keep only the GLY+ALLY sheet — strip all other sheets from zip
-            let relsXml = await zip.files['xl/_rels/workbook.xml.rels'].async('string');
-            // Find sheet4's actual file target from its relationship
-            const sheet4TargetMatch = relsXml.match(/Id="rId4"[^>]*Target="([^"]+)"/);
-            const sheet4File = sheet4TargetMatch ? sheet4TargetMatch[1].split('/').pop() : 'sheet4.xml';
-            // Remove all worksheet relationships except rId4
-            relsXml = relsXml.replace(/<Relationship\b[^>]*\bType="[^"]*worksheet[^"]*"[^>]*\/>/g, m =>
-                /Id="rId4"/.test(m) ? m : '');
-            zip.file('xl/_rels/workbook.xml.rels', relsXml);
-            // Update workbook.xml: keep only sheet4 entry, rename tab, reset activeTab
-            let wbXml = await zip.files['xl/workbook.xml'].async('string');
-            wbXml = wbXml.replace(/<sheet\s[^>]*\/>/g, m => /r:id="rId4"/.test(m) ? m : '');
-            wbXml = wbXml.replace(/name="GLY \+ ALLY [^"]*"/, `name="GLY + ALLY ${year}"`);
-            wbXml = wbXml.replace(/\bactiveTab="\d+"/g, 'activeTab="0"');
-            zip.file('xl/workbook.xml', wbXml);
-            // Remove other worksheet XML files and their rels
-            Object.keys(zip.files).forEach(f => {
-                if (/^xl\/worksheets\/sheet\d+\.xml$/.test(f) && !f.endsWith(sheet4File)) zip.remove(f);
-                if (/^xl\/worksheets\/_rels\/sheet\d+\.xml\.rels$/.test(f) && !f.endsWith(sheet4File + '.rels')) zip.remove(f);
-            });
-            // Strip other sheets from Content_Types.xml
-            let ctXml = await zip.files['[Content_Types].xml'].async('string');
-            ctXml = ctXml.replace(/<Override\b[^>]*PartName="\/xl\/worksheets\/sheet\d+\.xml"[^>]*\/>/g, m =>
-                m.includes(sheet4File) ? m : '');
-            zip.file('[Content_Types].xml', ctXml);
-
-            // Append Custom Chemicals sheet if this year has any
-            const extraChemicals = (window.state.spraying[year] || {}).extraChemicals || [];
-            if (extraChemicals.length > 0) {
-                const chemXml = buildExtraChemSheetXml(year, activeFull, extraChemicals);
-                zip.file('xl/worksheets/sheetChem.xml', chemXml);
-                const updRels = relsXml.replace('</Relationships>',
-                    '<Relationship Id="rId99" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheetChem.xml"/></Relationships>');
-                zip.file('xl/_rels/workbook.xml.rels', updRels);
-                const updWb = wbXml.replace('</sheets>',
-                    '<sheet name="Custom Chemicals" sheetId="99" r:id="rId99"/></sheets>');
-                zip.file('xl/workbook.xml', updWb);
-                const updCt = ctXml.replace('</Types>',
-                    '<Override PartName="/xl/worksheets/sheetChem.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>');
-                zip.file('[Content_Types].xml', updCt);
+                // TOTAL group grand sums
+                setTot(tr1, T_BASE,     gG  || null); setTot(tr1, T_BASE + 1, gA  || null);
+                setTot(tr2, T_BASE,     gHG || null); setTot(tr2, T_BASE + 1, gHA || null);
+                extraChemicals.forEach((ch, xi) => {
+                    setTot(tr1, T_BASE + 2 + xi, gXl[ch.name] || null);
+                    setTot(tr2, T_BASE + 2 + xi, gXh[ch.name] || null);
+                });
+                ws.getRow(tr1).height = 15;
+                ws.getRow(tr2).height = 15;
+                r += 2;
             }
 
-            const finalBuf = await zip.generateAsync({ type: 'arraybuffer' });
-            console.log('[Spraying v14] final buffer size:', finalBuf.byteLength);
-            downloadBuffer(finalBuf, `Spraying_GLY_ALLY_${year}.xlsx`);
+            (sprayData.phases || []).forEach(phase => {
+                ws.mergeCells(r, 1, r, lastCol);
+                const pc = ws.getCell(r, 1);
+                pc.value = phase.phaseName || 'PHASE';
+                pc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.phaseFill } };
+                pc.font = { bold: true, size: 10, color: white };
+                pc.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+                pc.border = allThin;
+                ws.getRow(r).height = 18;
+                r++;
+                HALVES.forEach(half => renderPhaseHalf(phase, half));
+                r++;  // spacer between phases
+            });
+
+            const buf = await wb.xlsx.writeBuffer();
+            downloadBuffer(buf, `Spraying_GLY_ALLY_${year}.xlsx`);
             setStatus('rep-spray-status', '✅ Downloaded!', true);
         } catch (e) {
             console.error('Spraying report error:', e);
@@ -878,8 +666,8 @@
     const ALL_REPORT_DEFS = [
         { key: 'ytd',      label: '📈 Harvesting Performance YTD', fn: (y, m) => window.downloadYtdReport(y, m) },
         { key: 'rain',     label: '🌧 Rainfall',                   fn: (y, m) => window.downloadRainfallReport(y, m) },
-        { key: 'spray',    label: '🌿 Spraying (annual)',          fn: (y, m) => window.downloadSprayingReport(y, m) },
-        { key: 'manuring', label: '🌿 Manuring (annual)',          fn: (y, m) => window._downloadManuringExcel(y, m) },
+        { key: 'spray',    label: '🌿 Spraying (annual)',          fn: (y) => window.downloadSprayingReport(y) },  // always full year — annual report
+        { key: 'manuring', label: '🌿 Manuring (annual)',          fn: (y) => window._downloadManuringExcel(y) },  // always full year — annual report
         { key: 'ih',       label: '🐎 Iron Horse — Cost per FFB MT', fn: (y) => window.downloadIronHorseCostPerFFBMt(y) },
         { key: 'wages',    label: '💵 Rate of Wages',              fn: (y, m) => window.downloadWagesReport(y, m) },
     ];
@@ -1013,15 +801,25 @@
                <span id="rep-rain-status" style="font-size:0.82rem;color:var(--text-secondary);"></span>`
             : noDataMsg;
 
+        // Spraying is an ANNUAL report (the on-screen view shows the full year and
+        // all extra chemicals), so default the month picker to "Full Year" — picking
+        // a month gives an optional year-to-date cut. (Empty value = full year.)
+        const sprayMonthOpts = `<option value="" selected>Full Year</option>`
+            + MONTHS.map(m => `<option value="${m}">Up to ${m}</option>`).join('');
         const sprayControls = sprayYears.length
             ? `<select id="sel-spray-yr" style="${SS}">${yearOpts(sprayYears)}</select>
-               <select id="sel-spray-mo" style="${SS}">${monthOpts()}</select>
+               <select id="sel-spray-mo" style="${SS}">${sprayMonthOpts}</select>
                <button id="btn-dl-spray" class="btn-primary" style="padding:0.4rem 1rem;">⬇ Download Excel</button>
                <span id="rep-spray-status" style="font-size:0.82rem;color:var(--text-secondary);"></span>`
             : noDataMsg;
 
+        // Manuring is an ANNUAL report (the on-screen view always shows the full
+        // year), so default the month picker to "Full Year" — picking a month
+        // gives an optional year-to-date cut. (Empty value = full year.)
+        const manuringMonthOpts = `<option value="" selected>Full Year</option>`
+            + MONTHS.map(m => `<option value="${m}">Up to ${m}</option>`).join('');
         const manuringControls = `<select id="sel-manuring-yr" style="${SS}">${yearOpts(manuringYears)}</select>
-               <select id="sel-manuring-mo" style="${SS}">${monthOpts()}</select>
+               <select id="sel-manuring-mo" style="${SS}">${manuringMonthOpts}</select>
                <button id="btn-dl-manuring" class="btn-primary" style="padding:0.4rem 1rem;">⬇ Download Excel</button>
                <span id="rep-manuring-status" style="font-size:0.82rem;color:var(--text-secondary);"></span>`;
 
@@ -1095,8 +893,8 @@
           <div style="${CARD}">
             <h3 style="margin:0 0 0.35rem;font-size:0.97rem;">🌿 Spraying — GLY + ALLY Annual Report</h3>
             <p style="margin:0 0 1rem;color:var(--text-secondary);font-size:0.82rem;">
-              Full-year Glyphosate and Ally spraying schedule per block and O/P phase
-              (split JAN–JUN and JUL–DEC).
+              Full-year GLY, ALY and any extra chemicals inline per block and O/P phase,
+              mirroring the on-screen layout (split JAN–JUN and JUL–DEC).
             </p>
             <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">
               ${sprayControls}
@@ -1205,15 +1003,15 @@
         const btnSpray = document.getElementById('btn-dl-spray');
         if (btnSpray) btnSpray.onclick = () => {
             const yr = document.getElementById('sel-spray-yr').value;
-            const mo = document.getElementById('sel-spray-mo').value;
-            if (yr && mo) window.downloadSprayingReport(yr, mo);
+            const mo = document.getElementById('sel-spray-mo').value;  // '' = full year
+            if (yr) window.downloadSprayingReport(yr, mo);
         };
 
         const btnManuring = document.getElementById('btn-dl-manuring');
         if (btnManuring) btnManuring.onclick = async () => {
             const yr = document.getElementById('sel-manuring-yr').value;
-            const mo = document.getElementById('sel-manuring-mo').value;
-            if (!yr || !mo) return;
+            const mo = document.getElementById('sel-manuring-mo').value;  // '' = full year
+            if (!yr) return;
             const statusEl = document.getElementById('rep-manuring-status');
             if (statusEl) statusEl.textContent = '';
             btnManuring.disabled = true;

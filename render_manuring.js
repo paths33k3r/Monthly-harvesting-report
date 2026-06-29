@@ -589,25 +589,21 @@
     Jan:6, Feb:7, Mar:8, Apr:9, May:10, Jun:11,
     Jul:12, Aug:13, Aug2:14, Sep:15, Oct:16, Nov:17, Dec:18
   };
-  const HEADER_DARK  = { type:'pattern', pattern:'solid', fgColor:{ argb:'FF1A3D1E' } };
-  const HEADER_GREEN = { type:'pattern', pattern:'solid', fgColor:{ argb:'FF2C5F2E' } };
-  const HEADER_GOLD  = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFB8860B' } };
+  // Monotone (grayscale) palette — mirrors the on-screen Manuring table but drops
+  // the per-fertiliser colours (the fertiliser type is shown as text in the cell).
+  const HEADER_DARK  = { type:'pattern', pattern:'solid', fgColor:{ argb:'FF374151' } };  // gray-700 (BK/HA headers, summary)
+  const HEADER_GREEN = { type:'pattern', pattern:'solid', fgColor:{ argb:'FF4B5563' } };  // gray-600 (month headers)
+  const HEADER_GOLD  = { type:'pattern', pattern:'solid', fgColor:{ argb:'FF6B7280' } };  // gray-500 (totals headers)
+  const CELL_FILL    = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFEDEEF0' } };  // filled month cell
+  const ZEBRA_FILL   = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFF9FAFB' } };  // alternate block shading
+  const TOTAL_FILL   = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFE5E7EB' } };  // per-block total cells
+  const PHASE_FILL   = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFD1D5DB' } };  // phase-total row
   const WHITE_FONT   = { color:{ argb:'FFFFFFFF' }, bold:true, size:9 };
-  const THIN  = { style:'thin',   color:{ argb:'FF888888' } };
-  const MED   = { style:'medium', color:{ argb:'FF444444' } };
+  const THIN  = { style:'thin',   color:{ argb:'FFB0B4BA' } };
+  const MED   = { style:'medium', color:{ argb:'FF6B7280' } };
 
   function xlBorder(top, bottom) {
     return { top: top?MED:THIN, bottom: bottom?MED:THIN, left:THIN, right:THIN };
-  }
-
-  function xlFertFill(fert) {
-    const map = { MOP:'FF00B050', SATO:'FF0070C0', COM:'FFFF6600', SPEC:'FFFFFF00', ERP:'FF9B59B6', MIX:'FFE67E22' };
-    const argb = map[fert];
-    return argb ? { type:'pattern', pattern:'solid', fgColor:{ argb } } : null;
-  }
-  function xlFertFont(fert) {
-    const light = fert === 'SPEC';
-    return { color:{ argb: light ? 'FF000000' : 'FFFFFFFF' }, bold:true, size:8 };
   }
 
   function applyHeaderCell(cell, fill, value, align='center') {
@@ -617,210 +613,160 @@
     cell.alignment = { horizontal:align, vertical:'middle', wrapText:false };
   }
 
+  // Compact per-phase sheet that mirrors the on-screen Manuring table: one row
+  // per block, each month cell stacking bags / mt / fert×round (rich text), in a
+  // monotone grayscale palette (fertiliser type shown as text, not by colour).
   function buildPhaseSheet(ws, phaseName, phaseData, year, upToMonth) {
     const blocks = (phaseData && phaseData.blocks) ? phaseData.blocks : [];
     const MONTH_ORDER = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     const cutMoIdx = upToMonth ? MONTH_ORDER.indexOf(upToMonth) : 11;
-    const allowedMonths = new Set(Object.keys(XL_MONTH_COL).filter(m => {
-      const base = m === 'Aug2' ? 'Aug' : m;
-      return MONTH_ORDER.indexOf(base) <= cutMoIdx;
-    }));
-    const phaseYear = phaseName.replace('PHASE ','');
+    const SLOTS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Aug2','Sep','Oct','Nov','Dec'];
+    const SLOT_LABEL = { Jan:'JAN', Feb:'FEB', Mar:'MAR', Apr:'APR', May:'MAY', Jun:'JUN',
+                         Jul:'JUL', Aug:'AUG', Aug2:'AUG*', Sep:'SEP', Oct:'OCT', Nov:'NOV', Dec:'DEC' };
+    const allowed = s => MONTH_ORDER.indexOf(s === 'Aug2' ? 'Aug' : s) <= cutMoIdx;
 
-    // Column widths
-    ws.getColumn(1).width  = 4.5;   // A BK
-    ws.getColumn(2).width  = 6;     // B Ha
-    ws.getColumn(3).width  = 8;     // C NPalm
-    ws.getColumn(4).width  = 7;     // D ACTUAL
-    ws.getColumn(5).width  = 10;    // E label
-    for (let c = 6; c <= 18; c++) ws.getColumn(c).width = 8.5;  // F-R months
-    ws.getColumn(19).width = 10;    // S TotBags
-    ws.getColumn(20).width = 9;     // T TotMt
-    ws.getColumn(21).width = 12;    // U Remark
+    // Columns: 1=BK 2=HA 3=NO.PALM 4..16 = 13 month slots 17=TOT.BAGS 18=TOT.MT
+    const COL0 = 3;
+    const monthCol = {}; SLOTS.forEach((s, i) => monthCol[s] = COL0 + 1 + i);
+    const TOT_BAGS = COL0 + 1 + SLOTS.length;   // 17
+    const TOT_MT   = TOT_BAGS + 1;              // 18
+    const lastCol  = TOT_MT;
 
-    // ── Header rows ──────────────────────────────────────────────────────────
-    ws.getRow(1).height = 6;
-    ws.getRow(2).height = 6;
+    ws.getColumn(1).width = 5.5;  // BK
+    ws.getColumn(2).width = 7;    // HA
+    ws.getColumn(3).width = 9;    // NO.PALM
+    for (let c = 4; c <= 16; c++) ws.getColumn(c).width = 9.5;  // months
+    ws.getColumn(17).width = 9;   // TOT.BAGS
+    ws.getColumn(18).width = 9;   // TOT.MT
 
-    // Row 3: company
-    ws.mergeCells('A3:U3');
-    ws.getRow(3).height = 18;
-    const r3c = ws.getCell('A3');
-    r3c.value = 'GLOBAL TAAT SDN BHD';
-    r3c.font = { bold:true, size:12 };
-    r3c.alignment = { horizontal:'center', vertical:'middle' };
+    // ── Title block ──
+    const titleRow = (rowIdx, text, size, argb, h) => {
+      ws.mergeCells(rowIdx, 1, rowIdx, lastCol);
+      const c = ws.getCell(rowIdx, 1);
+      c.value = text;
+      c.font = { bold: true, size, color: { argb } };
+      c.alignment = { horizontal: 'center', vertical: 'middle' };
+      ws.getRow(rowIdx).height = h;
+    };
+    titleRow(1, 'GLOBAL TAAT SDN BHD', 13, 'FF111827', 20);
+    titleRow(2, 'ACTUAL FERTILIZER APPLICATION', 10, 'FF374151', 15);
+    titleRow(3, `${phaseName}  —  ${year}`, 10, 'FF374151', 15);
 
-    // Row 4: title
-    ws.mergeCells('A4:U4');
-    ws.getRow(4).height = 16;
-    ws.getCell('A4').value = 'ACTUAL FERTILIZER APPLICATION';
-    ws.getCell('A4').font = { bold:true, size:11 };
-    ws.getCell('A4').alignment = { horizontal:'center', vertical:'middle' };
+    // ── Header row ──
+    const HR = 5;
+    ws.getRow(HR).height = 22;
+    const hdr = (col, fill, val) => {
+      const c = ws.getCell(HR, col);
+      c.value = val; c.fill = fill;
+      c.font = { bold: true, size: 8, color: { argb: 'FFFFFFFF' } };
+      c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      c.border = xlBorder(true, false);
+    };
+    hdr(1, HEADER_DARK, 'BK');
+    hdr(2, HEADER_DARK, 'HA');
+    hdr(3, HEADER_DARK, 'NO.PALM');
+    SLOTS.forEach(s => hdr(monthCol[s], HEADER_GREEN, SLOT_LABEL[s]));
+    hdr(TOT_BAGS, HEADER_GOLD, 'TOT.BAGS');
+    hdr(TOT_MT,   HEADER_GOLD, 'TOT.MT');
 
-    // Row 5: phase + year
-    ws.mergeCells('A5:U5');
-    ws.getRow(5).height = 16;
-    ws.getCell('A5').value = `${phaseName}  —  ${year}`;
-    ws.getCell('A5').font = { bold:true, size:11 };
-    ws.getCell('A5').alignment = { horizontal:'center', vertical:'middle' };
+    // ── Block rows (one row per block) ──
+    let r = HR + 1;
+    let grandBags = 0, grandMt = 0;
 
-    ws.getRow(6).height = 6;
-    ws.getRow(7).height = 6;
+    if (blocks.length === 0) {
+      ws.mergeCells(r, 1, r, lastCol);
+      const c = ws.getCell(r, 1);
+      c.value = 'No data recorded for this phase';
+      c.font = { italic: true, size: 9, color: { argb: 'FF9CA3AF' } };
+      c.alignment = { horizontal: 'center', vertical: 'middle' };
+      c.border = xlBorder(true, true);
+      ws.getRow(r).height = 20;
+      ws.views = [{ state: 'frozen', xSplit: 3, ySplit: HR }];
+      ws.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+      return;
+    }
 
-    // Row 8: phase identifier
-    ws.mergeCells('A8:U8');
-    ws.getRow(8).height = 16;
-    ws.getCell('A8').value = `PHASE : ${phaseYear}`;
-    ws.getCell('A8').font = { bold:true, size:10 };
-
-    // Row 9: main column headers
-    ws.getRow(9).height = 22;
-    const hdr9cells = [
-      [1,'BK'],[2,'HA'],[3,'NO. PALM'],[4,'PARTICULAR'],[5,'']
-    ];
-    for (const [c,v] of hdr9cells) applyHeaderCell(ws.getRow(9).getCell(c), HEADER_DARK, v);
-    ws.mergeCells('F9:R9');
-    applyHeaderCell(ws.getCell('F9'), HEADER_DARK, 'MONTH');
-    applyHeaderCell(ws.getRow(9).getCell(19), HEADER_DARK, 'TOTAL');
-    applyHeaderCell(ws.getRow(9).getCell(20), HEADER_DARK, 'MT.');
-    applyHeaderCell(ws.getRow(9).getCell(21), HEADER_DARK, 'REMARK');
-
-    // Row 10: spacer
-    ws.getRow(10).height = 6;
-
-    // Row 11: month names
-    ws.getRow(11).height = 18;
-    const monthHdrs = [
-      [6,'JAN'],[7,'FEB'],[8,'MAR'],[9,'APR'],[10,'MAY'],[11,'JUN'],
-      [12,'JUL'],[15,'SEP'],[16,'OCT'],[17,'NOV'],[18,'DEC']
-    ];
-    ws.mergeCells('M11:N11');
-    applyHeaderCell(ws.getCell('M11'), HEADER_GREEN, 'AUG');
-    for (const [c,v] of monthHdrs) applyHeaderCell(ws.getRow(11).getCell(c), HEADER_GREEN, v);
-    applyHeaderCell(ws.getRow(11).getCell(19), HEADER_GOLD, 'TOTAL');
-    applyHeaderCell(ws.getRow(11).getCell(20), HEADER_GOLD, 'MT.');
-
-    // ── Block data rows ───────────────────────────────────────────────────────
-    let rowIdx = 12;
-
-    for (const block of blocks) {
+    blocks.forEach((block, bi) => {
       const apps = block.apps || {};
-      const r0 = rowIdx;
+      const zebra = bi % 2 === 1;
+      const baseFill = zebra ? ZEBRA_FILL : null;
 
-      let totBags = 0, totMt = 0, totRounds = 0;
-      for (const [k, v] of Object.entries(apps)) {
-        if (!allowedMonths.has(k)) continue;
-        totBags   += v.bags  || 0;
-        totMt     += v.mt    || 0;
-        totRounds += v.round || 0;
-      }
+      let totBags = 0, totMt = 0;
+      Object.entries(apps).forEach(([k, v]) => { if (!allowed(k)) return; totBags += v.bags || 0; totMt += v.mt || 0; });
       totMt = Math.round(totMt * 1000) / 1000;
+      grandBags += totBags; grandMt += totMt;
 
-      // Set row heights
-      for (let r = r0; r <= r0+3; r++) ws.getRow(r).height = 18;
+      ws.getRow(r).height = 46;
 
-      // Merge static columns across 4 rows
-      ws.mergeCells(r0,1, r0+3,1);   // A: BK
-      ws.mergeCells(r0,2, r0+3,2);   // B: Ha
-      ws.mergeCells(r0,3, r0+3,3);   // C: NPalm
-      ws.mergeCells(r0,4, r0+3,4);   // D: ACTUAL
+      const setFixed = (col, val, opt) => {
+        opt = opt || {};
+        const c = ws.getCell(r, col);
+        c.value = val;
+        c.font = Object.assign({ size: 9, color: { argb: 'FF111827' } }, opt.font || {});
+        c.alignment = Object.assign({ horizontal: 'center', vertical: 'middle' }, opt.align || {});
+        if (baseFill) c.fill = baseFill;
+        if (opt.numFmt) c.numFmt = opt.numFmt;
+        c.border = xlBorder(false, false);
+      };
+      setFixed(1, block.bk, { font: { bold: true, size: 9 } });
+      setFixed(2, block.ha != null ? block.ha : null, { numFmt: '0.00', align: { horizontal: 'right' } });
+      setFixed(3, block.npalm || null, { numFmt: '#,##0', align: { horizontal: 'right' } });
 
-      // BK, Ha, NPalm, ACTUAL (set on first merged cell)
-      const cBK   = ws.getCell(r0, 1);
-      const cHa   = ws.getCell(r0, 2);
-      const cNP   = ws.getCell(r0, 3);
-      const cAct  = ws.getCell(r0, 4);
-
-      cBK.value = block.bk;
-      cBK.font = { bold:true, size:9 };
-      cBK.alignment = { horizontal:'center', vertical:'middle' };
-      cBK.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FFF5F5F5' } };
-
-      cHa.value = block.ha;
-      cHa.alignment = { horizontal:'right', vertical:'middle' };
-      cHa.numFmt = '0.00';
-
-      cNP.value = block.npalm || 0;
-      cNP.alignment = { horizontal:'right', vertical:'middle' };
-      cNP.numFmt = '#,##0';
-
-      cAct.value = 'ACTUAL';
-      cAct.alignment = { horizontal:'center', vertical:'middle' };
-      cAct.font = { size:8 };
-
-      // Row labels in col E
-      const rowLabels = ['Kg/pokok','No. Beg','Mt','Fert.Type'];
-      for (let i = 0; i < 4; i++) {
-        const c = ws.getCell(r0+i, 5);
-        c.value = rowLabels[i];
-        c.font = { size:8, italic: i === 3 };
-        c.alignment = { horizontal:'left', vertical:'middle' };
-      }
-
-      // Totals in col S (bags), T (mt)
-      if (totRounds > 0) { const c = ws.getCell(r0, 19); c.value = totRounds; c.numFmt = '0.0#'; c.alignment={horizontal:'center',vertical:'middle'}; c.fill=HEADER_GOLD; c.font={bold:true,size:9,color:{argb:'FFFFFFFF'}}; }
-      if (totBags   > 0) { const c = ws.getCell(r0+1,19); c.value = totBags;  c.numFmt = '#,##0'; c.alignment={horizontal:'center',vertical:'middle'}; c.fill=HEADER_GOLD; c.font={bold:true,size:9,color:{argb:'FFFFFFFF'}}; }
-      if (totMt     > 0) { const c = ws.getCell(r0+2,20); c.value = totMt;    c.numFmt = '0.000'; c.alignment={horizontal:'center',vertical:'middle'}; c.fill=HEADER_GOLD; c.font={bold:true,size:9,color:{argb:'FFFFFFFF'}}; }
-
-      // Month data
-      const hasAug  = apps['Aug']  && apps['Aug'].bags  > 0;
-      const hasAug2 = apps['Aug2'] && apps['Aug2'].bags > 0;
-
-      // Merge Aug+Aug2 cols when only one is used
-      if (!hasAug && !hasAug2) {
-        for (let i = 0; i < 4; i++) ws.mergeCells(r0+i, 13, r0+i, 14);
-      } else if (hasAug && !hasAug2) {
-        for (let i = 0; i < 4; i++) ws.mergeCells(r0+i, 13, r0+i, 14);
-      }
-
-      for (const [month, colNum] of Object.entries(XL_MONTH_COL)) {
-        if (!allowedMonths.has(month)) continue;
-        const app = apps[month];
-        if (!app || !app.bags) continue;
-
-        if (app.round) {
-          const c = ws.getCell(r0, colNum);
-          c.value = app.round; c.numFmt = '0.0#';
-          c.alignment = { horizontal:'center', vertical:'middle' }; c.font = { size:9 };
+      SLOTS.forEach(s => {
+        const c = ws.getCell(r, monthCol[s]);
+        const app = allowed(s) ? apps[s] : null;
+        if (app && app.bags) {
+          const ft = `${app.fert || ''}${app.round ? ('×' + app.round) : ''}`;
+          c.value = { richText: [
+            { font: { bold: true, size: 10, color: { argb: 'FF111827' } }, text: `${app.bags}` },
+            { font: { size: 8, color: { argb: 'FF4B5563' } }, text: `\n${app.mt}mt` },
+            { font: { bold: true, size: 8, color: { argb: 'FF374151' } }, text: `\n${ft}` },
+          ] };
+          c.fill = CELL_FILL;
+        } else {
+          c.value = '–';
+          c.font = { size: 8, color: { argb: 'FFB0B4BA' } };
+          if (baseFill) c.fill = baseFill;
         }
-        if (app.bags) {
-          const c = ws.getCell(r0+1, colNum);
-          c.value = app.bags; c.numFmt = '#,##0';
-          c.alignment = { horizontal:'center', vertical:'middle' }; c.font = { size:9 };
-        }
-        if (app.mt) {
-          const c = ws.getCell(r0+2, colNum);
-          c.value = app.mt; c.numFmt = '0.000';
-          c.alignment = { horizontal:'center', vertical:'middle' }; c.font = { size:9 };
-        }
-        // Fert type cell with color
-        const fc = ws.getCell(r0+3, colNum);
-        fc.value = app.fert || '';
-        fc.alignment = { horizontal:'center', vertical:'middle' };
-        const fill = xlFertFill(app.fert);
-        if (fill) { fc.fill = fill; fc.font = xlFertFont(app.fert); }
-        else fc.font = { size:8 };
-      }
+        c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        c.border = xlBorder(false, false);
+      });
 
-      // Borders for all 4 rows, all 21 cols
-      for (let r = r0; r <= r0+3; r++) {
-        for (let c = 1; c <= 21; c++) {
-          const cell = ws.getCell(r, c);
-          cell.border = xlBorder(r === r0, r === r0+3);
-        }
-      }
+      const setTot = (col, val, fmt) => {
+        const c = ws.getCell(r, col);
+        c.value = val; c.numFmt = fmt;
+        c.font = { bold: true, size: 9, color: { argb: 'FF111827' } };
+        c.alignment = { horizontal: 'center', vertical: 'middle' };
+        c.fill = TOTAL_FILL;
+        c.border = xlBorder(false, false);
+      };
+      setTot(TOT_BAGS, totBags || null, '#,##0');
+      setTot(TOT_MT,   totMt || null,   '0.000');
+      r++;
+    });
 
-      rowIdx += 4;
-    }
+    // ── PHASE TOTAL row ──
+    ws.getRow(r).height = 16;
+    ws.mergeCells(r, 1, r, 3);
+    const pt = ws.getCell(r, 1);
+    pt.value = 'PHASE TOTAL';
+    pt.font = { bold: true, size: 9, color: { argb: 'FF111827' } };
+    pt.alignment = { horizontal: 'right', vertical: 'middle' };
+    pt.fill = PHASE_FILL;
+    for (let c = 1; c <= 3; c++) ws.getCell(r, c).border = xlBorder(true, true);
+    SLOTS.forEach(s => { const c = ws.getCell(r, monthCol[s]); c.fill = PHASE_FILL; c.border = xlBorder(true, true); });
+    const setGrand = (col, val, fmt) => {
+      const c = ws.getCell(r, col);
+      c.value = val; c.numFmt = fmt;
+      c.font = { bold: true, size: 9, color: { argb: 'FF111827' } };
+      c.alignment = { horizontal: 'center', vertical: 'middle' };
+      c.fill = PHASE_FILL; c.border = xlBorder(true, true);
+    };
+    setGrand(TOT_BAGS, grandBags || null, '#,##0');
+    setGrand(TOT_MT, Math.round(grandMt * 1000) / 1000 || null, '0.000');
 
-    // "Application Round" summary row at end
-    if (blocks.length > 0) {
-      ws.mergeCells(`A${rowIdx}:R${rowIdx}`);
-      ws.getCell(rowIdx, 1).value = 'Application Round';
-      ws.getCell(rowIdx, 1).alignment = { horizontal:'right' };
-      ws.getCell(rowIdx, 1).font = { italic:true, size:9, color:{ argb:'FF666666' } };
-      ws.getRow(rowIdx).height = 16;
-    }
+    ws.views = [{ state: 'frozen', xSplit: 3, ySplit: HR }];
+    ws.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
   }
 
   function buildSummarySheet(ws, allYearData, year, upToMonth) {
