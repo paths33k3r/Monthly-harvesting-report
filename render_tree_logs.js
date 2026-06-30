@@ -203,6 +203,14 @@
     const saveTreeLogsData = (silent) => {
         const db = window._treeLogsDb;
         if (!db) { if (!silent && window.notify) window.notify('Not connected to cloud — tree logs not saved.', 'error'); return Promise.resolve(); }
+        // Safety: never overwrite the cloud copy until this session has confirmed a
+        // successful load. If the initial read failed (e.g. auth/network race on a
+        // page reload), state.treeLogs may be empty and saving it would wipe real
+        // data. _treeLogsLoaded is set true by init() only after a read succeeds.
+        if (window._treeLogsLoaded === false) {
+            if (window.notify) window.notify('Tree logs still loading — change not saved (protecting your data). Please reload and try again.', 'error');
+            return Promise.resolve();
+        }
         if (typeof window._markUnsaved === 'function') window._markUnsaved();
         return db.ref('shared/tree_logs_data').set(JSON.stringify(window.state.treeLogs))
             .then(() => { if (!silent && window.notify) window.notify('Tree logs saved.', 'success'); })

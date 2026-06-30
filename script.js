@@ -4337,20 +4337,31 @@ const runMainApplication = () => {
                     if (!state.wagesLedger) state.wagesLedger = {};
                 }
 
-                // Load Tree Logs data (delivery batches + species detail — shared across all users)
+                // Load Tree Logs data (delivery batches + species detail — shared across all users).
+                // Retry a few times: right after a page reload the RTDB auth token can lag behind
+                // onAuthStateChanged, so the first read may fail/return null. A failed load must NOT
+                // leave an empty state that a later save could persist over the real cloud data — so
+                // window._treeLogsLoaded (which gates saveTreeLogsData) is set true ONLY once a read
+                // actually succeeds (genuine-empty included).
                 window._treeLogsDb = db;
-                try {
-                    const tlSnap = await db.ref('shared/tree_logs_data').once('value');
-                    const tlData = tlSnap.val();
-                    if (tlData) {
-                        state.treeLogs = JSON.parse(tlData);
-                        console.log("Tree logs data loaded from cloud.");
-                    } else if (!state.treeLogs) {
-                        state.treeLogs = {};
+                window._treeLogsLoaded = false;
+                for (let attempt = 1; attempt <= 4; attempt++) {
+                    try {
+                        const tlSnap = await db.ref('shared/tree_logs_data').once('value');
+                        const tlData = tlSnap.val();
+                        if (tlData) {
+                            state.treeLogs = JSON.parse(tlData);
+                            console.log("Tree logs data loaded from cloud.");
+                        } else if (!state.treeLogs) {
+                            state.treeLogs = {};
+                        }
+                        window._treeLogsLoaded = true;
+                        break;
+                    } catch (e) {
+                        console.warn(`Tree Logs load attempt ${attempt} failed:`, e.message);
+                        if (attempt < 4) await new Promise(r => setTimeout(r, 500 * attempt));
+                        else if (!state.treeLogs) state.treeLogs = {};
                     }
-                } catch (e) {
-                    console.warn("Could not load Tree Logs data:", e.message);
-                    if (!state.treeLogs) state.treeLogs = {};
                 }
 
                 // Load Maintenance data (gangs, work log, gantt — shared across all users)
