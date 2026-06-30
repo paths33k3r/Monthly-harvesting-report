@@ -183,26 +183,38 @@
         return String(a.batchNo).localeCompare(String(b.batchNo));
     });
 
-    // Per-species totals for a year — detailed batches contribute each line by
-    // line.species; summary-only batches contribute their whole total to their
-    // species code. Returns [{species, qty, vol}] sorted by volume (desc).
+    // Per-species totals for a year, each with a per-grade breakdown. Detailed
+    // batches contribute each line by (species, grade); summary-only batches have
+    // no grade detail, so their whole total goes under the '—' grade bucket.
+    // Returns [{species, qty, vol, grades:[{grade, qty, vol}]}] sorted by vol desc
+    // (grades within a species also sorted by vol desc).
     const tlSpeciesSummary = (year) => {
         const map = {};
+        const ensure = (sp) => (map[sp] || (map[sp] = { qty: 0, vol: 0, grades: {} }));
+        const addGrade = (s, gr, q, v) => {
+            if (!s.grades[gr]) s.grades[gr] = { qty: 0, vol: 0 };
+            s.grades[gr].qty += q; s.grades[gr].vol += v;
+        };
         tlBatches(year).forEach(b => {
             if (b.detailed) {
                 (b.lines || []).forEach(l => {
-                    const k = tlText(l.species) || '(blank)';
-                    if (!map[k]) map[k] = { qty: 0, vol: 0 };
-                    map[k].qty += tlNum(l.qty); map[k].vol += tlNum(l.volume);
+                    const sp = tlText(l.species) || '(blank)';
+                    const gr = tlText(l.grade) || '—';
+                    const q = tlNum(l.qty), v = tlNum(l.volume);
+                    const s = ensure(sp); s.qty += q; s.vol += v; addGrade(s, gr, q, v);
                 });
             } else {
-                const k = tlText(b.species) || '(unspecified)';
-                if (!map[k]) map[k] = { qty: 0, vol: 0 };
-                map[k].qty += tlNum(b.totalQty); map[k].vol += tlNum(b.totalVolume);
+                const sp = tlText(b.species) || '(unspecified)';
+                const q = tlNum(b.totalQty), v = tlNum(b.totalVolume);
+                const s = ensure(sp); s.qty += q; s.vol += v; addGrade(s, '—', q, v);
             }
         });
-        return Object.entries(map).map(([species, v]) => ({ species, qty: v.qty, vol: v.vol }))
-            .sort((a, b) => b.vol - a.vol);
+        return Object.entries(map).map(([species, v]) => ({
+            species, qty: v.qty, vol: v.vol,
+            grades: Object.entries(v.grades)
+                .map(([grade, g]) => ({ grade, qty: g.qty, vol: g.vol }))
+                .sort((a, b) => b.vol - a.vol)
+        })).sort((a, b) => b.vol - a.vol);
     };
 
     // Group detailed lines by (category, grade) preserving first-appearance order.
@@ -406,19 +418,30 @@
         if (!rows.length) return '';
         const totQty = rows.reduce((s, r) => s + r.qty, 0);
         const totVol = rows.reduce((s, r) => s + r.vol, 0);
-        const body = rows.map(r => `<tr style="border-bottom:1px solid var(--border-color,#eee);">
-            <td style="padding:5px 12px; font-weight:600;">${tlEsc(r.species)}</td>
-            <td style="padding:5px 12px; text-align:right; color:var(--text-secondary);">${tlInt(r.qty)}</td>
-            <td style="padding:5px 12px; text-align:right;">${tlVol(r.vol)} MT</td></tr>`).join('');
+        const body = rows.map(r => {
+            // Species row (bold). Skip the grade sub-rows when the only grade is the
+            // '—' bucket (summary-only species, e.g. ACMG) — it would just repeat
+            // the species total.
+            const showGrades = !(r.grades.length === 1 && r.grades[0].grade === '—');
+            const head = `<tr style="border-bottom:1px solid var(--border-color,#eee); background:var(--bg-main,#f7f9f7);">
+                <td style="padding:6px 12px; font-weight:700;">${tlEsc(r.species)}</td>
+                <td style="padding:6px 12px; text-align:right; font-weight:700; color:var(--text-secondary);">${tlInt(r.qty)}</td>
+                <td style="padding:6px 12px; text-align:right; font-weight:700;">${tlVol(r.vol)} MT</td></tr>`;
+            const gradeRows = showGrades ? r.grades.map(g => `<tr style="border-bottom:1px solid var(--border-color,#f0f0f0);">
+                <td style="padding:3px 12px 3px 28px; color:var(--text-secondary);">${tlEsc(g.grade)}</td>
+                <td style="padding:3px 12px; text-align:right; color:var(--text-secondary);">${tlInt(g.qty)}</td>
+                <td style="padding:3px 12px; text-align:right; color:var(--text-secondary);">${tlVol(g.vol)} MT</td></tr>`).join('') : '';
+            return head + gradeRows;
+        }).join('');
         return `
           <div style="${CARD} padding:0; overflow:hidden; margin-top:1.25rem; max-width:520px;">
             <div style="padding:0.7rem 1rem; background:var(--bg-main,#f3f5f3); border-bottom:1px solid var(--border-color,#e0e0e0); font-weight:700; color:var(--text-primary);">
               🌳 Species sold — ${tlEsc(year)}
-              <span style="font-weight:400; color:var(--text-secondary); font-size:0.82rem;">· total volume by species</span>
+              <span style="font-weight:400; color:var(--text-secondary); font-size:0.82rem;">· volume by species & grade</span>
             </div>
             <table style="width:100%; border-collapse:collapse; font-size:0.88rem; color:var(--text-primary);">
               <thead><tr style="color:var(--text-secondary);">
-                <th style="padding:6px 12px; text-align:left;">Species</th>
+                <th style="padding:6px 12px; text-align:left;">Species / Grade</th>
                 <th style="padding:6px 12px; text-align:right;">Quantity (PCS)</th>
                 <th style="padding:6px 12px; text-align:right;">Volume (MT)</th></tr></thead>
               <tbody>${body}</tbody>
