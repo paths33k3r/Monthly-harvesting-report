@@ -41,6 +41,7 @@
     let _tlMode = 'list';     // list | detail | edit | analytics | codes
     let _tlDetailId = null;   // batch id being viewed
     let _tlEditId = null;     // batch id being edited (null = new)
+    let _tlYearCorrected = false; // first-render year auto-correct ran (per page load)
 
     // ── Small helpers ───────────────────────────────────────────────────
     const tlEsc = (s) => (typeof window.escapeHtml === 'function' ? window.escapeHtml(s) : String(s == null ? '' : s));
@@ -134,6 +135,18 @@
         return [...set].sort((a, b) => parseInt(b) - parseInt(a));
     };
 
+    // Default selected year: the most recent year that actually HAS batches,
+    // so a fresh load lands on real data instead of an empty current year
+    // (the workbook's data is 2024/2025 while the calendar year may be later).
+    // Falls back to the most recent year, then the current year.
+    const tlDefaultYear = () => {
+        const t = tlEnsure();
+        const withData = Object.keys(t.years)
+            .filter(k => /^\d{4}$/.test(k) && (t.years[k].batches || []).length > 0)
+            .sort((a, b) => parseInt(b) - parseInt(a));
+        return withData[0] || tlYearList()[0] || tlCurrentYear();
+    };
+
     const tlBatchTotals = (b) => {
         if (!b) return { qty: 0, volume: 0 };
         if (b.detailed) {
@@ -206,9 +219,15 @@
         const state = window.state;
         tlEnsure();
         if (!state.treeLogsYear || !/^\d{4}$/.test(state.treeLogsYear)) {
-            const ys = tlYearList();
-            state.treeLogsYear = ys[0] || tlCurrentYear();
+            state.treeLogsYear = tlDefaultYear();
+        } else if (!_tlYearCorrected && !tlBatches(state.treeLogsYear).length) {
+            // First render after a page load: if the remembered year is empty
+            // but another year has batches (e.g. defaulted/remembered as the
+            // current calendar year), jump to the most recent year with data.
+            const dy = tlDefaultYear();
+            if (dy !== state.treeLogsYear && tlBatches(dy).length) state.treeLogsYear = dy;
         }
+        _tlYearCorrected = true;
         if (_tlMode === 'detail') return tlRenderDetail(host);
         if (_tlMode === 'edit') return tlRenderEditor(host);
         if (_tlMode === 'analytics') return tlRenderAnalytics(host);
