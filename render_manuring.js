@@ -50,8 +50,9 @@
       { bk:24, ha:44.67, npalm:5586,  apps:{ Nov:{round:1.5,bags:169,mt:8.45,fert:'SATO'} } },
     ]},
     'PHASE 2015': { blocks: [
-      { bk:25, ha:38.23, npalm:0, apps:{} },
-      { bk:27, ha:14.3,  npalm:0, apps:{} },
+      { bk:25,    ha:38.23, npalm:0, apps:{} },
+      { bk:'26A', ha:22.72, npalm:0, apps:{} },
+      { bk:27,    ha:14.3,  npalm:0, apps:{} },
       { bk:28, ha:21.94, npalm:0, apps:{} },
       { bk:29, ha:19.26, npalm:0, apps:{} },
       { bk:30, ha:24.3,  npalm:0, apps:{} },
@@ -80,6 +81,29 @@
       };
     }
     return result;
+  }
+
+  // Reconcile a saved year against the default block list so blocks added to
+  // DEFAULT_2025 after the year was first saved (e.g. PHASE 2015 block 26A) show
+  // up. Existing block objects are reused (preserving their ha/npalm/apps); any
+  // missing default block is inserted at its canonical position with empty apps
+  // (apps are year-specific, so we never copy the 2025 default applications).
+  function ensureDefaultBlocks(yearData) {
+    if (!yearData) return;
+    for (const phase of PHASE_NAMES) {
+      const def = (DEFAULT_2025[phase] && DEFAULT_2025[phase].blocks) || [];
+      if (!yearData[phase]) yearData[phase] = { blocks: [] };
+      const existing = yearData[phase].blocks || [];
+      const byBk = new Map(existing.map(b => [String(b.bk), b]));
+      const merged = def.map(d =>
+        byBk.get(String(d.bk)) || { bk: d.bk, ha: d.ha, npalm: d.npalm, apps: {} }
+      );
+      // keep any existing block not present in the defaults (defensive — normally none)
+      for (const b of existing) {
+        if (!def.some(d => String(d.bk) === String(b.bk))) merged.push(b);
+      }
+      yearData[phase].blocks = merged;
+    }
   }
 
   async function saveManuringToFirebase() {
@@ -150,7 +174,7 @@
       const t = computeTotals(apps);
       const dataCells = slotsToShow.map(m => {
         const app = apps[m];
-        const editAttr = `onclick="window._manuringEditCell('${year}','${phaseName}',${b.bk},'${m}')"`;
+        const editAttr = `onclick="window._manuringEditCell('${year}','${phaseName}','${b.bk}','${m}')"`;
         return `<td style="${slotStyle(app)}" title="${m}: ${app ? (app.bags + ' bags ' + (app.fert||'')) : 'no application'}" ${editAttr}>${slotContent(app)}</td>`;
       }).join('');
 
@@ -212,6 +236,8 @@
     }
 
     const years = Object.keys(data).filter(k => /^\d{4}$/.test(k)).sort();
+    // Backfill any blocks added to the defaults after a year was first saved.
+    years.forEach(y => ensureDefaultBlocks(data[y]));
     const yearData = data[currentYear] || {};
 
     const yearOptions = years.map(y =>
@@ -314,7 +340,7 @@
     _editCtx = { year, phase, bk, month };
     const data = getManuringData();
     const phaseBlocks = (data[year] && data[year][phase] && data[year][phase].blocks) || [];
-    const block = phaseBlocks.find(b => b.bk === bk);
+    const block = phaseBlocks.find(b => String(b.bk) === String(bk));
     const existing = block && block.apps && block.apps[month] ? block.apps[month] : {};
 
     document.getElementById('manuring-edit-title').textContent =
@@ -365,7 +391,7 @@
     if (!window.state.manuring[year]) window.state.manuring[year] = JSON.parse(JSON.stringify(DEFAULT_2025));
     const phaseData = window.state.manuring[year][phase];
     if (!phaseData || !phaseData.blocks) return;
-    const block = phaseData.blocks.find(b => b.bk === bk);
+    const block = phaseData.blocks.find(b => String(b.bk) === String(bk));
     if (!block) return;
     if (!block.apps) block.apps = {};
 
@@ -386,7 +412,7 @@
     if (!window.state || !window.state.manuring || !window.state.manuring[year]) return;
     const phaseData = window.state.manuring[year][phase];
     if (!phaseData || !phaseData.blocks) return;
-    const block = phaseData.blocks.find(b => b.bk === bk);
+    const block = phaseData.blocks.find(b => String(b.bk) === String(bk));
     if (block && block.apps) delete block.apps[month];
     window._manuringCloseEdit();
     saveManuringToFirebase();
@@ -542,10 +568,10 @@
         if ((round == null || round === '') && (bags == null || bags === '') &&
             (mt == null || mt === '') && !fert) { skipped++; return; }
 
-        const bk = parseInt(bkRaw);
+        const bk = String(bkRaw).trim();
         const phaseData = yearData[phaseName];
         if (!phaseData) { skipped++; return; }
-        const block = phaseData.blocks.find(b => b.bk === bk);
+        const block = phaseData.blocks.find(b => String(b.bk) === bk);
         if (!block) { skipped++; return; }
 
         if (haRaw    != null && haRaw    !== '') block.ha    = parseFloat(haRaw)    || block.ha;
