@@ -355,6 +355,59 @@
         CHART_REG[canvasId] = new Chart(canvas.getContext('2d'), config);
     }
 
+    // ── Tree Logs ("Logs Sold") aggregation — Tree Planting workspace ─────
+    // Replaces the Oil-Palm FFB charts on the dashboard. Reads state.treeLogs
+    // (years[y].batches, each detailed with lines[] or summary-only with totals)
+    // plus the invoice registry for the RM-billed figure. The selected scope
+    // ('all' or a year) is held module-side and rescopes every card on click.
+    let _dashLogScope = 'all';
+    const tlBatchVol = (b) => !b ? 0 : (b.detailed
+        ? (b.lines || []).reduce((t, l) => t + (Number(l.volume) || 0), 0)
+        : (Number(b.totalVolume) || 0));
+    const tlBatchQty = (b) => !b ? 0 : (b.detailed
+        ? (b.lines || []).reduce((t, l) => t + (Number(l.qty) || 0), 0)
+        : (Number(b.totalQty) || 0));
+    const tlYearsSorted = (t) => (t && t.years)
+        ? Object.keys(t.years).filter(k => /^\d{4}$/.test(k)).sort() : [];
+    const tlBatchesFor = (t, scope) => {
+        const out = [];
+        (scope === 'all' ? tlYearsSorted(t) : [scope]).forEach(y => {
+            ((t.years && t.years[y] && t.years[y].batches) || []).forEach(b => out.push(b));
+        });
+        return out;
+    };
+    const tlPerYear = (t) => tlYearsSorted(t).map(y => {
+        const bs = (t.years[y].batches || []);
+        let mt = 0, pcs = 0;
+        bs.forEach(b => { mt += tlBatchVol(b); pcs += tlBatchQty(b); });
+        return { year: y, mt: Math.round(mt * 1000) / 1000, pcs: Math.round(pcs), batches: bs.length };
+    });
+    const tlMonthly = (t, scope) => {
+        const arr = new Array(12).fill(0);
+        tlBatchesFor(t, scope).forEach(b => {
+            const m = /^\d{4}-(\d{2})/.exec(b.deliveryDate || '');
+            if (m) { const i = parseInt(m[1], 10) - 1; if (i >= 0 && i < 12) arr[i] += tlBatchVol(b); }
+        });
+        return arr.map(v => Math.round(v * 1000) / 1000);
+    };
+    const tlSpeciesMix = (t, scope) => {
+        const map = {};
+        tlBatchesFor(t, scope).forEach(b => {
+            if (b.detailed) (b.lines || []).forEach(l => { const k = l.species || '?'; map[k] = (map[k] || 0) + (Number(l.volume) || 0); });
+            else { const k = b.species || '?'; map[k] = (map[k] || 0) + (Number(b.totalVolume) || 0); }
+        });
+        return map;
+    };
+    const tlBilled = (t, scope) => {
+        const inv = (t && t.invoices) || {};
+        let sum = 0, any = false;
+        Object.keys(inv).forEach(no => {
+            const r = inv[no]; if (!r || r.total == null) return;
+            if (scope === 'all' || (r.date || '').slice(0, 4) === scope) { sum += Number(r.total) || 0; any = true; }
+        });
+        return any ? sum : null;
+    };
+
     window.renderDashboard = function () {
         const wrapper = document.getElementById('dashboard-wrapper');
         if (!wrapper) return;
@@ -465,6 +518,56 @@
         const budgetEmptyMsg = `No actual or budget figures for ${yrCurr} yet.`;
         const yieldEmptyMsg = `Need harvest data and planted HA to compute yield.`;
 
+        // ── Production overview: FFB charts (Oil Palm) OR Logs Sold (Tree Planting) ──
+        const tl = s.treeLogs || {};
+        const tlYears = tlPerYear(tl);
+        const tlScope = (_dashLogScope === 'all' || tlYears.some(r => r.year === _dashLogScope)) ? _dashLogScope : 'all';
+        const tlHasLogs = tlYears.some(r => r.mt > 0 || r.batches > 0);
+        const tlScopeBatches = tlBatchesFor(tl, tlScope);
+        const tlScopeMt = tlScopeBatches.reduce((a, b) => a + tlBatchVol(b), 0);
+        const tlScopePcs = tlScopeBatches.reduce((a, b) => a + tlBatchQty(b), 0);
+        const tlScopeBilled = tlBilled(tl, tlScope);
+        const tlMonthlyArr = tlMonthly(tl, tlScope);
+        const tlSpec = tlSpeciesMix(tl, tlScope);
+        const scopeLabel = tlScope === 'all' ? 'All years' : tlScope;
+
+        const ffbSectionHtml = `
+            <h3 class="dash-section">Production overview</h3>
+            <div style="margin-bottom:1.25rem;">
+                ${chartCard('FFB Production — Total Tonnage', historyYears.length ? `${historyYears[0]} – ${yrCurr}` : `${yrPrev} vs ${yrCurr}`, 'ffbCompareChart', 'ffbCompareEmpty', ffbEmptyMsg, 320)}
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:1.25rem; margin-bottom:1.5rem;">
+                ${chartCard('Yearly Totals', yearlyTotals.length ? `${yearlyTotals[0].y} – ${yearlyTotals[yearlyTotals.length - 1].y}` : '', 'ffbYearlyChart', 'ffbYearlyEmpty', 'No yearly figures yet.', 280)}
+                ${chartCard('Actual vs Budget', yrCurr, 'ffbBudgetChart', 'ffbBudgetEmpty', budgetEmptyMsg, 280)}
+                ${chartCard('Yield (MT / HA)', `${yrPrev} vs ${yrCurr}`, 'ffbYieldChart', 'ffbYieldEmpty', yieldEmptyMsg, 280)}
+            </div>`;
+
+        const scopeChips = ['all'].concat(tlYears.map(r => r.year)).map(sc => {
+            const on = sc === tlScope, lbl = sc === 'all' ? 'All years' : sc;
+            return `<button type="button" class="tl-scope-chip" data-scope="${sc}" style="font-size:.8rem; padding:.3rem .85rem; border-radius:999px; cursor:pointer; border:1px solid ${on ? '#16a34a' : 'var(--border-color,#e5e7eb)'}; background:${on ? '#16a34a' : 'var(--bg-secondary,#f3f4f6)'}; color:${on ? '#fff' : 'var(--text-secondary,#4b5563)'};">${lbl}</button>`;
+        }).join('');
+
+        const logsSectionHtml = `
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
+                <h3 class="dash-section" style="margin:0;">Logs sold <span style="font-weight:400; font-size:.8rem; color:var(--text-muted,#6b7280);">— ${scopeLabel}</span></h3>
+                <div style="display:flex; gap:.4rem; flex-wrap:wrap;">${scopeChips}</div>
+            </div>
+            <div class="kpi-grid" style="margin:1rem 0 1.25rem;">
+                ${kpiCard('🪵', '#ecfdf5', fmt(tlScopeMt) + ' <span class="kpi-unit">MT</span>', 'Volume sold' + (tlScope === 'all' ? '' : ' (' + tlScope + ')'))}
+                ${kpiCard('🌲', '#eff4ff', Math.round(tlScopePcs).toLocaleString('en-MY'), 'Logs (pcs)')}
+                ${kpiCard('🚚', '#f5f3ff', tlScopeBatches.length, 'Deliveries')}
+                ${kpiCard('💵', '#fffbeb', tlScopeBilled != null ? ('RM ' + fmt(tlScopeBilled)) : '—', 'Billed' + (tlScope === 'all' ? '' : ' (' + tlScope + ')'))}
+            </div>
+            <div style="margin-bottom:1.25rem;">
+                ${chartCard('Volume sold per year', tlYears.length ? `${tlYears[0].year} – ${tlYears[tlYears.length - 1].year}` : '', 'tlYearChart', 'tlYearEmpty', 'No logs recorded yet. Add batches in Tree Logs Recording.', 300)}
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:1.25rem; margin-bottom:1.5rem;">
+                ${chartCard('By delivery month', scopeLabel, 'tlMonthChart', 'tlMonthEmpty', 'No dated deliveries in scope.', 280)}
+                ${chartCard('By species', 'share of volume · ' + scopeLabel, 'tlSpecChart', 'tlSpecEmpty', 'No species detail in scope.', 280)}
+            </div>`;
+
+        const productionSectionHtml = isOilPalmWS ? ffbSectionHtml : logsSectionHtml;
+
         wrapper.innerHTML = `
             <div class="dash-head">
                 <h1>Dashboard</h1>
@@ -479,15 +582,7 @@
 
             ${alertsHtml}
 
-            <h3 class="dash-section">Production overview</h3>
-            <div style="margin-bottom:1.25rem;">
-                ${chartCard('FFB Production — Total Tonnage', historyYears.length ? `${historyYears[0]} – ${yrCurr}` : `${yrPrev} vs ${yrCurr}`, 'ffbCompareChart', 'ffbCompareEmpty', ffbEmptyMsg, 320)}
-            </div>
-            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:1.25rem; margin-bottom:1.5rem;">
-                ${chartCard('Yearly Totals', yearlyTotals.length ? `${yearlyTotals[0].y} – ${yearlyTotals[yearlyTotals.length - 1].y}` : '', 'ffbYearlyChart', 'ffbYearlyEmpty', 'No yearly figures yet.', 280)}
-                ${chartCard('Actual vs Budget', yrCurr, 'ffbBudgetChart', 'ffbBudgetEmpty', budgetEmptyMsg, 280)}
-                ${chartCard('Yield (MT / HA)', `${yrPrev} vs ${yrCurr}`, 'ffbYieldChart', 'ffbYieldEmpty', yieldEmptyMsg, 280)}
-            </div>
+            ${productionSectionHtml}
 
             <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-top:1.5rem;">
                 <h3 class="dash-section" style="margin:0;">Quick access</h3>
@@ -513,6 +608,9 @@
             qaLoadInto(() => window.renderDashboard());
         }
 
+        // Production-overview charts: Oil Palm draws the FFB set; Tree Planting
+        // draws the Logs Sold set (only one section's canvases exist in the DOM).
+        if (isOilPalmWS) {
         // ---- Chart 1: FFB total tonnage, year vs year (line) ----
         drawChart('ffbCompareChart', 'ffbCompareEmpty', hasFfbData, {
             type: 'line',
@@ -716,5 +814,66 @@
                 }
             }
         });
+        } else {
+            // ── Tree Planting: "Logs Sold" charts ──
+            wrapper.querySelectorAll('.tl-scope-chip').forEach(btn => {
+                btn.onclick = () => { _dashLogScope = btn.getAttribute('data-scope'); window.renderDashboard(); };
+            });
+            // Volume sold per year (total bars; the scoped year is highlighted)
+            drawChart('tlYearChart', 'tlYearEmpty', tlHasLogs, {
+                type: 'bar',
+                data: {
+                    labels: tlYears.map(r => r.year),
+                    datasets: [{
+                        label: 'MT', data: tlYears.map(r => r.mt),
+                        backgroundColor: tlYears.map(r => (tlScope !== 'all' && r.year === tlScope) ? '#16a34a' : 'rgba(22,163,74,0.55)'),
+                        borderRadius: 6, maxBarThickness: 64
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: {
+                            label: (ctx) => `${fmt(ctx.parsed.y)} MT`,
+                            afterLabel: (ctx) => { const r = tlYears[ctx.dataIndex]; return `${r.batches} deliveries · ${Math.round(r.pcs).toLocaleString('en-MY')} pcs`; }
+                        } }
+                    },
+                    onClick: (e, els) => { if (els && els.length) { _dashLogScope = tlYears[els[0].index].year; window.renderDashboard(); } },
+                    scales: { y: { beginAtZero: true, title: { display: true, text: 'Volume (MT)' }, ticks: { callback: (v) => Number(v).toLocaleString('en-MY') } } }
+                }
+            });
+            // By delivery month (scoped)
+            drawChart('tlMonthChart', 'tlMonthEmpty', tlMonthlyArr.some(v => v > 0), {
+                type: 'bar',
+                data: { labels: MONTHS, datasets: [{ label: 'MT', data: tlMonthlyArr, backgroundColor: 'rgba(22,163,74,0.78)', borderRadius: 4, maxBarThickness: 34 }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${fmt(ctx.parsed.y)} MT` } } },
+                    scales: {
+                        y: { beginAtZero: true, title: { display: true, text: 'MT' }, ticks: { callback: (v) => Number(v).toLocaleString('en-MY') } },
+                        x: { ticks: { autoSkip: false, maxRotation: 0 }, grid: { display: false } }
+                    }
+                }
+            });
+            // By species (top 6 by volume + Others)
+            const spEntries = Object.entries(tlSpec).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+            const spTop = spEntries.slice(0, 6), spRest = spEntries.slice(6);
+            const spRestSum = spRest.reduce((t, [, v]) => t + v, 0);
+            const spLabels = spTop.map(([k]) => k).concat(spRestSum > 0 ? ['Others'] : []);
+            const spData = spTop.map(([, v]) => Math.round(v * 1000) / 1000).concat(spRestSum > 0 ? [Math.round(spRestSum * 1000) / 1000] : []);
+            const SP_COLORS = ['#16a34a', '#0ea5e9', '#8b5cf6', '#f59e0b', '#ef4444', '#14b8a6', '#94a3b8'];
+            drawChart('tlSpecChart', 'tlSpecEmpty', spData.length > 0, {
+                type: 'doughnut',
+                data: { labels: spLabels, datasets: [{ data: spData, backgroundColor: spLabels.map((_, i) => SP_COLORS[i % SP_COLORS.length]), borderWidth: 2, borderColor: '#fff' }] },
+                options: {
+                    responsive: true, maintainAspectRatio: false, cutout: '60%',
+                    plugins: {
+                        legend: { position: 'right', labels: { boxWidth: 10, font: { size: 11 } } },
+                        tooltip: { callbacks: { label: (ctx) => { const tot = spData.reduce((t, v) => t + v, 0) || 1; return `${ctx.label}: ${fmt(ctx.parsed)} MT (${(100 * ctx.parsed / tot).toFixed(1)}%)`; } } }
+                    }
+                }
+            });
+        }
     };
 })();
