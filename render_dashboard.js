@@ -391,15 +391,21 @@
         const currTotals = monthlyFfbTotals(perf[yrCurr]);
         const prevTotals = monthlyFfbTotals(perf[yrPrev]);
 
+        // The hard-coded FFB history is Oil-Palm-specific. In other workspaces
+        // (e.g. Tree Planting) don't inject it — the charts then reflect only live
+        // data (typically none there, so the empty states show instead of fake figures).
+        const isOilPalmWS = (typeof window._isOilPalmWorkspace !== 'function') || window._isOilPalmWorkspace();
+        const FFB_HIST = isOilPalmWS ? FFB_HISTORY : {};
+
         // hard-coded history years, skipping any year already covered live
-        const historyYears = Object.keys(FFB_HISTORY)
+        const historyYears = Object.keys(FFB_HIST)
             .filter(y => y !== yrCurr && y !== yrPrev && !monthlyFfbTotals(perf[y]).any)
             .sort();
         const hasFfbData = currTotals.any || prevTotals.any || historyYears.length > 0;
 
         // one bar per year: hard-coded history + any live year with data
         const sum12 = (arr) => arr.reduce((t, v) => t + (Number(v) || 0), 0);
-        const yearlyTotals = historyYears.map(y => ({ y: y, total: sum12(FFB_HISTORY[y]), color: FFB_HISTORY_COLORS[y] || '#94a3b8' }));
+        const yearlyTotals = historyYears.map(y => ({ y: y, total: sum12(FFB_HIST[y]), color: FFB_HISTORY_COLORS[y] || '#94a3b8' }));
         if (prevTotals.any) yearlyTotals.push({ y: yrPrev, total: sum12(prevTotals.arr), color: '#f59e0b' });
         if (currTotals.any) yearlyTotals.push({ y: yrCurr, total: sum12(currTotals.arr), color: '#10b981' });
         yearlyTotals.sort((a, b) => a.y.localeCompare(b.y));
@@ -516,7 +522,7 @@
                     // dashed muted lines for the hard-coded history; click the
                     // legend to hide/show any year
                     ...historyYears.map(y => ({
-                        label: y, data: FFB_HISTORY[y],
+                        label: y, data: FFB_HIST[y],
                         borderColor: FFB_HISTORY_COLORS[y] || '#94a3b8',
                         backgroundColor: 'transparent',
                         borderWidth: 1.5, borderDash: [6, 4], tension: 0.3,

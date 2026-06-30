@@ -183,6 +183,28 @@
         return String(a.batchNo).localeCompare(String(b.batchNo));
     });
 
+    // Per-species totals for a year — detailed batches contribute each line by
+    // line.species; summary-only batches contribute their whole total to their
+    // species code. Returns [{species, qty, vol}] sorted by volume (desc).
+    const tlSpeciesSummary = (year) => {
+        const map = {};
+        tlBatches(year).forEach(b => {
+            if (b.detailed) {
+                (b.lines || []).forEach(l => {
+                    const k = tlText(l.species) || '(blank)';
+                    if (!map[k]) map[k] = { qty: 0, vol: 0 };
+                    map[k].qty += tlNum(l.qty); map[k].vol += tlNum(l.volume);
+                });
+            } else {
+                const k = tlText(b.species) || '(unspecified)';
+                if (!map[k]) map[k] = { qty: 0, vol: 0 };
+                map[k].qty += tlNum(b.totalQty); map[k].vol += tlNum(b.totalVolume);
+            }
+        });
+        return Object.entries(map).map(([species, v]) => ({ species, qty: v.qty, vol: v.vol }))
+            .sort((a, b) => b.vol - a.vol);
+    };
+
     // Group detailed lines by (category, grade) preserving first-appearance order.
     const tlGroupLines = (lines) => {
         const order = [];
@@ -377,6 +399,37 @@
 
     const tlGoList = () => { _tlMode = 'list'; _tlDetailId = null; _tlEditId = null; window.renderTreeLogs(); };
 
+    // Card shown under the master list: total volume (MT) of each tree species
+    // sold in the selected year. Empty string when the year has no batches.
+    const tlSpeciesSummaryCard = (year) => {
+        const rows = tlSpeciesSummary(year);
+        if (!rows.length) return '';
+        const totQty = rows.reduce((s, r) => s + r.qty, 0);
+        const totVol = rows.reduce((s, r) => s + r.vol, 0);
+        const body = rows.map(r => `<tr style="border-bottom:1px solid var(--border-color,#eee);">
+            <td style="padding:5px 12px; font-weight:600;">${tlEsc(r.species)}</td>
+            <td style="padding:5px 12px; text-align:right; color:var(--text-secondary);">${tlInt(r.qty)}</td>
+            <td style="padding:5px 12px; text-align:right;">${tlVol(r.vol)} MT</td></tr>`).join('');
+        return `
+          <div style="${CARD} padding:0; overflow:hidden; margin-top:1.25rem; max-width:520px;">
+            <div style="padding:0.7rem 1rem; background:var(--bg-main,#f3f5f3); border-bottom:1px solid var(--border-color,#e0e0e0); font-weight:700; color:var(--text-primary);">
+              🌳 Species sold — ${tlEsc(year)}
+              <span style="font-weight:400; color:var(--text-secondary); font-size:0.82rem;">· total volume by species</span>
+            </div>
+            <table style="width:100%; border-collapse:collapse; font-size:0.88rem; color:var(--text-primary);">
+              <thead><tr style="color:var(--text-secondary);">
+                <th style="padding:6px 12px; text-align:left;">Species</th>
+                <th style="padding:6px 12px; text-align:right;">Quantity (PCS)</th>
+                <th style="padding:6px 12px; text-align:right;">Volume (MT)</th></tr></thead>
+              <tbody>${body}</tbody>
+              <tfoot><tr style="font-weight:800; border-top:2px solid var(--border-color,#ccc);">
+                <td style="padding:7px 12px; text-align:right;">Total</td>
+                <td style="padding:7px 12px; text-align:right;">${tlInt(totQty)}</td>
+                <td style="padding:7px 12px; text-align:right;">${tlVol(totVol)} MT</td></tr></tfoot>
+            </table>
+          </div>`;
+    };
+
     // ── List / master summary (ACMG style) ───────────────────────────────
     const tlRenderList = (host) => {
         const state = window.state;
@@ -493,6 +546,7 @@
               </table>
             </div>
           </div>
+          ${tlSpeciesSummaryCard(year)}
         </div>`;
 
         // Wiring

@@ -15,7 +15,7 @@
 
    Bump VERSION to invalidate all caches after big changes.
    ============================================================ */
-const VERSION = 'v17';
+const VERSION = 'v18';
 const SHELL_CACHE = 'shell-' + VERSION;
 const CDN_CACHE = 'cdn-' + VERSION;
 
