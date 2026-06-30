@@ -351,7 +351,8 @@
         const host = document.getElementById('tree-logs-wrapper');
         if (!host) return;
         const state = window.state;
-        tlEnsure();
+        const t = tlEnsure();
+        const hasAnyData = Object.keys(t.years).some(k => /^\d{4}$/.test(k) && (t.years[k].batches || []).length);
         if (!state.treeLogsYear || !/^\d{4}$/.test(state.treeLogsYear)) {
             state.treeLogsYear = tlDefaultYear();
         } else if (!_tlYearCorrected && !tlBatches(state.treeLogsYear).length) {
@@ -361,7 +362,11 @@
             const dy = tlDefaultYear();
             if (dy !== state.treeLogsYear && tlBatches(dy).length) state.treeLogsYear = dy;
         }
-        _tlYearCorrected = true;
+        // Only treat the auto-correct as "done" once data has actually loaded. If the
+        // data is still empty (a render beat init()'s async load — e.g. a #nav= deep
+        // link firing before tree_logs_data arrives), keep the flag false so the next
+        // render (after the load) can still jump to the year that has data.
+        if (hasAnyData) _tlYearCorrected = true;
         if (_tlMode === 'detail') return tlRenderDetail(host);
         if (_tlMode === 'edit') return tlRenderEditor(host);
         if (_tlMode === 'analytics') return tlRenderAnalytics(host);

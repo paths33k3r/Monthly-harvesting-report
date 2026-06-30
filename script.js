@@ -4384,6 +4384,13 @@ const runMainApplication = () => {
                 window._backupSettingsDb = db;
                 await syncBackupSettingsFromFirebase(db);
 
+                // The loading indicator is hidden early (above) so the app appears fast,
+                // but several module datasets (tree logs, maintenance, wages, wage ledger)
+                // finish loading AFTER that. A #nav= deep link or the persisted active view
+                // may already have rendered one of those views while its data was still
+                // empty — so re-render the active view now that everything has loaded.
+                try { renderSidebar(); renderTable(); } catch (e) { console.warn('post-load re-render failed:', e.message); }
+
             } catch (error) {
                 console.error(error);
                 loadingEl.innerHTML = `< p style = "color:var(--danger)" > Error initializing dashboard: ${error.message}</p > `;
