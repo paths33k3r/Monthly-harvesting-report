@@ -418,26 +418,33 @@
         if (!rows.length) return '';
         const totQty = rows.reduce((s, r) => s + r.qty, 0);
         const totVol = rows.reduce((s, r) => s + r.vol, 0);
-        const body = rows.map(r => {
-            // Species row (bold). Skip the grade sub-rows when the only grade is the
-            // '—' bucket (summary-only species, e.g. ACMG) — it would just repeat
-            // the species total.
+        let anyExpandable = false;
+        const body = rows.map((r, idx) => {
+            // A species is expandable only if it has real grade detail — summary-only
+            // species (single '—' grade, e.g. ACMG) just show their total.
             const showGrades = !(r.grades.length === 1 && r.grades[0].grade === '—');
-            const head = `<tr style="border-bottom:1px solid var(--border-color,#eee); background:var(--bg-main,#f7f9f7);">
-                <td style="padding:6px 12px; font-weight:700;">${tlEsc(r.species)}</td>
+            if (showGrades) anyExpandable = true;
+            const caret = showGrades
+                ? `<span class="tl-sp-caret" style="display:inline-block; width:1.1em; color:var(--accent,#16a34a);">▸</span>`
+                : `<span style="display:inline-block; width:1.1em;"></span>`;
+            const head = `<tr class="tl-sp-row" data-sp="${idx}" style="border-bottom:1px solid var(--border-color,#eee); background:var(--bg-main,#f7f9f7); ${showGrades ? 'cursor:pointer;' : ''}">
+                <td style="padding:6px 12px; font-weight:700;">${caret}${tlEsc(r.species)}</td>
                 <td style="padding:6px 12px; text-align:right; font-weight:700; color:var(--text-secondary);">${tlInt(r.qty)}</td>
                 <td style="padding:6px 12px; text-align:right; font-weight:700;">${tlVol(r.vol)} MT</td></tr>`;
-            const gradeRows = showGrades ? r.grades.map(g => `<tr style="border-bottom:1px solid var(--border-color,#f0f0f0);">
-                <td style="padding:3px 12px 3px 28px; color:var(--text-secondary);">${tlEsc(g.grade)}</td>
+            // Grade sub-rows are rendered but hidden until the species is expanded.
+            const gradeRows = showGrades ? r.grades.map(g => `<tr class="tl-sp-grade" data-sp="${idx}" style="display:none; border-bottom:1px solid var(--border-color,#f0f0f0);">
+                <td style="padding:3px 12px 3px 34px; color:var(--text-secondary);">${tlEsc(g.grade)}</td>
                 <td style="padding:3px 12px; text-align:right; color:var(--text-secondary);">${tlInt(g.qty)}</td>
                 <td style="padding:3px 12px; text-align:right; color:var(--text-secondary);">${tlVol(g.vol)} MT</td></tr>`).join('') : '';
             return head + gradeRows;
         }).join('');
         return `
           <div style="${CARD} padding:0; overflow:hidden; margin-top:1.25rem; max-width:520px;">
-            <div style="padding:0.7rem 1rem; background:var(--bg-main,#f3f5f3); border-bottom:1px solid var(--border-color,#e0e0e0); font-weight:700; color:var(--text-primary);">
-              🌳 Species sold — ${tlEsc(year)}
+            <div style="padding:0.6rem 1rem; background:var(--bg-main,#f3f5f3); border-bottom:1px solid var(--border-color,#e0e0e0); display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
+              <span style="font-weight:700; color:var(--text-primary);">🌳 Species sold — ${tlEsc(year)}</span>
               <span style="font-weight:400; color:var(--text-secondary); font-size:0.82rem;">· volume by species & grade</span>
+              <span style="flex:1;"></span>
+              ${anyExpandable ? `<button id="tl-sp-expand-all" data-state="closed" style="${BTN} padding:2px 10px; font-size:0.8rem;">⊞ Expand all</button>` : ''}
             </div>
             <table style="width:100%; border-collapse:collapse; font-size:0.88rem; color:var(--text-primary);">
               <thead><tr style="color:var(--text-secondary);">
@@ -451,6 +458,34 @@
                 <td style="padding:7px 12px; text-align:right;">${tlVol(totVol)} MT</td></tr></tfoot>
             </table>
           </div>`;
+    };
+
+    // Wire the collapse/expand behaviour for the species-sold card (called from
+    // tlRenderList after innerHTML is set). Collapsed by default; click a species
+    // row to toggle its grades, or use "Expand all" / "Collapse all".
+    const tlWireSpeciesCard = (host) => {
+        const setSp = (idx, expand) => {
+            host.querySelectorAll(`.tl-sp-grade[data-sp="${idx}"]`).forEach(tr => { tr.style.display = expand ? '' : 'none'; });
+            const row = host.querySelector(`.tl-sp-row[data-sp="${idx}"]`);
+            const caret = row && row.querySelector('.tl-sp-caret');
+            if (caret) caret.textContent = expand ? '▾' : '▸';
+        };
+        const isExpandable = (idx) => !!host.querySelector(`.tl-sp-grade[data-sp="${idx}"]`);
+        host.querySelectorAll('.tl-sp-row').forEach(row => {
+            const idx = row.dataset.sp;
+            if (!isExpandable(idx)) return;
+            row.onclick = () => {
+                const caret = row.querySelector('.tl-sp-caret');
+                setSp(idx, !(caret && caret.textContent === '▾'));
+            };
+        });
+        const allBtn = host.querySelector('#tl-sp-expand-all');
+        if (allBtn) allBtn.onclick = () => {
+            const expand = allBtn.dataset.state !== 'open';
+            host.querySelectorAll('.tl-sp-row').forEach(row => { if (isExpandable(row.dataset.sp)) setSp(row.dataset.sp, expand); });
+            allBtn.dataset.state = expand ? 'open' : 'closed';
+            allBtn.textContent = expand ? '⊟ Collapse all' : '⊞ Expand all';
+        };
     };
 
     // ── List / master summary (ACMG style) ───────────────────────────────
@@ -590,6 +625,7 @@
         host.querySelectorAll('.tl-open').forEach(a => a.onclick = (e) => { e.preventDefault(); _tlDetailId = a.dataset.id; _tlMode = 'detail'; window.renderTreeLogs(); });
         host.querySelectorAll('.tl-edit').forEach(b => b.onclick = () => { _tlEditId = b.dataset.id; _tlMode = 'edit'; window.renderTreeLogs(); });
         host.querySelectorAll('.tl-del').forEach(b => b.onclick = () => tlDeleteBatch(year, b.dataset.id));
+        tlWireSpeciesCard(host);
     };
 
     const tlGuardBtn = async (btn, fn) => {
