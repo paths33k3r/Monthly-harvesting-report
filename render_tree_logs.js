@@ -37,6 +37,23 @@
         'MEDN', 'MLH', 'MRTX', 'NGILAS', 'NYTO', 'PELI', 'PEPK', 'REHU', 'RESAK', 'RESK', 'SLGB',
         'TERA', 'TERE', 'UBAH'];
 
+    // ── Invoice mapping (pre-built offline) ───────────────────────────────
+    // The customer's invoices are scanned-image PDFs (no text layer), so they
+    // can't be parsed in-browser. This map was built by OCR-ing every invoice
+    // and cross-checking each line against the workbook's batch sub-totals
+    // (105/105 batches matched, zero mismatches). Keyed by invoice number
+    // (= PDF filename without extension):  invNo -> { d:date, t:totalRM, b:[batchNos] }.
+    // b:[] means the invoice has no batch in this system (orphan → archive).
+    // When the user imports the invoice PDFs, this drives the batch↔invoice
+    // links; the PDF bytes are stored separately (see tlInvoiceDb paths).
+    const TL_INVOICE_MAP = {"PFB202407002":{"d":"2024-07-31","t":229237.06,"b":["KU0624A01","KU0624A02","KU0624A03","KU0624A04","KU0624A05"]},"PFB202408003":{"d":"2024-08-30","t":142679.55,"b":["KU0624A06","KU0724A01","KU0724A02"]},"PFB202410003":{"d":"2024-10-31","t":190019.65,"b":["KU0924A01","KU0924A02","KU0924A03","KU0924A04","KU0924A05","KU0924A06"]},"PFB202412005":{"d":"2024-12-31","t":214221.46,"b":["KU1124A02","KU1124A03","KU1124A04","KU1124A05","KU1124A06","KU1124A07","KU1124A08"]},"PFB202501005":{"d":"2025-01-31","t":166926.05,"b":["KU1224A01","KU1224A02","KU1224A03","KU1224A04","KU1224A05","KU1224A06"]},"PFB202503001":{"d":"2025-03-15","t":152378.5,"b":["KU1224A07","KU0225A01","KU0225A02"]},"PFB202504005":{"d":"2025-04-30","t":95031.3,"b":["KU0325A01","KU0325A02"]},"PFB202505005":{"d":"2025-05-31","t":62692.42,"b":["KU0325A03","KU0425A01"]},"PFB202506005":{"d":"2025-06-30","t":34890.35,"b":["KU0425A02"]},"PFB202507005":{"d":"2025-07-31","t":121600.2,"b":["KU0625A01","KU0625A02"]},"PFB202509003":{"d":"2025-09-30","t":100813.95,"b":["KU0825AP01","KU0925AP01","KU0925AP02","KU0925AP03","KU0925AP04","KU0925AP05","KU0925AP06","KU0925AP07","KU0925AP08","KU0925AP09","KU0925AP10","KU0925AP11","KU0925AP12","KU0925AP13","KU0925AP14","KU0925AP15","KU0925AP16","KU0925AP17"]},"PFB202510006":{"d":"2025-10-31","t":107257.05,"b":["KU1025AP01","KU1025AP02","KU1025AP03","KU1025AP04","KU1025AP05","KU1025AP06","KU1025AP07","KU1025AP08","KU1025AP09","KU1025AP10","KU1025AP11","KU1025AP12","KU1025AP13","KU1025AP14","KU1025AP15","KU1025AP16","KU1025AP17","KU1025AP18","KU1025AP19","KU1025AP20","KU1025AP21","KU1025AP22","KU1025AP23","KU1025AP24","KU1025AP25","KU1025AP26","KU1025AP27"]},"PFB202511005":{"d":"2025-11-30","t":11982.6,"b":["KU1025AP28","KU1025AP29","KU1025AP30","KU1025AP31"]},"PFB202402001":{"d":"2024-02-05","t":87091.05,"b":["KU1223A01"]},"PFB202402004":{"d":"2024-02-29","t":101517.76,"b":["KU1223A02"]},"PFB202403002":{"d":"2024-03-18","t":99173.34,"b":["KU1223A03"]},"PFB202406005":{"d":"2024-06-30","t":184422.12,"b":["KU0524A01","KU0524A02","KU0524A03","KU0524A04"]},"PFB202411005":{"d":"2024-11-30","t":127080.91,"b":["KU1024A01","KU1024A02","KU1024A03","KU1024A04","KU1124A01"]},"PFB202309004":{"d":"2023-09-29","t":107746.01,"b":["KU0823A03"]},"PFB202310005":{"d":"2023-10-31","t":93236.81,"b":["KU1023A01"]},"PFB202311002":{"d":"2023-11-20","t":77218.0,"b":["KU1023A02"]},"PFB202311003":{"d":"2023-11-20","t":33869.6,"b":["KU1023A03"]},"PFB202311004":{"d":"2023-11-24","t":34870.5,"b":["KU1023A04"]},"PFB202311005":{"d":"2023-11-28","t":40943.9,"b":["KU1023A05"]},"PFB202312002":{"d":"2023-12-18","t":98780.15,"b":["KU1023A06"]},"PFB202308001":{"d":"2023-08-15","t":100647.79,"b":[]},"PFB202309001":{"d":"2023-09-08","t":113362.49,"b":[]},"PFB202309002":{"d":"2023-09-15","t":109615.25,"b":[]},"PFB202305002":{"d":"2023-05-18","t":46819.91,"b":[]},"PFB202305004":{"d":"2023-05-26","t":52403.94,"b":[]}};
+
+    // batchNo -> invoiceNo (inverted from the map; each batch is billed once).
+    const TL_BATCH2INV = {};
+    Object.keys(TL_INVOICE_MAP).forEach(inv => {
+        (TL_INVOICE_MAP[inv].b || []).forEach(bn => { TL_BATCH2INV[bn] = inv; });
+    });
+
     // Module-local navigation state (NOT persisted into state.treeLogs).
     let _tlMode = 'list';     // list | detail | edit | analytics | codes
     let _tlDetailId = null;   // batch id being viewed
@@ -193,6 +210,115 @@
     };
     window.saveTreeLogsData = saveTreeLogsData;
 
+    // ── Invoices (billed-out PDFs) ────────────────────────────────────────
+    // Registry lives in state.treeLogs.invoices keyed by invoiceNo:
+    //   { date, total, batchNos:[], fileName, hasPdf, uploadedAt, uploadedBy }
+    // PDF bytes are stored SEPARATELY (kept out of the main record so saves stay
+    // small) as data URLs under shared/tree_logs_invoice_files/<invoiceNo>,
+    // mirroring the Weekly module's image handling.
+    const TL_INV_FILE_PATH = 'shared/tree_logs_invoice_files';
+    const _tlInvCache = {};   // invoiceNo -> data URL (in-memory, never serialised)
+
+    const tlInvoicesObj = () => {
+        const t = tlEnsure();
+        if (!t.invoices || typeof t.invoices !== 'object') t.invoices = {};
+        return t.invoices;
+    };
+    // invoiceNo for a batch: prefer a user-saved registry link, else the built-in map.
+    const tlBatchInvoice = (batchNo) => {
+        const reg = tlInvoicesObj();
+        for (const inv in reg) { if ((reg[inv].batchNos || []).indexOf(batchNo) >= 0) return inv; }
+        return TL_BATCH2INV[batchNo] || null;
+    };
+    // Derive an invoice number from a PDF filename ("PFB202402001.pdf" -> "PFB202402001").
+    const tlInvNoFromName = (name) => String(name || '').replace(/\.[^.]+$/, '').trim().toUpperCase();
+    // Date for an invoice not in the map: from the filename PFB<YYYY><MM><seq>.
+    const tlInvDateFromNo = (invNo) => {
+        const m = /^PFB(\d{4})(\d{2})\d+$/.exec(invNo);
+        return m ? `${m[1]}-${m[2]}-01` : '';
+    };
+
+    const tlReadFileDataUrl = (file) => new Promise((res, rej) => {
+        const fr = new FileReader();
+        fr.onload = () => res(fr.result);
+        fr.onerror = () => rej(new Error('read failed'));
+        fr.readAsDataURL(file);
+    });
+    const tlUploadInvoicePdf = (invNo, dataUrl) => {
+        const db = window._treeLogsDb;
+        _tlInvCache[invNo] = dataUrl;
+        if (!db) return Promise.resolve();
+        return db.ref(`${TL_INV_FILE_PATH}/${invNo}`).set(dataUrl);
+    };
+    const tlLoadInvoicePdf = async (invNo) => {
+        if (_tlInvCache[invNo]) return _tlInvCache[invNo];
+        const db = window._treeLogsDb;
+        if (!db) return null;
+        const snap = await db.ref(`${TL_INV_FILE_PATH}/${invNo}`).once('value');
+        const v = snap.val();
+        if (v) _tlInvCache[invNo] = v;
+        return v;
+    };
+    const tlDeleteInvoicePdf = (invNo) => {
+        delete _tlInvCache[invNo];
+        const db = window._treeLogsDb;
+        return db ? db.ref(`${TL_INV_FILE_PATH}/${invNo}`).set(null) : Promise.resolve();
+    };
+    // Open a stored invoice PDF in a new tab (data URL → Blob URL so the browser
+    // renders it inline instead of blocking a long data: navigation).
+    const tlOpenInvoice = async (invNo) => {
+        try {
+            const dataUrl = await tlLoadInvoicePdf(invNo);
+            if (!dataUrl) { if (window.notify) window.notify(`No PDF stored for ${invNo} yet — import it first.`, 'warn'); return; }
+            const resp = await fetch(dataUrl);
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            const w = window.open(url, '_blank');
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+            if (!w && window.notify) window.notify('Pop-up blocked — allow pop-ups to view the bill.', 'warn');
+        } catch (e) {
+            if (window.notify) window.notify('Could not open invoice: ' + e.message, 'error');
+        }
+    };
+
+    // Import one or many invoice PDFs. Filenames are the invoice numbers; the
+    // built-in map supplies date/total/linked-batches, with filename fallback
+    // for orphans (stored as a viewable, unlinked archive entry).
+    const importInvoices = async (fileList) => {
+        if (typeof window._canEdit === 'function' && !window._canEdit('treelogs')) {
+            if (window.notify) window.notify('You do not have edit access for tree logs.', 'warn'); return;
+        }
+        const files = Array.from(fileList || []).filter(f => /\.pdf$/i.test(f.name));
+        if (!files.length) { if (window.notify) window.notify('Please choose one or more invoice PDF files.', 'warn'); return; }
+        const reg = tlInvoicesObj();
+        let linked = 0, archived = 0, failed = 0;
+        const me = (window.state && window.state.currentUserEmail) || (window._fb && window._fb.auth && window._fb.auth.currentUser && window._fb.auth.currentUser.email) || '';
+        for (const f of files) {
+            const invNo = tlInvNoFromName(f.name);
+            try {
+                const dataUrl = await tlReadFileDataUrl(f);
+                await tlUploadInvoicePdf(invNo, dataUrl);
+                const mapped = TL_INVOICE_MAP[invNo];
+                const batchNos = mapped ? (mapped.b || []).slice() : [];
+                reg[invNo] = {
+                    date: mapped ? mapped.d : tlInvDateFromNo(invNo),
+                    total: mapped ? mapped.t : null,
+                    batchNos: batchNos,
+                    fileName: f.name,
+                    hasPdf: true,
+                    uploadedAt: new Date().toISOString(),
+                    uploadedBy: me
+                };
+                if (batchNos.length) linked++; else archived++;
+            } catch (e) { console.error('invoice import', invNo, e); failed++; }
+        }
+        await saveTreeLogsData(true);
+        if (typeof window.logAudit === 'function') window.logAudit('import', 'tree_logs_invoices', `${files.length} PDF(s): ${linked} linked, ${archived} archive`, '');
+        window.renderTreeLogs();
+        if (window.notify) window.notify(`Imported ${files.length - failed} invoice PDF(s): ${linked} linked to batches, ${archived} archive${failed ? `, ${failed} failed` : ''}.`, failed ? 'warn' : 'success');
+    };
+    window.importTreeLogInvoices = importInvoices;
+
     const tlEnsureExcelJS = async () => {
         if (typeof window.ExcelJS !== 'undefined') return;
         await new Promise((res, rej) => {
@@ -232,6 +358,7 @@
         if (_tlMode === 'edit') return tlRenderEditor(host);
         if (_tlMode === 'analytics') return tlRenderAnalytics(host);
         if (_tlMode === 'codes') return tlRenderCodeLists(host);
+        if (_tlMode === 'invoices') return tlRenderInvoices(host);
         return tlRenderList(host);
     };
 
@@ -258,7 +385,7 @@
 
         let rowsHtml = '';
         if (!batches.length) {
-            rowsHtml = `<tr><td colspan="7" style="padding:2rem; text-align:center; color:var(--text-secondary);">
+            rowsHtml = `<tr><td colspan="8" style="padding:2rem; text-align:center; color:var(--text-secondary);">
                 No log batches for <strong>${tlEsc(year)}</strong> yet.<br><br>
                 Click <strong>➕ New Batch</strong> to add one, or <strong>📥 Import</strong> to load your Excel.</td></tr>`;
         } else {
@@ -268,7 +395,7 @@
                 const label = mk === 'zzz-none'
                     ? 'No delivery date'
                     : `${TL_MONTH_LONG[parseInt(mk.slice(5, 7), 10) - 1]} ${mk.slice(0, 4)}`;
-                rowsHtml += `<tr style="background:var(--bg-main,#f1f5f1);"><td colspan="7" style="padding:6px 10px; font-weight:700; color:var(--text-primary); border-top:2px solid var(--border-color,#ccc);">${tlEsc(label)} <span style="font-weight:400; color:var(--text-secondary);">· ${list.length} batch(es)</span></td></tr>`;
+                rowsHtml += `<tr style="background:var(--bg-main,#f1f5f1);"><td colspan="8" style="padding:6px 10px; font-weight:700; color:var(--text-primary); border-top:2px solid var(--border-color,#ccc);">${tlEsc(label)} <span style="font-weight:400; color:var(--text-secondary);">· ${list.length} batch(es)</span></td></tr>`;
                 list.forEach((b, i) => {
                     const t = tlBatchTotals(b);
                     mq += t.qty; mv += t.volume;
@@ -278,6 +405,18 @@
                     const batchCell = b.detailed
                         ? `<a href="#" class="tl-open" data-id="${tlEsc(b.id)}" style="color:var(--accent,#16a34a); font-weight:600; text-decoration:none;">📋 ${tlEsc(b.batchNo)}</a>`
                         : `<span title="Summary-only batch (no detail)">Σ ${tlEsc(b.batchNo)}</span>`;
+                    // Invoice cell: 🧾 + invoice no. Clickable when the PDF is stored;
+                    // greyed (PDF not uploaded yet) when only the link is known.
+                    const invNo = tlBatchInvoice(b.batchNo);
+                    let invCell = '<span style="color:var(--text-secondary);">—</span>';
+                    if (invNo) {
+                        const reg = tlInvoicesObj()[invNo];
+                        if (reg && reg.hasPdf) {
+                            invCell = `<a href="#" class="tl-inv" data-inv="${tlEsc(invNo)}" title="Open bill ${tlEsc(invNo)}" style="color:var(--accent,#16a34a); font-weight:600; text-decoration:none; white-space:nowrap;">🧾 ${tlEsc(invNo)}</a>`;
+                        } else {
+                            invCell = `<span title="Billed on ${tlEsc(invNo)} — PDF not imported yet" style="color:var(--text-secondary); white-space:nowrap;">🧾 ${tlEsc(invNo)}</span>`;
+                        }
+                    }
                     const actions = canEdit
                         ? `<button class="tl-edit" data-id="${tlEsc(b.id)}" title="Edit batch" style="${BTN} padding:2px 8px;">✏</button>
                            <button class="tl-del" data-id="${tlEsc(b.id)}" title="Delete batch" style="${BTN} padding:2px 8px; color:var(--danger,#dc2626);">🗑</button>`
@@ -286,6 +425,7 @@
                         <td style="padding:5px 10px; text-align:right; color:var(--text-secondary);">${i + 1}</td>
                         <td style="padding:5px 10px; white-space:nowrap;">${tlFmtDate(b.deliveryDate)}</td>
                         <td style="padding:5px 10px; white-space:nowrap;">${batchCell}</td>
+                        <td style="padding:5px 10px;">${invCell}</td>
                         <td style="padding:5px 10px;">${speciesCell}</td>
                         <td style="padding:5px 10px; text-align:right;">${tlInt(t.qty)}</td>
                         <td style="padding:5px 10px; text-align:right;">${tlVol(t.volume)}</td>
@@ -293,7 +433,7 @@
                 });
                 grandQty += mq; grandVol += mv;
                 rowsHtml += `<tr style="background:var(--bg-card,#fff); font-weight:600;">
-                    <td colspan="4" style="padding:5px 10px; text-align:right; color:var(--text-secondary);">Sub-total</td>
+                    <td colspan="5" style="padding:5px 10px; text-align:right; color:var(--text-secondary);">Sub-total</td>
                     <td style="padding:5px 10px; text-align:right;">${tlInt(mq)}</td>
                     <td style="padding:5px 10px; text-align:right;">${tlVol(mv)}</td><td></td></tr>`;
             });
@@ -314,6 +454,7 @@
             ${canEdit ? `<button id="tl-import" style="${BTN}">📥 Import</button><input type="file" id="tl-import-input" accept=".xlsx,.xls" style="display:none;">` : ''}
             <button id="tl-template" style="${BTN}">⬇ Template</button>
             <button id="tl-export" style="${BTN}">⬇ Excel</button>
+            <button id="tl-invoices" style="${BTN}">🧾 Invoices</button>
             <button id="tl-analytics" style="${BTN}">📊 Analytics</button>
             <button id="tl-codes" style="${BTN}">⚙ Code Lists</button>
           </div>
@@ -325,6 +466,7 @@
                   <th style="padding:8px 10px; text-align:right; border-bottom:2px solid var(--border-color,#ccc);">No.</th>
                   <th style="padding:8px 10px; text-align:left; border-bottom:2px solid var(--border-color,#ccc);">Delivery Date</th>
                   <th style="padding:8px 10px; text-align:left; border-bottom:2px solid var(--border-color,#ccc);">Batch No.</th>
+                  <th style="padding:8px 10px; text-align:left; border-bottom:2px solid var(--border-color,#ccc);">Invoice</th>
                   <th style="padding:8px 10px; text-align:left; border-bottom:2px solid var(--border-color,#ccc);">Species / Detail</th>
                   <th style="padding:8px 10px; text-align:right; border-bottom:2px solid var(--border-color,#ccc);">Quantity (PCS)</th>
                   <th style="padding:8px 10px; text-align:right; border-bottom:2px solid var(--border-color,#ccc);">Volume (MT)</th>
@@ -332,7 +474,7 @@
                 </tr></thead>
                 <tbody>${rowsHtml}</tbody>
                 ${batches.length ? `<tfoot><tr style="font-weight:800; font-size:1rem; border-top:3px double var(--border-color,#999);">
-                  <td colspan="4" style="padding:10px; text-align:right;">GRAND TOTAL (${year})</td>
+                  <td colspan="5" style="padding:10px; text-align:right;">GRAND TOTAL (${year})</td>
                   <td style="padding:10px; text-align:right;">${tlInt(grandQty)}</td>
                   <td style="padding:10px; text-align:right;">${tlVol(grandVol)}</td><td></td></tr></tfoot>` : ''}
               </table>
@@ -345,6 +487,7 @@
         const byId = (id) => host.querySelector(id);
         if (byId('#tl-template')) byId('#tl-template').onclick = () => tlGuardBtn(byId('#tl-template'), () => downloadTreeLogsTemplate(year));
         if (byId('#tl-export')) byId('#tl-export').onclick = () => tlGuardBtn(byId('#tl-export'), () => downloadTreeLogsReport(year));
+        if (byId('#tl-invoices')) byId('#tl-invoices').onclick = () => { _tlMode = 'invoices'; window.renderTreeLogs(); };
         if (byId('#tl-analytics')) byId('#tl-analytics').onclick = () => { _tlMode = 'analytics'; window.renderTreeLogs(); };
         if (byId('#tl-codes')) byId('#tl-codes').onclick = () => { _tlMode = 'codes'; window.renderTreeLogs(); };
         if (canEdit && byId('#tl-new')) byId('#tl-new').onclick = () => { _tlMode = 'edit'; _tlEditId = null; window.renderTreeLogs(); };
@@ -353,6 +496,7 @@
             byId('#tl-import').onclick = () => input.click();
             input.onchange = async () => { const f = input.files[0]; input.value = ''; if (f) await importTreeLogs(f, year); };
         }
+        host.querySelectorAll('.tl-inv').forEach(a => a.onclick = (e) => { e.preventDefault(); tlOpenInvoice(a.dataset.inv); });
         host.querySelectorAll('.tl-open').forEach(a => a.onclick = (e) => { e.preventDefault(); _tlDetailId = a.dataset.id; _tlMode = 'detail'; window.renderTreeLogs(); });
         host.querySelectorAll('.tl-edit').forEach(b => b.onclick = () => { _tlEditId = b.dataset.id; _tlMode = 'edit'; window.renderTreeLogs(); });
         host.querySelectorAll('.tl-del').forEach(b => b.onclick = () => tlDeleteBatch(year, b.dataset.id));
@@ -385,6 +529,116 @@
             window.notify(msg, 'info');
         }
         if (typeof window.logAudit === 'function') window.logAudit('delete', 'tree_logs', `${year}: ${removed.batchNo}`, year);
+    };
+
+    const tlMoney = (n) => (n == null || n === '') ? '—' : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    const tlDeleteInvoice = (invNo) => {
+        const reg = tlInvoicesObj();
+        const removed = reg[invNo];
+        if (!removed) return;
+        const cachedPdf = _tlInvCache[invNo];   // keep for undo within this session
+        delete reg[invNo];
+        tlDeleteInvoicePdf(invNo);
+        if (cachedPdf) _tlInvCache[invNo] = cachedPdf;
+        saveTreeLogsData(true);
+        window.renderTreeLogs();
+        const restore = () => {
+            reg[invNo] = removed;
+            if (cachedPdf) tlUploadInvoicePdf(invNo, cachedPdf);
+            saveTreeLogsData(true);
+            window.renderTreeLogs();
+        };
+        if (typeof window.notifyUndo === 'function') window.notifyUndo(`Invoice "${invNo}" removed.`, restore);
+        else if (window.notify) window.notify(`Invoice "${invNo}" removed.`, 'info');
+        if (typeof window.logAudit === 'function') window.logAudit('delete', 'tree_logs_invoices', invNo, '');
+    };
+
+    // ── Invoice Manager ───────────────────────────────────────────────────
+    const tlRenderInvoices = (host) => {
+        const canEdit = tlCanEdit();
+        const reg = tlInvoicesObj();
+        // Union of the built-in map + anything already uploaded (e.g. 2022 archive).
+        const nos = Array.from(new Set([...Object.keys(TL_INVOICE_MAP), ...Object.keys(reg)]));
+        const info = (no) => {
+            const r = reg[no], m = TL_INVOICE_MAP[no];
+            const batchNos = (r && r.batchNos) ? r.batchNos : (m ? (m.b || []) : []);
+            return {
+                date: (r && r.date) || (m && m.d) || tlInvDateFromNo(no),
+                total: (r && r.total != null) ? r.total : (m ? m.t : null),
+                batchNos, hasPdf: !!(r && r.hasPdf)
+            };
+        };
+        nos.sort((a, b) => (info(b).date || '').localeCompare(info(a).date || '') || a.localeCompare(b));
+
+        let uploaded = 0, linkedCnt = 0, archiveCnt = 0;
+        let rows = '';
+        nos.forEach(no => {
+            const x = info(no);
+            if (x.hasPdf) uploaded++;
+            const isArchive = !x.batchNos.length;
+            if (isArchive) archiveCnt++; else linkedCnt++;
+            const linkCell = isArchive
+                ? `<span style="color:var(--text-secondary);">Archive (no batch)</span>`
+                : `<span title="${tlEsc(x.batchNos.join(', '))}">${x.batchNos.length} batch(es)</span>`;
+            const pdfCell = x.hasPdf
+                ? `<a href="#" class="tl-inv-open" data-inv="${tlEsc(no)}" style="color:var(--accent,#16a34a); font-weight:600; text-decoration:none;">📄 View</a>`
+                : `<span style="color:var(--text-secondary);">not imported</span>`;
+            const del = (canEdit && x.hasPdf) ? `<button class="tl-inv-del" data-inv="${tlEsc(no)}" title="Remove invoice" style="${BTN} padding:2px 8px; color:var(--danger,#dc2626);">🗑</button>` : '';
+            rows += `<tr style="border-bottom:1px solid var(--border-color,#eee); ${x.hasPdf ? '' : 'opacity:0.7;'}">
+                <td style="padding:5px 10px; white-space:nowrap; font-weight:600;">${tlEsc(no)}</td>
+                <td style="padding:5px 10px; white-space:nowrap;">${tlFmtDate(x.date)}</td>
+                <td style="padding:5px 10px; text-align:right; white-space:nowrap;">${tlMoney(x.total)}</td>
+                <td style="padding:5px 10px;">${linkCell}</td>
+                <td style="padding:5px 10px; text-align:center;">${pdfCell}</td>
+                <td style="padding:5px 10px; text-align:center;">${del}</td></tr>`;
+        });
+
+        host.innerHTML = `
+        <div style="padding:1.25rem 1.5rem; max-width:1000px;">
+          <div style="display:flex; gap:0.6rem; align-items:center; margin-bottom:1rem;">
+            <button id="tl-back" style="${BTN}">← Back to summary</button>
+            <div style="flex:1;"></div>
+            ${canEdit ? `<button id="tl-inv-import" style="${BTN} background:var(--accent,#16a34a); color:#fff; border-color:var(--accent,#16a34a);">📥 Import invoice PDFs</button>
+            <input type="file" id="tl-inv-input" accept="application/pdf,.pdf" multiple style="display:none;">` : ''}
+          </div>
+          <h2 style="margin:0 0 0.25rem; color:var(--text-primary);">🧾 Invoices</h2>
+          <p style="color:var(--text-secondary); margin:0 0 1rem; font-size:0.85rem;">
+            Billed-out invoices. Each links to its delivery batch(es); the batch list shows 🧾 with a link to open the bill.
+            ${canEdit ? 'Import your invoice PDFs (file names like <code>PFB202402001.pdf</code>) — they auto-link to batches and store in the cloud.' : ''}</p>
+          <div style="${CARD} display:flex; gap:1.5rem; flex-wrap:wrap;">
+            <div><div style="font-size:1.4rem; font-weight:800; color:var(--text-primary);">${nos.length}</div><div style="font-size:0.78rem; color:var(--text-secondary);">invoices known</div></div>
+            <div><div style="font-size:1.4rem; font-weight:800; color:var(--accent,#16a34a);">${uploaded}</div><div style="font-size:0.78rem; color:var(--text-secondary);">PDFs imported</div></div>
+            <div><div style="font-size:1.4rem; font-weight:800; color:var(--text-primary);">${linkedCnt}</div><div style="font-size:0.78rem; color:var(--text-secondary);">linked to batches</div></div>
+            <div><div style="font-size:1.4rem; font-weight:800; color:var(--text-primary);">${archiveCnt}</div><div style="font-size:0.78rem; color:var(--text-secondary);">archive (no batch)</div></div>
+          </div>
+          <div style="${CARD} padding:0; overflow:hidden;">
+            <div style="overflow:auto;">
+              <table style="width:100%; border-collapse:collapse; font-size:0.85rem; color:var(--text-primary);">
+                <thead><tr style="background:var(--bg-card,#fff);">
+                  <th style="padding:8px 10px; text-align:left; border-bottom:2px solid var(--border-color,#ccc);">Invoice No.</th>
+                  <th style="padding:8px 10px; text-align:left; border-bottom:2px solid var(--border-color,#ccc);">Date</th>
+                  <th style="padding:8px 10px; text-align:right; border-bottom:2px solid var(--border-color,#ccc);">Amount (RM)</th>
+                  <th style="padding:8px 10px; text-align:left; border-bottom:2px solid var(--border-color,#ccc);">Linked</th>
+                  <th style="padding:8px 10px; text-align:center; border-bottom:2px solid var(--border-color,#ccc);">Bill PDF</th>
+                  <th style="padding:8px 10px; border-bottom:2px solid var(--border-color,#ccc);"></th>
+                </tr></thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>`;
+
+        host.querySelector('#tl-back').onclick = tlGoList;
+        host.querySelectorAll('.tl-inv-open').forEach(a => a.onclick = (e) => { e.preventDefault(); tlOpenInvoice(a.dataset.inv); });
+        if (canEdit) {
+            host.querySelectorAll('.tl-inv-del').forEach(b => b.onclick = () => tlDeleteInvoice(b.dataset.inv));
+            const imp = host.querySelector('#tl-inv-import'), inp = host.querySelector('#tl-inv-input');
+            if (imp && inp) {
+                imp.onclick = () => inp.click();
+                inp.onchange = async () => { const fs = inp.files; inp.value = ''; if (fs && fs.length) await tlGuardBtn(imp, () => importInvoices(fs)); };
+            }
+        }
     };
 
     // ── Detail (KU style) ─────────────────────────────────────────────────
@@ -436,6 +690,14 @@
             <div style="color:var(--text-secondary); margin:2px 0;">SUMMARIZED LOGS SPECIES</div>
             <div style="font-weight:600; color:var(--text-primary);">BATCH: ${tlEsc(b.batchNo)}</div>
             <div style="color:var(--text-secondary); font-size:0.85rem;">Delivery Completed Date: ${tlFmtDate(b.deliveryDate)}</div>
+            ${(() => {
+                const invNo = tlBatchInvoice(b.batchNo);
+                if (!invNo) return '';
+                const reg = tlInvoicesObj()[invNo];
+                return (reg && reg.hasPdf)
+                    ? `<div style="font-size:0.85rem; margin-top:2px;">Invoice: <a href="#" id="tl-detail-inv" data-inv="${tlEsc(invNo)}" style="color:var(--accent,#16a34a); font-weight:600; text-decoration:none;">🧾 ${tlEsc(invNo)}</a></div>`
+                    : `<div style="font-size:0.85rem; margin-top:2px; color:var(--text-secondary);">Invoice: 🧾 ${tlEsc(invNo)} <span style="font-size:0.78rem;">(PDF not imported)</span></div>`;
+            })()}
           </div>
           <div style="${CARD} padding:0; overflow:hidden;">
             <table style="width:100%; border-collapse:collapse; font-size:0.85rem; color:var(--text-primary);">
@@ -458,6 +720,8 @@
         host.querySelector('#tl-back').onclick = tlGoList;
         if (canEdit && host.querySelector('#tl-edit')) host.querySelector('#tl-edit').onclick = () => { _tlEditId = b.id; _tlMode = 'edit'; window.renderTreeLogs(); };
         host.querySelector('#tl-batch-xls').onclick = () => tlGuardBtn(host.querySelector('#tl-batch-xls'), () => downloadTreeLogsBatch(year, b.id));
+        const dInv = host.querySelector('#tl-detail-inv');
+        if (dInv) dInv.onclick = (e) => { e.preventDefault(); tlOpenInvoice(dInv.dataset.inv); };
     };
 
     // ── Editor (manual entry) ─────────────────────────────────────────────

@@ -229,6 +229,14 @@ Plus: **Analytics** (qty+volume by species/grade/category) and **editable Code L
 - **Export** (`window.downloadTreeLogsReport(year)`) — a `Summary {year}` sheet (ACMG layout) + one KU-style sheet per detailed batch. `window.downloadTreeLogsBatch(year,id)` exports a single batch's KU sheet.
 - Saved via `window.saveTreeLogsData(silent)`. Deletes use `window.notifyUndo` (session-long Recently-deleted recovery).
 
+### Invoices (billed-out PDFs) — `_tlMode === 'invoices'`
+- **What/why:** the user's billed invoices (one per delivery run, often covering several batches) are scanned **image PDFs with no text layer**, so they can't be parsed in-browser. The list now shows an **Invoice column after Batch No.** (🧾 + invoice no, a link that opens the stored PDF) and an **🧾 Invoices** toolbar button → **Invoice Manager** (`tlRenderInvoices`): import PDFs, see all invoices (linked + archive), open/delete each.
+- **Pre-built mapping** `TL_INVOICE_MAP` (embedded constant, invNo → `{d:date, t:totalRM, b:[batchNos]}`) + inverted `TL_BATCH2INV`. Built offline by OCR-ing all 40 invoices and cross-checking each line against the workbook's per-(category,grade) **sub-totals** (newer invoices also embed `(KU…)` codes; some 2024-H1 invoices aggregate several batches → resolved by subset-sum). **Result: 105/105 batches linked, zero mismatches.** 5 invoices are orphan-archive (pre-Aug-2023 deliveries not in the system); the 10×2022 invoices have no batch and are auto-archived from their filename.
+- **Import** (`window.importTreeLogInvoices(fileList)`, edit-gated) — multi-select PDFs; invoice no = filename (`PFB202402001.pdf` → `PFB202402001`); date/total/batchNos from `TL_INVOICE_MAP` (filename-derived date for orphans); stores each PDF as a **data URL** under `shared/tree_logs_invoice_files/<invNo>` (kept out of the main record, like Weekly images) and writes a registry entry to `state.treeLogs.invoices[invNo] = {date,total,batchNos,fileName,hasPdf,uploadedAt,uploadedBy}`.
+- **Open** (`tlOpenInvoice`) loads the data URL → Blob URL → new tab (avoids long-`data:`-nav blocking). **Helpers:** `tlUploadInvoicePdf`/`tlLoadInvoicePdf` (in-memory `_tlInvCache`)/`tlDeleteInvoicePdf`; `tlBatchInvoice(batchNo)` (registry → map fallback). Delete uses `notifyUndo` (cache-based restore within the session).
+- **Column states:** clickable 🧾 when the PDF is imported; greyed 🧾 (link known, PDF not yet imported) otherwise; `—` if the batch has no invoice. Same link appears in the batch detail card (`#tl-detail-inv`).
+- DB rule `shared/tree_logs_invoice_files` (+ `ws/$ws` mirror) gated by `treelogs` — **must be published in the Firebase console** or invoice-PDF writes are denied.
+
 ---
 
 ## Weekly Activity module (render_weekly.js)
