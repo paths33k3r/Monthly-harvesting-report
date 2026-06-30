@@ -636,7 +636,10 @@
             const imp = host.querySelector('#tl-inv-import'), inp = host.querySelector('#tl-inv-input');
             if (imp && inp) {
                 imp.onclick = () => inp.click();
-                inp.onchange = async () => { const fs = inp.files; inp.value = ''; if (fs && fs.length) await tlGuardBtn(imp, () => importInvoices(fs)); };
+                // NB: snapshot to an array BEFORE clearing inp.value — setting
+                // value='' empties the live FileList reference (so `inp.files`
+                // grabbed beforehand would already be length 0).
+                inp.onchange = async () => { const fs = Array.from(inp.files || []); inp.value = ''; if (fs.length) await tlGuardBtn(imp, () => importInvoices(fs)); };
             }
         }
     };
