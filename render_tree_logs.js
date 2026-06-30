@@ -46,7 +46,7 @@
     // b:[] means the invoice has no batch in this system (orphan → archive).
     // When the user imports the invoice PDFs, this drives the batch↔invoice
     // links; the PDF bytes are stored separately (see tlInvoiceDb paths).
-    const TL_INVOICE_MAP = {"PFB202407002":{"d":"2024-07-31","t":229237.06,"b":["KU0624A01","KU0624A02","KU0624A03","KU0624A04","KU0624A05"]},"PFB202408003":{"d":"2024-08-30","t":142679.55,"b":["KU0624A06","KU0724A01","KU0724A02"]},"PFB202410003":{"d":"2024-10-31","t":190019.65,"b":["KU0924A01","KU0924A02","KU0924A03","KU0924A04","KU0924A05","KU0924A06"]},"PFB202412005":{"d":"2024-12-31","t":214221.46,"b":["KU1124A02","KU1124A03","KU1124A04","KU1124A05","KU1124A06","KU1124A07","KU1124A08"]},"PFB202501005":{"d":"2025-01-31","t":166926.05,"b":["KU1224A01","KU1224A02","KU1224A03","KU1224A04","KU1224A05","KU1224A06"]},"PFB202503001":{"d":"2025-03-15","t":152378.5,"b":["KU1224A07","KU0225A01","KU0225A02"]},"PFB202504005":{"d":"2025-04-30","t":95031.3,"b":["KU0325A01","KU0325A02"]},"PFB202505005":{"d":"2025-05-31","t":62692.42,"b":["KU0325A03","KU0425A01"]},"PFB202506005":{"d":"2025-06-30","t":34890.35,"b":["KU0425A02"]},"PFB202507005":{"d":"2025-07-31","t":121600.2,"b":["KU0625A01","KU0625A02"]},"PFB202509003":{"d":"2025-09-30","t":100813.95,"b":["KU0825AP01","KU0925AP01","KU0925AP02","KU0925AP03","KU0925AP04","KU0925AP05","KU0925AP06","KU0925AP07","KU0925AP08","KU0925AP09","KU0925AP10","KU0925AP11","KU0925AP12","KU0925AP13","KU0925AP14","KU0925AP15","KU0925AP16","KU0925AP17"]},"PFB202510006":{"d":"2025-10-31","t":107257.05,"b":["KU1025AP01","KU1025AP02","KU1025AP03","KU1025AP04","KU1025AP05","KU1025AP06","KU1025AP07","KU1025AP08","KU1025AP09","KU1025AP10","KU1025AP11","KU1025AP12","KU1025AP13","KU1025AP14","KU1025AP15","KU1025AP16","KU1025AP17","KU1025AP18","KU1025AP19","KU1025AP20","KU1025AP21","KU1025AP22","KU1025AP23","KU1025AP24","KU1025AP25","KU1025AP26","KU1025AP27"]},"PFB202511005":{"d":"2025-11-30","t":11982.6,"b":["KU1025AP28","KU1025AP29","KU1025AP30","KU1025AP31"]},"PFB202402001":{"d":"2024-02-05","t":87091.05,"b":["KU1223A01"]},"PFB202402004":{"d":"2024-02-29","t":101517.76,"b":["KU1223A02"]},"PFB202403002":{"d":"2024-03-18","t":99173.34,"b":["KU1223A03"]},"PFB202406005":{"d":"2024-06-30","t":184422.12,"b":["KU0524A01","KU0524A02","KU0524A03","KU0524A04"]},"PFB202411005":{"d":"2024-11-30","t":127080.91,"b":["KU1024A01","KU1024A02","KU1024A03","KU1024A04","KU1124A01"]},"PFB202309004":{"d":"2023-09-29","t":107746.01,"b":["KU0823A03"]},"PFB202310005":{"d":"2023-10-31","t":93236.81,"b":["KU1023A01"]},"PFB202311002":{"d":"2023-11-20","t":77218.0,"b":["KU1023A02"]},"PFB202311003":{"d":"2023-11-20","t":33869.6,"b":["KU1023A03"]},"PFB202311004":{"d":"2023-11-24","t":34870.5,"b":["KU1023A04"]},"PFB202311005":{"d":"2023-11-28","t":40943.9,"b":["KU1023A05"]},"PFB202312002":{"d":"2023-12-18","t":98780.15,"b":["KU1023A06"]},"PFB202308001":{"d":"2023-08-15","t":100647.79,"b":[]},"PFB202309001":{"d":"2023-09-08","t":113362.49,"b":[]},"PFB202309002":{"d":"2023-09-15","t":109615.25,"b":[]},"PFB202305002":{"d":"2023-05-18","t":46819.91,"b":[]},"PFB202305004":{"d":"2023-05-26","t":52403.94,"b":[]}};
+    const TL_INVOICE_MAP = {"PFB202407002":{"d":"2024-07-31","t":229237.06,"b":["KU0624A01","KU0624A02","KU0624A03","KU0624A04","KU0624A05"]},"PFB202408003":{"d":"2024-08-30","t":142679.55,"b":["KU0624A06","KU0724A01","KU0724A02"]},"PFB202410003":{"d":"2024-10-31","t":190019.65,"b":["KU0924A01","KU0924A02","KU0924A03","KU0924A04","KU0924A05","KU0924A06"]},"PFB202412005":{"d":"2024-12-31","t":214221.46,"b":["KU1124A02","KU1124A03","KU1124A04","KU1124A05","KU1124A06","KU1124A07","KU1124A08"]},"PFB202501005":{"d":"2025-01-31","t":166926.05,"b":["KU1224A01","KU1224A02","KU1224A03","KU1224A04","KU1224A05","KU1224A06"]},"PFB202503001":{"d":"2025-03-15","t":152378.5,"b":["KU1224A07","KU0225A01","KU0225A02"]},"PFB202504005":{"d":"2025-04-30","t":95031.3,"b":["KU0325A01","KU0325A02"]},"PFB202505005":{"d":"2025-05-31","t":62692.42,"b":["KU0325A03","KU0425A01"]},"PFB202506005":{"d":"2025-06-30","t":34890.35,"b":["KU0425A02"]},"PFB202507005":{"d":"2025-07-31","t":121600.2,"b":["KU0625A01","KU0625A02"]},"PFB202509003":{"d":"2025-09-30","t":100813.95,"b":["KU0825AP01","KU0925AP01","KU0925AP02","KU0925AP03","KU0925AP04","KU0925AP05","KU0925AP06","KU0925AP07","KU0925AP08","KU0925AP09","KU0925AP10","KU0925AP11","KU0925AP12","KU0925AP13","KU0925AP14","KU0925AP15","KU0925AP16","KU0925AP17"]},"PFB202510006":{"d":"2025-10-31","t":107257.05,"b":["KU1025AP01","KU1025AP02","KU1025AP03","KU1025AP04","KU1025AP05","KU1025AP06","KU1025AP07","KU1025AP08","KU1025AP09","KU1025AP10","KU1025AP11","KU1025AP12","KU1025AP13","KU1025AP14","KU1025AP15","KU1025AP16","KU1025AP17","KU1025AP18","KU1025AP19","KU1025AP20","KU1025AP21","KU1025AP22","KU1025AP23","KU1025AP24","KU1025AP25","KU1025AP26","KU1025AP27"]},"PFB202511005":{"d":"2025-11-30","t":11982.6,"b":["KU1025AP28","KU1025AP29","KU1025AP30","KU1025AP31"]},"PFB202402001":{"d":"2024-02-05","t":87091.05,"b":["KU1223A01"]},"PFB202402004":{"d":"2024-02-29","t":101517.76,"b":["KU1223A02"]},"PFB202403002":{"d":"2024-03-18","t":99173.34,"b":["KU1223A03"]},"PFB202406005":{"d":"2024-06-30","t":184422.12,"b":["KU0524A01","KU0524A02","KU0524A03","KU0524A04"]},"PFB202411005":{"d":"2024-11-30","t":127080.91,"b":["KU1024A01","KU1024A02","KU1024A03","KU1024A04","KU1124A01"]},"PFB202309004":{"d":"2023-09-29","t":107746.01,"b":["KU0823A03"]},"PFB202310005":{"d":"2023-10-31","t":93236.81,"b":["KU1023A01"]},"PFB202311002":{"d":"2023-11-20","t":77218.0,"b":["KU1023A02"]},"PFB202311003":{"d":"2023-11-20","t":33869.6,"b":["KU1023A03"]},"PFB202311004":{"d":"2023-11-24","t":34870.5,"b":["KU1023A04"]},"PFB202311005":{"d":"2023-11-28","t":40943.9,"b":["KU1023A05"]},"PFB202312002":{"d":"2023-12-18","t":98780.15,"b":["KU1023A06"]},"PFB202308001":{"d":"2023-08-15","t":100647.79,"b":[]},"PFB202309001":{"d":"2023-09-08","t":113362.49,"b":[]},"PFB202309002":{"d":"2023-09-15","t":109615.25,"b":[]},"PFB202305002":{"d":"2023-05-18","t":46819.91,"b":[]},"PFB202305004":{"d":"2023-05-26","t":52403.94,"b":[]},"PFB202205001":{"d":"2022-05-15","t":84740.25,"b":["PFB202205001"]},"PFB202208001":{"d":"2022-08-15","t":84363.63,"b":["PFB202208001"]},"PFB202209001":{"d":"2022-09-01","t":51075.67,"b":["PFB202209001"]},"PFB202209002":{"d":"2022-09-06","t":30391.03,"b":["PFB202209002"]},"PFB202209003":{"d":"2022-09-08","t":85136.8,"b":["PFB202209003"]},"PFB202209006":{"d":"2022-09-23","t":90471.52,"b":["PFB202209006"]},"PFB202210001":{"d":"2022-10-06","t":94313.67,"b":["PFB202210001"]},"PFB202211005":{"d":"2022-11-30","t":98989.58,"b":["PFB202211005"]},"PFB202212001":{"d":"2022-12-15","t":107520.21,"b":["PFB202212001"]},"PFB202212004":{"d":"2022-12-21","t":54840.37,"b":["PFB202212004"]}};
 
     // batchNo -> invoiceNo (inverted from the map; each batch is billed once).
     const TL_BATCH2INV = {};
@@ -272,6 +272,28 @@
         for (const inv in reg) { if ((reg[inv].batchNos || []).indexOf(batchNo) >= 0) return inv; }
         return TL_BATCH2INV[batchNo] || null;
     };
+    // Backfill registry entries from the built-in map. Invoices imported before
+    // their map entry existed (the 2022 bills were stored as filename-only archives
+    // with no amount/links) get their amount, linked batch(es) and real delivery
+    // date filled in. Idempotent — only fills null/empty/placeholder fields, so it
+    // changes data (and triggers a save) at most once.
+    const tlReconcileInvoices = () => {
+        const reg = tlInvoicesObj();
+        let changed = false;
+        for (const no of Object.keys(TL_INVOICE_MAP)) {
+            const r = reg[no]; if (!r) continue;        // only patch invoices already imported
+            const m = TL_INVOICE_MAP[no];
+            if (r.total == null && m.t != null) { r.total = m.t; changed = true; }
+            if ((!Array.isArray(r.batchNos) || !r.batchNos.length) && (m.b || []).length) {
+                r.batchNos = m.b.slice(); changed = true;
+            }
+            // replace the filename placeholder date (YYYY-MM-01) with the real one
+            if (m.d && r.date !== m.d && /^\d{4}-\d{2}-01$/.test(r.date || '')) {
+                r.date = m.d; changed = true;
+            }
+        }
+        return changed;
+    };
     // Derive an invoice number from a PDF filename ("PFB202402001.pdf" -> "PFB202402001").
     const tlInvNoFromName = (name) => String(name || '').replace(/\.[^.]+$/, '').trim().toUpperCase();
     // Date for an invoice not in the map: from the filename PFB<YYYY><MM><seq>.
@@ -386,6 +408,7 @@
         if (!host) return;
         const state = window.state;
         const t = tlEnsure();
+        if (tlReconcileInvoices()) saveTreeLogsData(true);
         const hasAnyData = Object.keys(t.years).some(k => /^\d{4}$/.test(k) && (t.years[k].batches || []).length);
         if (!state.treeLogsYear || !/^\d{4}$/.test(state.treeLogsYear)) {
             state.treeLogsYear = tlDefaultYear();
