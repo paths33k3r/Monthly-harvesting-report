@@ -45,25 +45,58 @@ const wkCleanBlock = (s) => String(s || '').replace(/^\s*(blk|block)\s*/i, '').t
 // alone no longer flags a week.)
 const wkIsArchivedAge = (week) => !!(week && week.archive && week.archive.archivedToDrive);
 
-// Capture the device's current GPS position for in-app field logging. Resolves
-// { lat, lng } as numbers (rounded to ~0.1 m) or rejects with a user-friendly
-// message. Works offline — GPS needs no internet. High accuracy, 15 s timeout.
+// Capture the device's current GPS position for in-app field logging. Rather
+// than take the FIRST fix (usually a coarse Wi-Fi/cell estimate returned before
+// the GPS chip has locked satellites), it WATCHES for a few seconds and keeps
+// the most accurate reading, exiting early once a fix is good enough. Resolves
+// { lat, lng, accuracy } (accuracy in metres, smaller = better) or rejects with
+// a user-friendly message. Works offline — GPS needs no internet.
+const WK_GPS_GOOD_ENOUGH_M = 12;    // stop early once a fix is at least this accurate
+const WK_GPS_SAMPLE_MS     = 10000; // otherwise keep the best fix seen within this window
 const wkGetLocation = () => new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
         reject(new Error('This device/browser does not support GPS location.'));
         return;
     }
-    navigator.geolocation.getCurrentPosition(
-        (pos) => resolve({
-            lat: +pos.coords.latitude.toFixed(6),
-            lng: +pos.coords.longitude.toFixed(6)
-        }),
-        (err) => reject(new Error(
-            err && err.code === 1
-                ? 'Location permission denied — allow location access for this site and try again.'
-                : 'Could not get a GPS fix. Make sure location is turned on (and you are outdoors), then try again.'
-        )),
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+    let best = null;        // best { lat, lng, accuracy } seen so far
+    let watchId = null;
+    let settled = false;
+    const stop = () => {
+        if (watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+        clearTimeout(timer);
+    };
+    const finish = () => {
+        if (settled) return;
+        settled = true;
+        stop();
+        if (best) resolve(best);
+        else reject(new Error('Could not get a GPS fix. Make sure location is turned on (and you are outdoors), then try again.'));
+    };
+    // Overall sampling window — after this, resolve with the best fix so far.
+    const timer = setTimeout(finish, WK_GPS_SAMPLE_MS);
+    watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+            const acc = pos.coords.accuracy; // metres; smaller = more accurate
+            if (!best || (acc != null && acc < best.accuracy)) {
+                best = {
+                    lat: +pos.coords.latitude.toFixed(6),
+                    lng: +pos.coords.longitude.toFixed(6),
+                    accuracy: acc != null ? Math.round(acc) : null
+                };
+            }
+            // GPS has converged — no need to keep the radio running.
+            if (acc != null && acc <= WK_GPS_GOOD_ENOUGH_M) finish();
+        },
+        (err) => {
+            // Permission denial is fatal; transient errors (e.g. a single timeout)
+            // are ignored so a later reading in the window can still succeed.
+            if (err && err.code === 1 && !settled) {
+                settled = true;
+                stop();
+                reject(new Error('Location permission denied — allow location access for this site and try again.'));
+            }
+        },
+        { enableHighAccuracy: true, timeout: WK_GPS_SAMPLE_MS, maximumAge: 0 }
     );
 });
 
@@ -1505,6 +1538,41 @@ const wkRenderObservations = (yearStr, week, host) => {
             link.textContent = '📍 map'; link.style.cssText = 'font-size:0.8rem;';
             coordRow.appendChild(link);
         }
+        // GPS accuracy badge — shows the fix quality of captures that recorded it
+        // (green ≤ good threshold, amber ≤ 30 m, red beyond). Older captures with
+        // no stored accuracy simply omit it.
+        if (o.accuracy != null && isFinite(o.accuracy)) {
+            const col = o.accuracy <= WK_GPS_GOOD_ENOUGH_M ? '#16a34a' : (o.accuracy <= 30 ? '#d97706' : '#ef4444');
+            const acc = document.createElement('span');
+            acc.textContent = `±${o.accuracy} m`;
+            acc.title = `GPS accuracy of this fix — smaller is better. Under ${WK_GPS_GOOD_ENOUGH_M} m is excellent; over ~30 m, consider re-capturing.`;
+            acc.style.cssText = `font-size:0.72rem; font-weight:600; color:${col}; border:1px solid ${col}; border-radius:10px; padding:0.02rem 0.4rem;`;
+            coordRow.appendChild(acc);
+        }
+        // 🎯 Re-capture — take a fresh GPS reading for this observation (handy when a
+        // fix came back poor; uses the same best-of-window sampling as capture).
+        if (editable) {
+            const recap = document.createElement('button');
+            recap.textContent = '🎯 re-capture';
+            recap.title = 'Take a fresh GPS reading for this observation — stand under open sky and wait a moment';
+            recap.style.cssText = 'font-size:0.75rem; border:1px solid var(--accent); color:var(--accent); border-radius:6px; background:transparent; cursor:pointer; padding:0.2rem 0.5rem;';
+            recap.onclick = async () => {
+                const prev = recap.textContent;
+                recap.disabled = true; recap.textContent = '⏳ locating…';
+                try {
+                    const loc = await wkGetLocation();
+                    o.lat = loc.lat; o.lng = loc.lng; o.accuracy = loc.accuracy;
+                    saveWeeklyActivityData();
+                    if (typeof window.logAudit === 'function') window.logAudit('update', 'weekly', 'Re-capture GPS', o.id);
+                    wkRenderWeekEditor(host, yearStr, week);
+                    window.notify('Location updated' + (loc.accuracy != null ? ` · GPS ±${loc.accuracy} m` : '') + '.', 'success');
+                } catch (e) {
+                    recap.disabled = false; recap.textContent = prev;
+                    window.notify('Could not update location: ' + e.message, 'warn');
+                }
+            };
+            coordRow.appendChild(recap);
+        }
         fields.appendChild(coordRow);
         card.appendChild(fields);
 
@@ -1580,7 +1648,7 @@ const wkRenderObservations = (yearStr, week, host) => {
             // Create + persist the observation up front so the entry (and the GPS
             // fix) can never be lost to a slow or failed photo upload — the same
             // "save before the photo" guarantee the KMZ import relies on.
-            const obs = { id: wkUid(), block: '', caption: '', notes: '', lat: null, lng: null, photoPath: null, photoType: null };
+            const obs = { id: wkUid(), block: '', caption: '', notes: '', lat: null, lng: null, accuracy: null, photoPath: null, photoType: null };
             week.observations.push(obs);
             saveWeeklyActivityData();
 
@@ -1588,7 +1656,7 @@ const wkRenderObservations = (yearStr, week, host) => {
             // upload may time out offline (wkWithTimeout) without losing the entry.
             let gpsMsg = '';
             const gpsP = wkGetLocation()
-                .then(loc => { obs.lat = loc.lat; obs.lng = loc.lng; })
+                .then(loc => { obs.lat = loc.lat; obs.lng = loc.lng; obs.accuracy = loc.accuracy; })
                 .catch(e => { gpsMsg = e.message; });
             let stored = false;
             try {
@@ -1609,7 +1677,8 @@ const wkRenderObservations = (yearStr, week, host) => {
             } else if (gpsMsg) {
                 window.notify('Photo saved on the phone' + (navigator.onLine ? '' : ' (will upload when back online)') + ', but location was not captured: ' + gpsMsg, 'warn');
             } else {
-                window.notify('Observation captured. Photo saved on the phone' + (navigator.onLine ? ' and uploading…' : ' — it will upload when you are back online.'), 'success');
+                const accTxt = (obs.accuracy != null) ? ` · GPS ±${obs.accuracy} m` : '';
+                window.notify('Observation captured' + accTxt + '. Photo saved on the phone' + (navigator.onLine ? ' and uploading…' : ' — it will upload when you are back online.'), 'success');
             }
         };
         capLbl.appendChild(capInput);
