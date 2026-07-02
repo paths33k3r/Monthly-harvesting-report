@@ -15,7 +15,7 @@
 
    Bump VERSION to invalidate all caches after big changes.
    ============================================================ */
-const VERSION = 'v20';
+const VERSION = 'v21';
 const SHELL_CACHE = 'shell-' + VERSION;
 const CDN_CACHE = 'cdn-' + VERSION;
 
@@ -28,6 +28,7 @@ const SHELL_PRECACHE = [
     './field.manifest.json',
     './style.css',
     './script.js',
+    './workspace.js',
     './app_boot.js',
     './app_user_mgmt.js',
     './ui_enhancements.js',
@@ -39,13 +40,22 @@ const SHELL_PRECACHE = [
     './render_maintenance.js',
     './render_weekly.js',
     './render_ironhorse.js',
+    './render_wages.js',
+    './render_wages_ledger.js',
+    './render_tree_logs.js',
     './render_ytd_report.js',
     './render_rainfall.js',
-        './render_current_vs_prev.js',
+    './render_current_vs_prev.js',
     './render_audit.js',
     './templates.js',
     './ffbData.js',
-    './rainfallData.js'
+    './rainfallData.js',
+    './manifest.json',
+    './grouped_data.json',
+    './harvesting_performance_reports.json',
+    // Excel report templates — precached so report downloads work offline
+    './Report samples/Havesting Performance Dec 2025.xlsx',
+    './Report samples/Rainfall 2024 vs 2025 up to Dec 2025.xlsx'
 ];
 
 const CDN_HOSTS = [

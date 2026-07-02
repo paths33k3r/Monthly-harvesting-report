@@ -224,7 +224,7 @@
         (lines || []).forEach(l => {
             const cat = tlText(l.category) || '—';
             const grade = tlText(l.grade) || '—';
-            const key = cat + ' ' + grade;
+            const key = cat + '\x00' + grade;
             if (!map[key]) { map[key] = { category: cat, grade, rows: [], qty: 0, volume: 0 }; order.push(key); }
             map[key].rows.push(l);
             map[key].qty += tlNum(l.qty);

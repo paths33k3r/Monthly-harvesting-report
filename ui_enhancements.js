@@ -584,6 +584,27 @@
             if (!proto || proto._unsavedPatched) return true;
             const origSet = proto.set;
             proto.set = function (...args) {
+                // Load/save race guard (see window._sharedLoadOk in script.js
+                // init): refuse to write a shared section whose cloud read has
+                // not succeeded yet — otherwise a failed load leaves an empty
+                // in-memory section that this write would persist over the
+                // real cloud data. Only tracked sections are ever blocked;
+                // untracked paths (weekly_images, audit_log, …) pass through.
+                try {
+                    if (window._sharedLoadOk) {
+                        const m = String(this.toString()).match(/\/(shared\/.+)$/);
+                        if (m) {
+                            // un-namespace workspace paths: shared/ws/<id>/x → shared/x
+                            const p = m[1].replace(/^shared\/ws\/[^/]+\//, 'shared/');
+                            const blocked = Object.keys(window._sharedLoadOk).some(k =>
+                                window._sharedLoadOk[k] === false && (p === k || p.indexOf(k + '/') === 0));
+                            if (blocked) {
+                                if (window.notify) window.notify('This section has not finished loading from the cloud — saving is blocked to protect your data. Wait a moment or reload the page.', 'error', 6000);
+                                return Promise.reject(new Error('write blocked: cloud data for this section is not loaded'));
+                            }
+                        }
+                    }
+                } catch (_) { /* the guard must never break a legit save */ }
                 const result = origSet.apply(this, args);
                 try {
                     if (String(this.toString()).indexOf('/shared/') !== -1) {

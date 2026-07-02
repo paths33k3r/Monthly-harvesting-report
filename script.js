@@ -4173,9 +4173,49 @@ const runMainApplication = () => {
                     }
                 };
 
-                // Main DB Fetch — shared across all users
+                // ── Load/save race guard ────────────────────────────────────
+                // Right after a reload the RTDB auth token can lag behind
+                // onAuthStateChanged, so early reads can fail (or hang while
+                // offline). A failed read must never leave an empty in-memory
+                // section that a later save persists over the real cloud data.
+                // Every shared section starts as NOT loaded; each flag flips to
+                // true only once its read genuinely succeeds (empty included).
+                // The patched Reference.set() in ui_enhancements.js refuses
+                // writes to any section whose flag is still false.
+                window._sharedLoadOk = {
+                    'shared/app_state': false,
+                    'shared/spraying_data': false,
+                    'shared/manuring_data': false,
+                    'shared/ironhorse_data': false,
+                    'shared/weekly_activity_data': false,
+                    'shared/wages_data': false,
+                    'shared/wages_ledger_data': false,
+                    'shared/tree_logs_data': false,
+                    'shared/maintenance_data': false
+                };
+                const readWithTimeout = (path, ms = 8000) => Promise.race([
+                    db.ref(path).once('value'),
+                    new Promise((_, rej) => setTimeout(() => rej(new Error('read timed out')), ms))
+                ]);
+                // Set when the app_state read fails outright — the cloud is
+                // unreachable (offline / rules), so the other section reads are
+                // skipped rather than left to hang; their flags stay false,
+                // which keeps every section read-only until a reload.
+                let cloudUnreachable = false;
+
+                // Main DB Fetch — shared across all users. Retried: the first
+                // read after a reload is the one the auth-token lag hits.
                 try {
-                    let snapshot = await db.ref('shared/app_state').once('value');
+                    let snapshot = null;
+                    for (let attempt = 1; attempt <= 4; attempt++) {
+                        try { snapshot = await readWithTimeout('shared/app_state'); break; }
+                        catch (e) {
+                            console.warn(`app_state load attempt ${attempt} failed:`, e.message);
+                            if (attempt === 4) throw e;
+                            await new Promise(r => setTimeout(r, 500 * attempt));
+                        }
+                    }
+                    window._sharedLoadOk['shared/app_state'] = true;
                     let cloudData = snapshot.val();
 
                     // Check if shared state has real data (not just an empty shell written by a new user)
@@ -4207,13 +4247,21 @@ const runMainApplication = () => {
                     }
                 } catch (e) {
                     console.error("Firebase read error:", e);
-                    // Fallback completely to local if offline or error
-                    await loadLocalOrFresh();
+                    // Do NOT fall back to localStorage / fresh seeding here —
+                    // both of those paths end in saveState(true), which would
+                    // overwrite the real cloud data with stale or blank state.
+                    // Boot read-only instead: the flags above stay false, so
+                    // writes to every section are blocked until a reload.
+                    cloudUnreachable = true;
+                    window.notify('Could not load cloud data — editing is disabled to protect it. Check your connection and reload the page.', 'error', 12000);
+                    finishInit();
                 }
 
                 // Load Spraying data (shared across all users)
                 try {
-                    let spraySnap = await db.ref('shared/spraying_data').once('value');
+                    if (cloudUnreachable) throw new Error('cloud unreachable — skipped');
+                    let spraySnap = await readWithTimeout('shared/spraying_data');
+                    window._sharedLoadOk['shared/spraying_data'] = true;
                     let sprayData = spraySnap.val();
 
                     // Check if shared spraying data has real content
@@ -4254,7 +4302,8 @@ const runMainApplication = () => {
 
                 // Load Manuring data (shared across all users)
                 try {
-                    const manuringSnap = await db.ref('shared/manuring_data').once('value');
+                    if (cloudUnreachable) throw new Error('cloud unreachable — skipped');
+                    const manuringSnap = await readWithTimeout('shared/manuring_data');
                     const manuringData = manuringSnap.val();
                     if (manuringData) {
                         state.manuring = JSON.parse(manuringData);
@@ -4267,6 +4316,7 @@ const runMainApplication = () => {
                         state.manuring['2025'] = JSON.parse(JSON.stringify(window._manuringDefault2025));
                     }
                     window._manuringDb = db;
+                    window._sharedLoadOk['shared/manuring_data'] = true;
                 } catch (e) {
                     console.warn("Could not load manuring data:", e.message);
                     if (!state.manuring) state.manuring = {};
@@ -4274,7 +4324,8 @@ const runMainApplication = () => {
 
                 // Load Iron Horse data (shared across all users)
                 try {
-                    const ihSnap = await db.ref('shared/ironhorse_data').once('value');
+                    if (cloudUnreachable) throw new Error('cloud unreachable — skipped');
+                    const ihSnap = await readWithTimeout('shared/ironhorse_data');
                     const ihData = ihSnap.val();
                     if (ihData) {
                         state.ironHorse = JSON.parse(ihData);
@@ -4282,6 +4333,7 @@ const runMainApplication = () => {
                     } else {
                         if (!state.ironHorse) state.ironHorse = { assets: {}, expenses: {} };
                     }
+                    window._sharedLoadOk['shared/ironhorse_data'] = true;
                 } catch (e) {
                     console.warn("Could not load Iron Horse data:", e.message);
                     if (!state.ironHorse) state.ironHorse = { assets: {}, expenses: {} };
@@ -4292,7 +4344,8 @@ const runMainApplication = () => {
                 // lazily by render_weekly.js (no Firebase Storage — Blaze-only now).
                 window._weeklyDb = db;
                 try {
-                    const wkSnap = await db.ref('shared/weekly_activity_data').once('value');
+                    if (cloudUnreachable) throw new Error('cloud unreachable — skipped');
+                    const wkSnap = await readWithTimeout('shared/weekly_activity_data');
                     const wkData = wkSnap.val();
                     if (wkData) {
                         state.weekly = JSON.parse(wkData);
@@ -4300,6 +4353,7 @@ const runMainApplication = () => {
                     } else if (!state.weekly) {
                         state.weekly = {};
                     }
+                    window._sharedLoadOk['shared/weekly_activity_data'] = true;
                 } catch (e) {
                     console.warn("Could not load Weekly Activity data:", e.message);
                     if (!state.weekly) state.weekly = {};
@@ -4308,7 +4362,8 @@ const runMainApplication = () => {
                 // Load Rate of Wages data (payment calc — shared across all users)
                 window._wagesDb = db;
                 try {
-                    const wgSnap = await db.ref('shared/wages_data').once('value');
+                    if (cloudUnreachable) throw new Error('cloud unreachable — skipped');
+                    const wgSnap = await readWithTimeout('shared/wages_data');
                     const wgData = wgSnap.val();
                     if (wgData) {
                         state.wages = JSON.parse(wgData);
@@ -4316,6 +4371,7 @@ const runMainApplication = () => {
                     } else if (!state.wages) {
                         state.wages = {};
                     }
+                    window._sharedLoadOk['shared/wages_data'] = true;
                 } catch (e) {
                     console.warn("Could not load Wages data:", e.message);
                     if (!state.wages) state.wages = {};
@@ -4324,7 +4380,8 @@ const runMainApplication = () => {
                 // Load Wage Ledger data (detailed actuals import — shared across all users)
                 window._wagesLedgerDb = db;
                 try {
-                    const wlSnap = await db.ref('shared/wages_ledger_data').once('value');
+                    if (cloudUnreachable) throw new Error('cloud unreachable — skipped');
+                    const wlSnap = await readWithTimeout('shared/wages_ledger_data');
                     const wlData = wlSnap.val();
                     if (wlData) {
                         state.wagesLedger = JSON.parse(wlData);
@@ -4332,6 +4389,7 @@ const runMainApplication = () => {
                     } else if (!state.wagesLedger) {
                         state.wagesLedger = {};
                     }
+                    window._sharedLoadOk['shared/wages_ledger_data'] = true;
                 } catch (e) {
                     console.warn("Could not load Wage Ledger data:", e.message);
                     if (!state.wagesLedger) state.wagesLedger = {};
@@ -4345,9 +4403,9 @@ const runMainApplication = () => {
                 // actually succeeds (genuine-empty included).
                 window._treeLogsDb = db;
                 window._treeLogsLoaded = false;
-                for (let attempt = 1; attempt <= 4; attempt++) {
+                for (let attempt = 1; attempt <= 4 && !cloudUnreachable; attempt++) {
                     try {
-                        const tlSnap = await db.ref('shared/tree_logs_data').once('value');
+                        const tlSnap = await readWithTimeout('shared/tree_logs_data');
                         const tlData = tlSnap.val();
                         if (tlData) {
                             state.treeLogs = JSON.parse(tlData);
@@ -4356,6 +4414,7 @@ const runMainApplication = () => {
                             state.treeLogs = {};
                         }
                         window._treeLogsLoaded = true;
+                        window._sharedLoadOk['shared/tree_logs_data'] = true;
                         break;
                     } catch (e) {
                         console.warn(`Tree Logs load attempt ${attempt} failed:`, e.message);
@@ -4367,7 +4426,8 @@ const runMainApplication = () => {
                 // Load Maintenance data (gangs, work log, gantt — shared across all users)
                 window._maintenanceDb = db;
                 try {
-                    const mntSnap = await db.ref('shared/maintenance_data').once('value');
+                    if (cloudUnreachable) throw new Error('cloud unreachable — skipped');
+                    const mntSnap = await readWithTimeout('shared/maintenance_data');
                     const mntData = mntSnap.val();
                     if (mntData) {
                         state.maintenance = JSON.parse(mntData);
@@ -4375,6 +4435,7 @@ const runMainApplication = () => {
                     } else if (!state.maintenance) {
                         state.maintenance = {};
                     }
+                    window._sharedLoadOk['shared/maintenance_data'] = true;
                 } catch (e) {
                     console.warn("Could not load Maintenance data:", e.message);
                     if (!state.maintenance) state.maintenance = {};
@@ -4382,7 +4443,7 @@ const runMainApplication = () => {
 
                 // Sync backup settings from Firebase so all devices share the same policy
                 window._backupSettingsDb = db;
-                await syncBackupSettingsFromFirebase(db);
+                if (!cloudUnreachable) await syncBackupSettingsFromFirebase(db);
 
                 // The loading indicator is hidden early (above) so the app appears fast,
                 // but several module datasets (tree logs, maintenance, wages, wage ledger)
@@ -4393,7 +4454,7 @@ const runMainApplication = () => {
 
             } catch (error) {
                 console.error(error);
-                loadingEl.innerHTML = `< p style = "color:var(--danger)" > Error initializing dashboard: ${error.message}</p > `;
+                loadingEl.innerHTML = `<p style="color:var(--danger)">Error initializing dashboard: ${sEsc(error.message)}</p>`;
             }
         }; // end init
 

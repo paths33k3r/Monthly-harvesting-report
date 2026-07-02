@@ -235,7 +235,12 @@
     // ── The calculation engine ──────────────────────────────────────────
     const wgCompute = (yearStr, gang, month) => {
         const yd = wgEnsureYear(yearStr);
-        const m = wgGangMonth(yearStr, gang, month);
+        // Read-only month lookup — wgGangMonth would CREATE the month record,
+        // and wgCompute is also called for every gang by the Excel report;
+        // stamping empty months there blocks wgMaybeCarry's carry-forward
+        // (which only seeds brand-new months) and persists junk on save.
+        const stored = yd.gangs[gang] && yd.gangs[gang].months && yd.gangs[gang].months[month];
+        const m = stored || { ffbRate: '', penaltyBunches: '', grossMtOverride: '', dailyLines: [] };
         const blocksMt = wgGangBlocks(yearStr, gang, month);
         const autoGross = Object.values(blocksMt).reduce((s, v) => s + v, 0);
         const hasOverride = m.grossMtOverride != null && m.grossMtOverride !== '';
@@ -617,11 +622,15 @@
     window.downloadWagesReport = async (year, month) => {
         await wgEnsureExcelJS();
         const gangs = wgGangList(year);
-        // include a gang if it has any computed component for the month
+        // include a gang if it has any computed component for the month, or an
+        // explicitly edited month record. (NOT c.ffbRate — the effective-default
+        // rate is always > 0, which would list every gang as an all-zero row.)
         const rows = [];
+        const yd = window.state.wages && window.state.wages[year];
         gangs.forEach(g => {
             const c = wgCompute(year, g, month);
-            const hasData = c.grossMt > 0 || c.dailyPay > 0 || c.penalty > 0 || c.ffbRate > 0;
+            const stored = yd && yd.gangs && yd.gangs[g] && yd.gangs[g].months && yd.gangs[g].months[month];
+            const hasData = c.grossMt > 0 || c.dailyPay > 0 || c.penalty > 0 || wgMonthHasData(stored);
             if (hasData) rows.push({ gang: g, c });
         });
 
