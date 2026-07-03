@@ -190,6 +190,17 @@ Top-level sidebar menu **💵 Rate of Wages** (id `sidebar-wages`, between Iron 
 
 ---
 
+## Wages Variance module (render_wages_variance.js)
+
+**"⚖️ Variance"** — third sub-tab under 💵 Rate of Wages (`sidebar-wages-variance`, view type `wages_variance`, wrapper `wages-variance-wrapper`). Puts the Calculator's monthly **estimate** (`window.wgCompute`) beside the Wage Ledger's imported **actuals** per gang and flags the difference. **Purely derived** — reads `state.wages` + `state.wagesLedger`, stores nothing (no Firebase path, no rules change, no save fn); menu key `wages` shared.
+- Per-gang row: Est (FFB pay / daily / penalty / total) | Act (Harvester / Driver&Loader / Job Card / total) | Diff RM & % | status chip (≤5% OK green · ≤15% check amber · beyond red · grey "no calc entry" · amber "no actuals"). Sorted by |diff| desc; shares `state.wagesYear`/`wagesMonth` with the other wages tabs.
+- A gang counts as "has estimate" only when a **stored** Calculator month exists (bare `wgCompute` would invent default-rate numbers).
+- **Gang-name resolution** (`wvResolveGang`): payroll labels ("WENDERLINUS") → app names ("Wenderlinus Gang") via exact-ci → ignore-"gang"-word → unique first-word → unique 5-letter prefix; resolved aliases shown under the name, unresolvable labels keep their own row + a ⚠ note.
+- Ledger pay per row mirrors `SCHEMES[].payFields` (`WV_PAY` — keep in sync with render_wages_ledger.js).
+- `window.downloadWagesVarianceReport(year,month)` — monotone ExcelJS sheet mirroring the table; also registered in the Reports panel's Generate-All ZIP (`ALL_REPORT_DEFS` key `wages_var` in render_reports.js).
+
+---
+
 ## Tree Logs Recording module (render_tree_logs.js)
 
 ### Overview

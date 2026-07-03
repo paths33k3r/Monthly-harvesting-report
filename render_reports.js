@@ -670,6 +670,7 @@
         { key: 'manuring', label: '🌿 Manuring (annual)',          fn: (y) => window._downloadManuringExcel(y) },  // always full year — annual report
         { key: 'ih',       label: '🐎 Iron Horse — Cost per FFB MT', fn: (y) => window.downloadIronHorseCostPerFFBMt(y) },
         { key: 'wages',    label: '💵 Rate of Wages',              fn: (y, m) => window.downloadWagesReport(y, m) },
+        { key: 'wages_var', label: '⚖️ Wages Variance (est vs actual)', fn: (y, m) => window.downloadWagesVarianceReport(y, m) },
     ];
 
     // Runs each selected report generator, transparently intercepts the file it
