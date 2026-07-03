@@ -1444,258 +1444,430 @@ const wkRenderWeekEditor = (host, yearStr, week) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────
-// Observations list
+// Observations — shared card builder + two views: the classic list and a
+// one-at-a-time "pager" (◀ ▶) so field capture never means scrolling past
+// every earlier observation. Capture/Add buttons sit at the TOP of the section.
 // ─────────────────────────────────────────────────────────────────────
+
+// View mode is a per-device preference; the pager is the default on phones
+// (field mode / narrow screens), the list on desktop.
+let _wkObsMode = null;
+const wkObsMode = () => {
+    if (_wkObsMode) return _wkObsMode;
+    let saved = null;
+    try { saved = localStorage.getItem('wk_obs_view'); } catch (e) {}
+    if (saved === 'list' || saved === 'pager') return (_wkObsMode = saved);
+    const phone = document.body.classList.contains('field-mode') || window.matchMedia('(max-width: 768px)').matches;
+    return (_wkObsMode = phone ? 'pager' : 'list');
+};
+const _wkObsPage = {};   // weekId -> pager position (session-only; survives editor re-renders)
+let _wkObsNav = null;    // { el, go } — ←/→ key target, rebound on every pager render
+
+// ←/→ page the observations when a pager is on screen and the user is not
+// typing in a field. Installed once; the isConnected guard makes it inert
+// after the pager is re-rendered or the user leaves the view.
+let _wkObsKeysOn = false;
+const wkInstallObsKeys = () => {
+    if (_wkObsKeysOn) return;
+    _wkObsKeysOn = true;
+    document.addEventListener('keydown', (e) => {
+        if (!_wkObsNav || !_wkObsNav.el || !_wkObsNav.el.isConnected) return;
+        const a = document.activeElement;
+        if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT')) return;
+        if (e.key === 'ArrowLeft') { e.preventDefault(); _wkObsNav.go(-1); }
+        else if (e.key === 'ArrowRight') { e.preventDefault(); _wkObsNav.go(1); }
+    });
+};
+
+// Full-screen photo viewer — tap any observation photo to inspect it.
+const wkShowPhotoFull = (src, caption) => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed; inset:0; z-index:100000; background:rgba(0,0,0,0.92); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.6rem; padding:1rem; cursor:zoom-out;';
+    const img = document.createElement('img');
+    img.src = src;
+    img.style.cssText = 'max-width:100%; max-height:86vh; object-fit:contain; border-radius:6px;';
+    ov.appendChild(img);
+    if (caption) {
+        const cap = document.createElement('div');
+        cap.textContent = caption;
+        cap.style.cssText = 'color:#fff; font-size:0.9rem; text-align:center; max-width:92vw;';
+        ov.appendChild(cap);
+    }
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    const close = () => { ov.remove(); document.removeEventListener('keydown', onKey); };
+    ov.onclick = close;
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(ov);
+};
+
+// One observation card, used by both views. `large` = pager mode: the card
+// stacks vertically and the photo takes the full width (object-fit:contain so
+// nothing is cropped while reviewing).
+const wkObsCard = (yearStr, week, host, o, idx, large) => {
+    const editable = wkCanEdit();
+    const blockOpts = wkBlockOptions();
+    const card = document.createElement('div');
+    card.className = 'wk-obs-card';
+    card.style.cssText = 'display:flex; gap:0.8rem; padding:0.75rem; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-card); '
+        + (large ? 'flex-direction:column; flex-wrap:nowrap;' : 'flex-wrap:wrap;');
+
+    // Thumbnail — load the image lazily from the DB image cache.
+    const thumb = document.createElement('div');
+    thumb.className = 'wk-obs-thumb';
+    thumb.style.cssText = large
+        ? 'flex:0 0 auto; width:100%; height:min(48vh, 340px); border-radius:6px; overflow:hidden; background:var(--bg-secondary); display:flex; align-items:center; justify-content:center; font-size:0.8rem; color:var(--text-secondary);'
+        : 'flex:0 0 120px; height:90px; border-radius:6px; overflow:hidden; background:var(--bg-secondary); display:flex; align-items:center; justify-content:center; font-size:0.7rem; color:var(--text-secondary);';
+    if (o.photoPath) {
+        thumb.textContent = '…';
+        wkLoadImage(o.photoPath).then(src => {
+            if (src) {
+                thumb.textContent = '';
+                const img = document.createElement('img');
+                img.src = src;
+                img.style.cssText = `width:100%; height:100%; object-fit:${large ? 'contain' : 'cover'}; cursor:zoom-in;`;
+                img.title = 'Tap to view full size';
+                img.onclick = () => wkShowPhotoFull(src, o.caption || '');
+                thumb.appendChild(img);
+            } else { thumb.textContent = '📦 expired'; }
+        });
+    } else { thumb.textContent = 'no photo'; }
+    card.appendChild(thumb);
+
+    // Fields
+    const fields = document.createElement('div');
+    fields.className = 'wk-obs-fields';
+    fields.style.cssText = 'flex:1 1 260px; display:flex; flex-direction:column; gap:0.4rem;';
+
+    const topRow = document.createElement('div');
+    topRow.style.cssText = 'display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;';
+    const numTag = document.createElement('span');
+    numTag.style.cssText = 'font-weight:700; color:var(--text-primary); font-size:0.85rem;';
+    numTag.textContent = '#' + (idx + 1);
+    topRow.appendChild(numTag);
+
+    // Block selector: dropdown from the Planting Phase Record when that year
+    // has blocks; free-text input as a fallback so a block can always be set.
+    if (blockOpts.length) {
+        const blockSel = document.createElement('select');
+        blockSel.disabled = !editable;
+        blockSel.style.cssText = 'padding:0.3rem 0.5rem; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-card); font-size:0.82rem;';
+        const optBlank = document.createElement('option'); optBlank.value = ''; optBlank.textContent = 'Block…'; blockSel.appendChild(optBlank);
+        const opts = blockOpts.slice();
+        if (o.block && !opts.includes(o.block)) opts.unshift(o.block);
+        opts.forEach(b => { const op = document.createElement('option'); op.value = b; op.textContent = 'Block ' + b; if (b === o.block) op.selected = true; blockSel.appendChild(op); });
+        blockSel.onchange = () => { o.block = blockSel.value; saveWeeklyActivityData(); };
+        topRow.appendChild(blockSel);
+    } else {
+        const blockInput = document.createElement('input');
+        blockInput.type = 'text'; blockInput.value = o.block || ''; blockInput.placeholder = 'Block'; blockInput.disabled = !editable;
+        blockInput.title = 'No Planting Phase Record blocks for this year — type a block number';
+        blockInput.style.cssText = 'width:90px; padding:0.3rem 0.5rem; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-card); font-size:0.82rem;';
+        blockInput.oninput = () => { o.block = wkCleanBlock(blockInput.value); };
+        blockInput.onchange = () => saveWeeklyActivityData();
+        topRow.appendChild(blockInput);
+    }
+    fields.appendChild(topRow);
+
+    const cap = document.createElement('input');
+    cap.type = 'text'; cap.value = o.caption || ''; cap.placeholder = 'Caption (what was observed)'; cap.disabled = !editable;
+    cap.style.cssText = 'padding:0.4rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem; background:var(--bg-card);';
+    cap.oninput = () => { o.caption = cap.value; }; cap.onchange = () => saveWeeklyActivityData();
+    fields.appendChild(cap);
+
+    const notes = document.createElement('textarea');
+    notes.rows = 2; notes.value = o.notes || ''; notes.placeholder = 'Notes / findings'; notes.disabled = !editable;
+    notes.style.cssText = 'padding:0.4rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem; background:var(--bg-card); resize:vertical;';
+    notes.oninput = () => { o.notes = notes.value; }; notes.onchange = () => saveWeeklyActivityData();
+    fields.appendChild(notes);
+
+    const coordRow = document.createElement('div');
+    coordRow.style.cssText = 'display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;';
+    const mkCoord = (val, key, ph) => {
+        const c = document.createElement('input');
+        c.type = 'number'; c.step = 'any'; c.value = (val != null && isFinite(val)) ? val : ''; c.placeholder = ph; c.disabled = !editable;
+        c.style.cssText = 'width:120px; padding:0.3rem 0.5rem; border:1px solid var(--border-color); border-radius:6px; font-size:0.8rem; background:var(--bg-card);';
+        c.onchange = () => { o[key] = c.value === '' ? null : parseFloat(c.value); saveWeeklyActivityData(); };
+        return c;
+    };
+    coordRow.appendChild(mkCoord(o.lat, 'lat', 'lat'));
+    coordRow.appendChild(mkCoord(o.lng, 'lng', 'lng'));
+    if (isFinite(o.lat) && isFinite(o.lng)) {
+        const link = document.createElement('a');
+        link.href = `https://www.google.com/maps?q=${o.lat},${o.lng}`; link.target = '_blank'; link.rel = 'noopener';
+        link.textContent = '📍 map'; link.style.cssText = 'font-size:0.8rem;';
+        coordRow.appendChild(link);
+    }
+    // GPS accuracy badge — shows the fix quality of captures that recorded it
+    // (green ≤ good threshold, amber ≤ 30 m, red beyond). Older captures with
+    // no stored accuracy simply omit it.
+    if (o.accuracy != null && isFinite(o.accuracy)) {
+        const col = o.accuracy <= WK_GPS_GOOD_ENOUGH_M ? '#16a34a' : (o.accuracy <= 30 ? '#d97706' : '#ef4444');
+        const acc = document.createElement('span');
+        acc.textContent = `±${o.accuracy} m`;
+        acc.title = `GPS accuracy of this fix — smaller is better. Under ${WK_GPS_GOOD_ENOUGH_M} m is excellent; over ~30 m, consider re-capturing.`;
+        acc.style.cssText = `font-size:0.72rem; font-weight:600; color:${col}; border:1px solid ${col}; border-radius:10px; padding:0.02rem 0.4rem;`;
+        coordRow.appendChild(acc);
+    }
+    // 🎯 Re-capture — take a fresh GPS reading for this observation (handy when a
+    // fix came back poor; uses the same best-of-window sampling as capture).
+    if (editable) {
+        const recap = document.createElement('button');
+        recap.textContent = '🎯 re-capture';
+        recap.title = 'Take a fresh GPS reading for this observation — stand under open sky and wait a moment';
+        recap.style.cssText = 'font-size:0.75rem; border:1px solid var(--accent); color:var(--accent); border-radius:6px; background:transparent; cursor:pointer; padding:0.2rem 0.5rem;';
+        recap.onclick = async () => {
+            const prev = recap.textContent;
+            recap.disabled = true; recap.textContent = '⏳ locating…';
+            try {
+                const loc = await wkGetLocation();
+                o.lat = loc.lat; o.lng = loc.lng; o.accuracy = loc.accuracy;
+                saveWeeklyActivityData();
+                if (typeof window.logAudit === 'function') window.logAudit('update', 'weekly', 'Re-capture GPS', o.id);
+                wkRenderWeekEditor(host, yearStr, week);
+                window.notify('Location updated' + (loc.accuracy != null ? ` · GPS ±${loc.accuracy} m` : '') + '.', 'success');
+            } catch (e) {
+                recap.disabled = false; recap.textContent = prev;
+                window.notify('Could not update location: ' + e.message, 'warn');
+            }
+        };
+        coordRow.appendChild(recap);
+    }
+    fields.appendChild(coordRow);
+    card.appendChild(fields);
+
+    if (editable) {
+        const actions = document.createElement('div');
+        actions.className = 'wk-obs-actions';
+        actions.style.cssText = large ? 'display:flex; flex-direction:row; gap:0.4rem; width:100%;' : 'display:flex; flex-direction:column; gap:0.3rem;';
+        const photoLbl = document.createElement('label');
+        photoLbl.style.cssText = 'font-size:0.75rem; color:var(--text-secondary); cursor:pointer; border:1px solid var(--border-color); border-radius:6px; padding:0.25rem 0.45rem; text-align:center;';
+        photoLbl.textContent = o.photoPath ? '↻ photo' : '📷 photo';
+        const photoInput = document.createElement('input');
+        photoInput.type = 'file'; photoInput.accept = 'image/*'; photoInput.style.display = 'none';
+        photoInput.onchange = async () => {
+            const f = photoInput.files && photoInput.files[0]; if (!f) return;
+            const prev = photoLbl.textContent; photoLbl.textContent = '⏳ saving…';
+            try {
+                const local = await wkStorePhotoLocal(yearStr, week.id, `${o.id}.jpg`, await wkResizeImage(f));
+                o.photoPath = local.path; o.photoType = local.type;
+                saveWeeklyActivityData(); wkRenderWeekEditor(host, yearStr, week);
+                wkUploadOne(local.path).catch(() => {});   // background upload (no-op offline)
+            } catch (e) {
+                console.error(e); photoLbl.textContent = prev;
+                window.notify('Could not save the photo on this device: ' + e.message, 'error');
+            }
+        };
+        photoLbl.appendChild(photoInput);
+        actions.appendChild(photoLbl);
+
+        const del = document.createElement('button');
+        del.textContent = '🗑'; del.title = 'Delete observation';
+        del.style.cssText = 'font-size:0.8rem; border:1px solid #ef4444; color:#ef4444; border-radius:6px; background:transparent; cursor:pointer; padding:0.25rem 0.45rem;';
+        del.onclick = () => {
+            const i = week.observations.findIndex(x => x.id === o.id);
+            if (i < 0) return;
+            const snapshot = week.observations[i];
+            week.observations.splice(i, 1);
+            _wkObsPage[week.id] = Math.max(0, Math.min(i, week.observations.length - 1));
+            saveWeeklyActivityData(); wkRenderWeekEditor(host, yearStr, week);
+            // photo bytes are only purged once the undo window has passed
+            window.notifyUndo('Deleted observation.', () => {
+                week.observations.splice(Math.min(i, week.observations.length), 0, snapshot);
+                _wkObsPage[week.id] = i;
+                saveWeeklyActivityData(); wkRenderWeekEditor(host, yearStr, week);
+            }, 5000, () => { wkDeleteStorage(o.photoPath); });
+        };
+        actions.appendChild(del);
+        card.appendChild(actions);
+    }
+    return card;
+};
+
+// Capture / Add buttons — shown at the top of the Observations section so a
+// new photo is always one tap away, however many observations exist.
+const wkObsAddRow = (yearStr, week, host) => {
+    const addRow = document.createElement('div');
+    addRow.style.cssText = 'display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;';
+
+    // 📷 Capture here — one-tap in-app field capture: open the device camera,
+    // take a photo, and tag it with the current GPS position, all into a new
+    // observation. This is the in-app alternative to importing a KMZ that was
+    // recorded in a separate GPS app — useful for logging a finding on the spot.
+    const capLbl = document.createElement('label');
+    capLbl.textContent = '📷 Capture here (photo + GPS)';
+    capLbl.title = 'Take a photo with the camera and tag it with your current GPS location';
+    capLbl.style.cssText = 'align-self:flex-start; padding:0.4rem 0.8rem; border:1px solid var(--accent); border-radius:8px; background:var(--accent); color:#fff; cursor:pointer; font-size:0.83rem; font-weight:500;';
+    const capInput = document.createElement('input');
+    capInput.type = 'file'; capInput.accept = 'image/*'; capInput.capture = 'environment';
+    capInput.style.display = 'none';
+    capInput.onchange = async () => {
+        const f = capInput.files && capInput.files[0];
+        capInput.value = '';
+        if (!f) return;
+        capLbl.style.pointerEvents = 'none';
+        capLbl.style.opacity = '0.7';
+        capLbl.textContent = '⏳ capturing…';
+
+        // Create + persist the observation up front so the entry (and the GPS
+        // fix) can never be lost to a slow or failed photo upload — the same
+        // "save before the photo" guarantee the KMZ import relies on.
+        const obs = { id: wkUid(), block: '', caption: '', notes: '', lat: null, lng: null, accuracy: null, photoPath: null, photoType: null };
+        week.observations.push(obs);
+        _wkObsPage[week.id] = week.observations.length - 1;   // pager jumps to the new capture
+        saveWeeklyActivityData();
+
+        // GPS and the photo upload run in parallel — GPS works offline; the
+        // upload may time out offline (wkWithTimeout) without losing the entry.
+        let gpsMsg = '';
+        const gpsP = wkGetLocation()
+            .then(loc => { obs.lat = loc.lat; obs.lng = loc.lng; obs.accuracy = loc.accuracy; })
+            .catch(e => { gpsMsg = e.message; });
+        let stored = false;
+        try {
+            const local = await wkStorePhotoLocal(yearStr, week.id, `${obs.id}.jpg`, await wkResizeImage(f));
+            obs.photoPath = local.path; obs.photoType = local.type;
+            stored = true;
+        } catch (e) { console.error(e); }
+        await gpsP;
+
+        saveWeeklyActivityData();
+        if (typeof window.logAudit === 'function') window.logAudit('create', 'weekly', 'Field capture', obs.id);
+        wkRenderWeekEditor(host, yearStr, week);
+        // The photo is now safe on the phone — upload in the background (no-op offline).
+        if (stored) wkUploadOne(obs.photoPath).catch(() => {});
+
+        if (!stored) {
+            window.notify('Could not save the photo on this device — please try again.', 'error');
+        } else if (gpsMsg) {
+            window.notify('Photo saved on the phone' + (navigator.onLine ? '' : ' (will upload when back online)') + ', but location was not captured: ' + gpsMsg, 'warn');
+        } else {
+            const accTxt = (obs.accuracy != null) ? ` · GPS ±${obs.accuracy} m` : '';
+            window.notify('Observation captured' + accTxt + '. Photo saved on the phone' + (navigator.onLine ? ' and uploading…' : ' — it will upload when you are back online.'), 'success');
+        }
+    };
+    capLbl.appendChild(capInput);
+    addRow.appendChild(capLbl);
+
+    const addBtn = document.createElement('button');
+    addBtn.textContent = '➕ Add observation';
+    addBtn.title = 'Add a blank observation to fill in manually';
+    addBtn.style.cssText = 'align-self:flex-start; padding:0.4rem 0.8rem; border:1px dashed var(--border-color); border-radius:8px; background:transparent; cursor:pointer; font-size:0.83rem; color:var(--text-secondary);';
+    addBtn.onclick = () => {
+        week.observations.push({ id: wkUid(), block: '', caption: '', notes: '', lat: null, lng: null, photoPath: null, photoType: null });
+        _wkObsPage[week.id] = week.observations.length - 1;   // pager jumps to the new entry
+        saveWeeklyActivityData(); wkRenderWeekEditor(host, yearStr, week);
+    };
+    addRow.appendChild(addBtn);
+    return addRow;
+};
+
 const wkRenderObservations = (yearStr, week, host) => {
     const editable = wkCanEdit();
     const box = document.createElement('div');
     box.style.cssText = 'display:flex; flex-direction:column; gap:0.75rem;';
-    const blockOpts = wkBlockOptions();
 
-    (week.observations || []).forEach((o, idx) => {
-        const card = document.createElement('div');
-        card.className = 'wk-obs-card';
-        card.style.cssText = 'display:flex; gap:0.8rem; padding:0.75rem; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-card); flex-wrap:wrap;';
+    // redraw() rebuilds only this section — paging / toggling never re-renders
+    // the whole editor (and so never reloads the map).
+    const redraw = () => {
+        box.innerHTML = '';
+        const list = week.observations || [];
+        const mode = wkObsMode();
 
-        // Thumbnail — load the image lazily from the DB image cache.
-        const thumb = document.createElement('div');
-        thumb.className = 'wk-obs-thumb';
-        thumb.style.cssText = 'flex:0 0 120px; height:90px; border-radius:6px; overflow:hidden; background:var(--bg-secondary); display:flex; align-items:center; justify-content:center; font-size:0.7rem; color:var(--text-secondary);';
-        if (o.photoPath) {
-            thumb.textContent = '…';
-            wkLoadImage(o.photoPath).then(src => {
-                if (src) {
-                    thumb.textContent = '';
-                    const img = document.createElement('img');
-                    img.src = src; img.style.cssText = 'width:100%; height:100%; object-fit:cover;';
-                    thumb.appendChild(img);
-                } else { thumb.textContent = '📦 expired'; }
-            });
-        } else { thumb.textContent = 'no photo'; }
-        card.appendChild(thumb);
-
-        // Fields
-        const fields = document.createElement('div');
-        fields.className = 'wk-obs-fields';
-        fields.style.cssText = 'flex:1 1 260px; display:flex; flex-direction:column; gap:0.4rem;';
-
-        const topRow = document.createElement('div');
-        topRow.style.cssText = 'display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;';
-        const numTag = document.createElement('span');
-        numTag.style.cssText = 'font-weight:700; color:var(--text-primary); font-size:0.85rem;';
-        numTag.textContent = '#' + (idx + 1);
-        topRow.appendChild(numTag);
-
-        // Block selector: dropdown from the Planting Phase Record when that year
-        // has blocks; free-text input as a fallback so a block can always be set.
-        if (blockOpts.length) {
-            const blockSel = document.createElement('select');
-            blockSel.disabled = !editable;
-            blockSel.style.cssText = 'padding:0.3rem 0.5rem; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-card); font-size:0.82rem;';
-            const optBlank = document.createElement('option'); optBlank.value = ''; optBlank.textContent = 'Block…'; blockSel.appendChild(optBlank);
-            const opts = blockOpts.slice();
-            if (o.block && !opts.includes(o.block)) opts.unshift(o.block);
-            opts.forEach(b => { const op = document.createElement('option'); op.value = b; op.textContent = 'Block ' + b; if (b === o.block) op.selected = true; blockSel.appendChild(op); });
-            blockSel.onchange = () => { o.block = blockSel.value; saveWeeklyActivityData(); };
-            topRow.appendChild(blockSel);
-        } else {
-            const blockInput = document.createElement('input');
-            blockInput.type = 'text'; blockInput.value = o.block || ''; blockInput.placeholder = 'Block'; blockInput.disabled = !editable;
-            blockInput.title = 'No Planting Phase Record blocks for this year — type a block number';
-            blockInput.style.cssText = 'width:90px; padding:0.3rem 0.5rem; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-card); font-size:0.82rem;';
-            blockInput.oninput = () => { o.block = wkCleanBlock(blockInput.value); };
-            blockInput.onchange = () => saveWeeklyActivityData();
-            topRow.appendChild(blockInput);
-        }
-        fields.appendChild(topRow);
-
-        const cap = document.createElement('input');
-        cap.type = 'text'; cap.value = o.caption || ''; cap.placeholder = 'Caption (what was observed)'; cap.disabled = !editable;
-        cap.style.cssText = 'padding:0.4rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem; background:var(--bg-card);';
-        cap.oninput = () => { o.caption = cap.value; }; cap.onchange = () => saveWeeklyActivityData();
-        fields.appendChild(cap);
-
-        const notes = document.createElement('textarea');
-        notes.rows = 2; notes.value = o.notes || ''; notes.placeholder = 'Notes / findings'; notes.disabled = !editable;
-        notes.style.cssText = 'padding:0.4rem 0.6rem; border:1px solid var(--border-color); border-radius:6px; font-size:0.85rem; background:var(--bg-card); resize:vertical;';
-        notes.oninput = () => { o.notes = notes.value; }; notes.onchange = () => saveWeeklyActivityData();
-        fields.appendChild(notes);
-
-        const coordRow = document.createElement('div');
-        coordRow.style.cssText = 'display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;';
-        const mkCoord = (val, key, ph) => {
-            const c = document.createElement('input');
-            c.type = 'number'; c.step = 'any'; c.value = (val != null && isFinite(val)) ? val : ''; c.placeholder = ph; c.disabled = !editable;
-            c.style.cssText = 'width:120px; padding:0.3rem 0.5rem; border:1px solid var(--border-color); border-radius:6px; font-size:0.8rem; background:var(--bg-card);';
-            c.onchange = () => { o[key] = c.value === '' ? null : parseFloat(c.value); saveWeeklyActivityData(); };
-            return c;
+        // View toggle (🗂 one-by-one / ☰ list) + capture buttons at the top.
+        const bar = document.createElement('div');
+        bar.style.cssText = 'display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;';
+        const seg = document.createElement('div');
+        seg.style.cssText = 'display:flex; border:1px solid var(--border-color); border-radius:8px; overflow:hidden;';
+        const mkSeg = (label, m, title) => {
+            const b = document.createElement('button');
+            b.textContent = label; b.title = title;
+            const on = mode === m;
+            b.style.cssText = `padding:0.35rem 0.7rem; font-size:0.8rem; border:none; cursor:pointer; background:${on ? 'var(--accent)' : 'transparent'}; color:${on ? '#fff' : 'var(--text-secondary)'};`;
+            b.onclick = () => {
+                if (wkObsMode() === m) return;
+                _wkObsMode = m;
+                try { localStorage.setItem('wk_obs_view', m); } catch (e) {}
+                redraw();
+            };
+            return b;
         };
-        coordRow.appendChild(mkCoord(o.lat, 'lat', 'lat'));
-        coordRow.appendChild(mkCoord(o.lng, 'lng', 'lng'));
-        if (isFinite(o.lat) && isFinite(o.lng)) {
-            const link = document.createElement('a');
-            link.href = `https://www.google.com/maps?q=${o.lat},${o.lng}`; link.target = '_blank'; link.rel = 'noopener';
-            link.textContent = '📍 map'; link.style.cssText = 'font-size:0.8rem;';
-            coordRow.appendChild(link);
-        }
-        // GPS accuracy badge — shows the fix quality of captures that recorded it
-        // (green ≤ good threshold, amber ≤ 30 m, red beyond). Older captures with
-        // no stored accuracy simply omit it.
-        if (o.accuracy != null && isFinite(o.accuracy)) {
-            const col = o.accuracy <= WK_GPS_GOOD_ENOUGH_M ? '#16a34a' : (o.accuracy <= 30 ? '#d97706' : '#ef4444');
-            const acc = document.createElement('span');
-            acc.textContent = `±${o.accuracy} m`;
-            acc.title = `GPS accuracy of this fix — smaller is better. Under ${WK_GPS_GOOD_ENOUGH_M} m is excellent; over ~30 m, consider re-capturing.`;
-            acc.style.cssText = `font-size:0.72rem; font-weight:600; color:${col}; border:1px solid ${col}; border-radius:10px; padding:0.02rem 0.4rem;`;
-            coordRow.appendChild(acc);
-        }
-        // 🎯 Re-capture — take a fresh GPS reading for this observation (handy when a
-        // fix came back poor; uses the same best-of-window sampling as capture).
-        if (editable) {
-            const recap = document.createElement('button');
-            recap.textContent = '🎯 re-capture';
-            recap.title = 'Take a fresh GPS reading for this observation — stand under open sky and wait a moment';
-            recap.style.cssText = 'font-size:0.75rem; border:1px solid var(--accent); color:var(--accent); border-radius:6px; background:transparent; cursor:pointer; padding:0.2rem 0.5rem;';
-            recap.onclick = async () => {
-                const prev = recap.textContent;
-                recap.disabled = true; recap.textContent = '⏳ locating…';
-                try {
-                    const loc = await wkGetLocation();
-                    o.lat = loc.lat; o.lng = loc.lng; o.accuracy = loc.accuracy;
-                    saveWeeklyActivityData();
-                    if (typeof window.logAudit === 'function') window.logAudit('update', 'weekly', 'Re-capture GPS', o.id);
-                    wkRenderWeekEditor(host, yearStr, week);
-                    window.notify('Location updated' + (loc.accuracy != null ? ` · GPS ±${loc.accuracy} m` : '') + '.', 'success');
-                } catch (e) {
-                    recap.disabled = false; recap.textContent = prev;
-                    window.notify('Could not update location: ' + e.message, 'warn');
-                }
-            };
-            coordRow.appendChild(recap);
-        }
-        fields.appendChild(coordRow);
-        card.appendChild(fields);
+        seg.appendChild(mkSeg('🗂 One-by-one', 'pager', 'Show one observation per page — flip with the ◀ ▶ arrows, swipe, or ←/→ keys'));
+        seg.appendChild(mkSeg('☰ List', 'list', 'Show all observations in one scrolling list'));
+        bar.appendChild(seg);
+        box.appendChild(bar);
+        if (editable) box.appendChild(wkObsAddRow(yearStr, week, host));
 
-        if (editable) {
-            const actions = document.createElement('div');
-            actions.className = 'wk-obs-actions';
-            actions.style.cssText = 'display:flex; flex-direction:column; gap:0.3rem;';
-            const photoLbl = document.createElement('label');
-            photoLbl.style.cssText = 'font-size:0.75rem; color:var(--text-secondary); cursor:pointer; border:1px solid var(--border-color); border-radius:6px; padding:0.25rem 0.45rem; text-align:center;';
-            photoLbl.textContent = o.photoPath ? '↻ photo' : '📷 photo';
-            const photoInput = document.createElement('input');
-            photoInput.type = 'file'; photoInput.accept = 'image/*'; photoInput.style.display = 'none';
-            photoInput.onchange = async () => {
-                const f = photoInput.files && photoInput.files[0]; if (!f) return;
-                const prev = photoLbl.textContent; photoLbl.textContent = '⏳ saving…';
-                try {
-                    const local = await wkStorePhotoLocal(yearStr, week.id, `${o.id}.jpg`, await wkResizeImage(f));
-                    o.photoPath = local.path; o.photoType = local.type;
-                    saveWeeklyActivityData(); wkRenderWeekEditor(host, yearStr, week);
-                    wkUploadOne(local.path).catch(() => {});   // background upload (no-op offline)
-                } catch (e) {
-                    console.error(e); photoLbl.textContent = prev;
-                    window.notify('Could not save the photo on this device: ' + e.message, 'error');
-                }
-            };
-            photoLbl.appendChild(photoInput);
-            actions.appendChild(photoLbl);
-
-            const del = document.createElement('button');
-            del.textContent = '🗑'; del.title = 'Delete observation';
-            del.style.cssText = 'font-size:0.8rem; border:1px solid #ef4444; color:#ef4444; border-radius:6px; background:transparent; cursor:pointer; padding:0.25rem 0.45rem;';
-            del.onclick = () => {
-                const i = week.observations.findIndex(x => x.id === o.id);
-                if (i < 0) return;
-                const snapshot = week.observations[i];
-                week.observations.splice(i, 1);
-                saveWeeklyActivityData(); wkRenderWeekEditor(host, yearStr, week);
-                // photo bytes are only purged once the undo window has passed
-                window.notifyUndo('Deleted observation.', () => {
-                    week.observations.splice(Math.min(i, week.observations.length), 0, snapshot);
-                    saveWeeklyActivityData(); wkRenderWeekEditor(host, yearStr, week);
-                }, 5000, () => { wkDeleteStorage(o.photoPath); });
-            };
-            actions.appendChild(del);
-            card.appendChild(actions);
+        if (!list.length) {
+            const empty = document.createElement('div');
+            empty.style.cssText = 'padding:1rem; border:1px dashed var(--border-color); border-radius:8px; color:var(--text-secondary); font-size:0.85rem; text-align:center;';
+            empty.textContent = editable
+                ? 'No observations yet — tap "📷 Capture here" to photograph and geotag the first one.'
+                : 'No observations recorded for this week.';
+            box.appendChild(empty);
+            return;
         }
+
+        if (mode === 'list') {
+            list.forEach((o, idx) => box.appendChild(wkObsCard(yearStr, week, host, o, idx, false)));
+            return;
+        }
+
+        // Pager — one observation per "page". Opens on the latest capture.
+        let cur = _wkObsPage[week.id];
+        if (!isFinite(cur)) cur = list.length - 1;
+        cur = Math.max(0, Math.min(cur, list.length - 1));
+        _wkObsPage[week.id] = cur;
+        const go = (d) => {
+            const n = Math.max(0, Math.min(cur + d, list.length - 1));
+            if (n === cur) return;
+            _wkObsPage[week.id] = n;
+            redraw();
+        };
+
+        const nav = document.createElement('div');
+        nav.style.cssText = 'display:flex; gap:0.5rem; align-items:center; justify-content:center;';
+        const mkArrow = (label, d, disabled, title) => {
+            const b = document.createElement('button');
+            b.textContent = label; b.title = title; b.disabled = disabled;
+            b.style.cssText = `flex:1 1 0; max-width:140px; min-height:44px; font-size:1.1rem; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-card); cursor:${disabled ? 'default' : 'pointer'}; opacity:${disabled ? 0.35 : 1};`;
+            b.onclick = () => go(d);
+            return b;
+        };
+        nav.appendChild(mkArrow('◀', -1, cur <= 0, 'Previous observation (← key or swipe right)'));
+        const jump = document.createElement('select');
+        jump.title = 'Jump to an observation';
+        jump.style.cssText = 'flex:0 1 auto; max-width:55%; padding:0.35rem 0.5rem; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-card); font-size:0.85rem;';
+        list.forEach((oo, i) => {
+            const op = document.createElement('option');
+            const hint = [oo.block ? 'Blk ' + oo.block : '', (oo.caption || '').slice(0, 24)].filter(Boolean).join(' · ');
+            op.value = i; op.textContent = `${i + 1} of ${list.length}` + (hint ? ' — ' + hint : '');
+            if (i === cur) op.selected = true;
+            jump.appendChild(op);
+        });
+        jump.onchange = () => { _wkObsPage[week.id] = +jump.value; redraw(); };
+        nav.appendChild(jump);
+        nav.appendChild(mkArrow('▶', 1, cur >= list.length - 1, 'Next observation (→ key or swipe left)'));
+        box.appendChild(nav);
+
+        const card = wkObsCard(yearStr, week, host, list[cur], cur, true);
+        // Swipe left/right on the card flips the page (phone-natural). Ignored
+        // when the touch starts in a text field so it never fights selection,
+        // and only fires on a decisively horizontal swipe (not scrolling).
+        let tx = 0, ty = 0;
+        card.addEventListener('touchstart', (e) => { const t = e.touches[0]; tx = t.clientX; ty = t.clientY; }, { passive: true });
+        card.addEventListener('touchend', (e) => {
+            const tag = e.target && e.target.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+            const t = e.changedTouches[0];
+            const dx = t.clientX - tx, dy = t.clientY - ty;
+            if (Math.abs(dx) > 60 && Math.abs(dx) > 2 * Math.abs(dy)) go(dx < 0 ? 1 : -1);
+        }, { passive: true });
         box.appendChild(card);
-    });
 
-    if (editable) {
-        const addRow = document.createElement('div');
-        addRow.style.cssText = 'display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center; margin-top:0.25rem;';
-
-        // 📷 Capture here — one-tap in-app field capture: open the device camera,
-        // take a photo, and tag it with the current GPS position, all into a new
-        // observation. This is the in-app alternative to importing a KMZ that was
-        // recorded in a separate GPS app — useful for logging a finding on the spot.
-        const capLbl = document.createElement('label');
-        capLbl.textContent = '📷 Capture here (photo + GPS)';
-        capLbl.title = 'Take a photo with the camera and tag it with your current GPS location';
-        capLbl.style.cssText = 'align-self:flex-start; padding:0.4rem 0.8rem; border:1px solid var(--accent); border-radius:8px; background:var(--accent); color:#fff; cursor:pointer; font-size:0.83rem; font-weight:500;';
-        const capInput = document.createElement('input');
-        capInput.type = 'file'; capInput.accept = 'image/*'; capInput.capture = 'environment';
-        capInput.style.display = 'none';
-        capInput.onchange = async () => {
-            const f = capInput.files && capInput.files[0];
-            capInput.value = '';
-            if (!f) return;
-            capLbl.style.pointerEvents = 'none';
-            capLbl.style.opacity = '0.7';
-            capLbl.textContent = '⏳ capturing…';
-
-            // Create + persist the observation up front so the entry (and the GPS
-            // fix) can never be lost to a slow or failed photo upload — the same
-            // "save before the photo" guarantee the KMZ import relies on.
-            const obs = { id: wkUid(), block: '', caption: '', notes: '', lat: null, lng: null, accuracy: null, photoPath: null, photoType: null };
-            week.observations.push(obs);
-            saveWeeklyActivityData();
-
-            // GPS and the photo upload run in parallel — GPS works offline; the
-            // upload may time out offline (wkWithTimeout) without losing the entry.
-            let gpsMsg = '';
-            const gpsP = wkGetLocation()
-                .then(loc => { obs.lat = loc.lat; obs.lng = loc.lng; obs.accuracy = loc.accuracy; })
-                .catch(e => { gpsMsg = e.message; });
-            let stored = false;
-            try {
-                const local = await wkStorePhotoLocal(yearStr, week.id, `${obs.id}.jpg`, await wkResizeImage(f));
-                obs.photoPath = local.path; obs.photoType = local.type;
-                stored = true;
-            } catch (e) { console.error(e); }
-            await gpsP;
-
-            saveWeeklyActivityData();
-            if (typeof window.logAudit === 'function') window.logAudit('create', 'weekly', 'Field capture', obs.id);
-            wkRenderWeekEditor(host, yearStr, week);
-            // The photo is now safe on the phone — upload in the background (no-op offline).
-            if (stored) wkUploadOne(obs.photoPath).catch(() => {});
-
-            if (!stored) {
-                window.notify('Could not save the photo on this device — please try again.', 'error');
-            } else if (gpsMsg) {
-                window.notify('Photo saved on the phone' + (navigator.onLine ? '' : ' (will upload when back online)') + ', but location was not captured: ' + gpsMsg, 'warn');
-            } else {
-                const accTxt = (obs.accuracy != null) ? ` · GPS ±${obs.accuracy} m` : '';
-                window.notify('Observation captured' + accTxt + '. Photo saved on the phone' + (navigator.onLine ? ' and uploading…' : ' — it will upload when you are back online.'), 'success');
-            }
-        };
-        capLbl.appendChild(capInput);
-        addRow.appendChild(capLbl);
-
-        const addBtn = document.createElement('button');
-        addBtn.textContent = '➕ Add observation';
-        addBtn.title = 'Add a blank observation to fill in manually';
-        addBtn.style.cssText = 'align-self:flex-start; padding:0.4rem 0.8rem; border:1px dashed var(--border-color); border-radius:8px; background:transparent; cursor:pointer; font-size:0.83rem; color:var(--text-secondary);';
-        addBtn.onclick = () => {
-            week.observations.push({ id: wkUid(), block: '', caption: '', notes: '', lat: null, lng: null, photoPath: null, photoType: null });
-            saveWeeklyActivityData(); wkRenderWeekEditor(host, yearStr, week);
-        };
-        addRow.appendChild(addBtn);
-
-        box.appendChild(addRow);
-    }
+        _wkObsNav = { el: box, go };
+        wkInstallObsKeys();
+    };
+    redraw();
     return box;
 };
 
