@@ -1,0 +1,30 @@
+# Deploys the app to Firebase Hosting (ffb-harvesting-report.web.app) on every
+# push to main — merging to main IS the release; no separate manual
+# `firebase deploy` needed. Reuses the FIREBASE_SERVICE_ACCOUNT secret that
+# daily-backup.yml already uses.
+name: Deploy to Firebase Hosting
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # manual trigger from the Actions tab
+
+# A rapid second merge cancels the older in-flight deploy instead of racing it.
+concurrency:
+  group: firebase-hosting-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Firebase Hosting (live channel)
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          channelId: live
+          projectId: ffb-harvesting-report
