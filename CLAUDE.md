@@ -277,6 +277,7 @@ Top-level sidebar menu **🗺️ Weekly Activity** (id `sidebar-weekly`, after I
 |---|---|
 | `renderWeeklyActivity()` (window) | Toolbar (year, New Week), week list + editor pane |
 | `wkRenderWeekEditor(host,year,week)` | Date/day, export/save/delete, import bar, map, narrative, observations |
+| `wkRenderObservations` / `wkObsCard` / `wkObsAddRow` | Observations section — Capture/Add buttons at the TOP (no scrolling), then two views: 🗂 **one-by-one pager** (◀ ▶ buttons, swipe, ←/→ keys, jump dropdown, full-width photo, opens on latest capture) and ☰ list. Per-device default: pager on phones (`field-mode`/≤768 px), list on desktop; persisted `localStorage.wk_obs_view`; pager position is session-only (`_wkObsPage`). Paging/toggling redraws only the section (never the map). Tap any photo → `wkShowPhotoFull` lightbox |
 | `wkImportTrackFile(file,year,week)` | KMZ(JSZip)/KML/GPX → `wkParseKML`/`wkParseGPX`; extracts embedded photos → DB images; appends observations |
 | `wkRenderMap(id,week)` / `wkRasterizeMap(id)` | Leaflet + Esri World Imagery; track polyline + numbered `circleMarker` dots; waits for tile `load` then `html-to-image` → PNG (behind `wkWithTimeout`). NB: `leaflet-image` was dropped — it silently hangs under Leaflet 1.9 |
 | `wkUploadBlob` / `wkLoadImage` / `wkDeleteStorage` | Store data URL → `shared/weekly_images` (+cache, returns `{path,type}`) / lazy-load path → data URL / delete |
