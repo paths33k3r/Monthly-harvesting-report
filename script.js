@@ -1780,6 +1780,7 @@ const runMainApplication = () => {
             const weeklyWrapper      = document.getElementById('weekly-activity-wrapper');
             const wagesWrapper       = document.getElementById('wages-wrapper');
             const wagesLedgerWrapper = document.getElementById('wages-ledger-wrapper');
+            const wagesVarianceWrapper = document.getElementById('wages-variance-wrapper');
             const treeLogsWrapper    = document.getElementById('tree-logs-wrapper');
             if (ffbWrapper) ffbWrapper.innerHTML = ''; // Clear FFB budget widgets
             if (rainfallWrapper) rainfallWrapper.innerHTML = ''; // Clear Rainfall widgets
@@ -1799,6 +1800,7 @@ const runMainApplication = () => {
             if (weeklyWrapper)      { weeklyWrapper.innerHTML = '';     weeklyWrapper.classList.add('hidden'); }
             if (wagesWrapper)       { wagesWrapper.innerHTML = '';      wagesWrapper.classList.add('hidden'); }
             if (wagesLedgerWrapper) { wagesLedgerWrapper.innerHTML = ''; wagesLedgerWrapper.classList.add('hidden'); }
+            if (wagesVarianceWrapper) { wagesVarianceWrapper.innerHTML = ''; wagesVarianceWrapper.classList.add('hidden'); }
             if (treeLogsWrapper)    { treeLogsWrapper.innerHTML = '';   treeLogsWrapper.classList.add('hidden'); }
             if (userMgmtWrapper) { userMgmtWrapper.innerHTML = ''; userMgmtWrapper.classList.add('hidden'); }
             if (excelReportsWrapper) { excelReportsWrapper.innerHTML = ''; excelReportsWrapper.classList.add('hidden'); }
@@ -1833,7 +1835,7 @@ const runMainApplication = () => {
                 ihAssetsWrapper, ihExpensesWrapper, ihCostPerHaWrapper,
                 gangOverviewWrapper, selectorWrapper,
                 mntGangsWrapper, mntWorklogWrapper, mntGanttWrapper,
-                weeklyWrapper, wagesWrapper, wagesLedgerWrapper, treeLogsWrapper,
+                weeklyWrapper, wagesWrapper, wagesLedgerWrapper, wagesVarianceWrapper, treeLogsWrapper,
                 userMgmtWrapper, excelReportsWrapper, auditLogWrapper,
                 dashboardWrapper
             ];
@@ -1952,6 +1954,10 @@ const runMainApplication = () => {
             } else if (state.activeViewType === 'wages_ledger') {
                 showView(wagesLedgerWrapper, () => {
                     if (typeof window.renderWagesLedgerView === 'function') window.renderWagesLedgerView();
+                }, 'wages');
+            } else if (state.activeViewType === 'wages_variance') {
+                showView(wagesVarianceWrapper, () => {
+                    if (typeof window.renderWagesVariance === 'function') window.renderWagesVariance();
                 }, 'wages');
             } else if (state.activeViewType === 'tree_logs') {
                 showView(treeLogsWrapper, () => {
@@ -3835,6 +3841,16 @@ const runMainApplication = () => {
                         e.preventDefault();
                         if (!state.wagesLedger) state.wagesLedger = {};
                         state.activeViewType = 'wages_ledger';
+                        renderSidebar(); renderTable();
+                    };
+                }
+
+                // ── Wages Variance nav handler ──────────────────────────
+                const sidebarWagesVariance = document.getElementById('sidebar-wages-variance');
+                if (sidebarWagesVariance) {
+                    sidebarWagesVariance.onclick = (e) => {
+                        e.preventDefault();
+                        state.activeViewType = 'wages_variance';
                         renderSidebar(); renderTable();
                     };
                 }
