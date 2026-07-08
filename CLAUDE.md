@@ -201,6 +201,27 @@ Top-level sidebar menu **💵 Rate of Wages** (id `sidebar-wages`, between Iron 
 
 ---
 
+## Daily Wage Ledger module (render_wages_daily.js)
+
+**"📆 Daily Wage Ledger"** — fourth sub-tab under 💵 Rate of Wages (`sidebar-wages-daily`, view type `wages_daily`, wrapper `wages-daily-wrapper`). Digitises the EMS payroll **"Job Card Summary Report by Job Activity"** PDF: per job activity (JAxxxxx code + name), per job location (block / POLE / OPTxxxx), Normal hours+RM, OT hours+RM, Total RM.
+- **Direct PDF import** (`window.importWagesDaily(file, year, month)`, edit-gated `_canEdit('wages')`) — the EMS PDF has a real text layer, so **no Excel conversion is needed**. pdf.js 3.11.174 (last UMD build; lazy CDN via `wdEnsurePdfJs`, worker set to the matching `pdf.worker.min.js`) extracts text runs; `wdItemWords` splits runs into words with proportional x; lines regrouped by y (tolerance 3, pdf.js y is bottom-up). Column x-boundaries (validated vs the real Jun-2026 report): No. <60 · activity 60–170 · location 170–265 · five numeric cols ≥265. Wrapped activity names accumulate across lines; per-activity `Total` rows and the `Grand Total` are parsed and **reconciled against the summed rows** — any mismatch is listed in the confirm dialog (import validated: 22 activities / 128 rows / RM120,951.56, zero mismatches). `From dd/mm/yyyy To dd/mm/yyyy` is captured as the period. Import **replaces** the selected month.
+- **Excel fallback**: `window.downloadWagesDailyTemplate(year,month)` — flat one-sheet template (No | Code | Name | Location | Normal Hours (HH:MM, text-format) | Normal RM | OT Hours | OT RM | Total RM); the same `importWagesDaily` accepts `.xlsx` (detects header by `JOBACTIVITYCODE`/`JOBLOCATION`+`NORMALHOURS` signature, groups flat rows by code, hours accept "HH:MM" / decimal hours / Excel time serials, Total auto-computed if blank, TOTAL rows skipped). `window.downloadWagesDailyReport(year,month)` exports the grouped on-screen layout.
+- **View**: Year/Month + arrows (`state.wagesDailyYear`/`wagesDailyMonth`), summary card (normal/OT hours+RM, grand total, per-location totals), grouped by-activity table with subtotals, contains-filter (activity/location). Hours stored as "HH:MM" strings (`wdToMin`/`wdFmtMin` for math).
+
+### Data structure (`state.wagesDaily`) → Firebase `shared/wages_daily_data` (`window._wagesDailyDb`)
+```js
+{ "2026": { "JUN": {
+  periodFrom:"2026-05-26", periodTo:"2026-06-30",
+  activities:[ { no:1, code:"JA14004", name:"APPRENTICE WAGES",
+    rows:[ { location:"POLE", normalHours:"645:00", normalAmount:5321.66,
+             otHours:"93:30", otAmount:1578.00, totalAmount:6899.66 } ] } ],
+  importedAt, importedBy, sourceFile
+} } }
+```
+- Menu key **`wages`** shared (no new permission). DB rule `shared/wages_daily_data` (+ `ws/$ws` mirror) in `database.rules.json` — **must be published in the Firebase console** or writes are denied. Wired in script.js: view branch beside `wages_variance`, `_switchableWrappers` + clear list, `_sharedLoadOk['shared/wages_daily_data']`, loaded in `init()` after `wages_ledger_data`. In sw.js precache (VERSION bumped).
+
+---
+
 ## Tree Logs Recording module (render_tree_logs.js)
 
 ### Overview

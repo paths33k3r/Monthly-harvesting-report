@@ -202,6 +202,11 @@
                                     <span class="nav-icon">⚖️</span><span class="nav-label">Variance</span>
                                 </a>
                             </li>
+                            <li class="nav-item">
+                                <a href="#" id="sidebar-wages-daily" class="nav-link">
+                                    <span class="nav-icon">📆</span><span class="nav-label">Daily Wage Ledger</span>
+                                </a>
+                            </li>
                         </ul>
                     </li>
 
@@ -506,6 +511,11 @@
                     <!-- JS will generate the Wages Variance (estimate vs actual) here -->
                 </div>
 
+                <div id="wages-daily-wrapper" class="report-wrapper hidden"
+                    style="max-width: 1300px; padding: 0; background: transparent; border: none; box-shadow: none;">
+                    <!-- JS will generate the Daily Wage Ledger (job card summary import) here -->
+                </div>
+
                 <div id="tree-logs-wrapper" class="report-wrapper hidden"
                     style="max-width: 1300px; padding: 0; background: transparent; border: none; box-shadow: none;">
                     <!-- JS will generate the Tree Logs Recording view here -->
@@ -573,6 +583,7 @@
     <script src="render_wages.js?v=6"></script>
     <script src="render_wages_ledger.js?v=5"></script>
     <script src="render_wages_variance.js?v=1"></script>
+    <script src="render_wages_daily.js?v=1"></script>
     <script src="render_tree_logs.js?v=12"></script>
     <script src="render_spraying.js?v=14"></script>
     <script src="render_manuring.js?v=15"></script>
@@ -580,7 +591,7 @@
     <script src="workspace.js?v=3"></script>
     <script src="app_boot.js?v=2"></script>
     <script src="app_user_mgmt.js?v=6"></script>
-    <script src="script.js?v=75"></script>
+    <script src="script.js?v=76"></script>
     <script src="ui_enhancements.js?v=12"></script>
     <script src="field_mode.js?v=1"></script>
     <script>

@@ -15,7 +15,7 @@
 
    Bump VERSION to invalidate all caches after big changes.
    ============================================================ */
-const VERSION = 'v21';
+const VERSION = 'v22';
 const SHELL_CACHE = 'shell-' + VERSION;
 const CDN_CACHE = 'cdn-' + VERSION;
 
@@ -42,6 +42,7 @@ const SHELL_PRECACHE = [
     './render_ironhorse.js',
     './render_wages.js',
     './render_wages_ledger.js',
+    './render_wages_daily.js',
     './render_tree_logs.js',
     './render_ytd_report.js',
     './render_rainfall.js',
