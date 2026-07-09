@@ -23,6 +23,7 @@ const runMainApplication = () => {
             wages: {}, // { "2026": { penaltyPerBunch, gangs:{} } } — loaded from shared/wages_data
             wagesLedger: {}, // { "2026": { "APR": { harvester:[], driverLoader:[], jobcard:[] } } } — loaded from shared/wages_ledger_data
             wagesDaily: {}, // { "2026": { "JUN": { periodFrom, periodTo, activities:[] } } } — loaded from shared/wages_daily_data
+            wagesEmployees: {}, // { list:[{employeeId, displayName, vendor, position, staffStatus, …}], importedAt } — loaded from shared/wages_employees_data
             treeLogs: {}, // { company, codes:{categories,species,grades}, years:{ "2024": { batches:[] } } } — loaded from shared/tree_logs_data
             selectedReportYear: null,
             activeViewType: 'report_year',
@@ -1783,6 +1784,7 @@ const runMainApplication = () => {
             const wagesLedgerWrapper = document.getElementById('wages-ledger-wrapper');
             const wagesVarianceWrapper = document.getElementById('wages-variance-wrapper');
             const wagesDailyWrapper  = document.getElementById('wages-daily-wrapper');
+            const wagesEmployeesWrapper = document.getElementById('wages-employees-wrapper');
             const treeLogsWrapper    = document.getElementById('tree-logs-wrapper');
             if (ffbWrapper) ffbWrapper.innerHTML = ''; // Clear FFB budget widgets
             if (rainfallWrapper) rainfallWrapper.innerHTML = ''; // Clear Rainfall widgets
@@ -1804,6 +1806,7 @@ const runMainApplication = () => {
             if (wagesLedgerWrapper) { wagesLedgerWrapper.innerHTML = ''; wagesLedgerWrapper.classList.add('hidden'); }
             if (wagesVarianceWrapper) { wagesVarianceWrapper.innerHTML = ''; wagesVarianceWrapper.classList.add('hidden'); }
             if (wagesDailyWrapper)  { wagesDailyWrapper.innerHTML = '';  wagesDailyWrapper.classList.add('hidden'); }
+            if (wagesEmployeesWrapper) { wagesEmployeesWrapper.innerHTML = ''; wagesEmployeesWrapper.classList.add('hidden'); }
             if (treeLogsWrapper)    { treeLogsWrapper.innerHTML = '';   treeLogsWrapper.classList.add('hidden'); }
             if (userMgmtWrapper) { userMgmtWrapper.innerHTML = ''; userMgmtWrapper.classList.add('hidden'); }
             if (excelReportsWrapper) { excelReportsWrapper.innerHTML = ''; excelReportsWrapper.classList.add('hidden'); }
@@ -1838,7 +1841,7 @@ const runMainApplication = () => {
                 ihAssetsWrapper, ihExpensesWrapper, ihCostPerHaWrapper,
                 gangOverviewWrapper, selectorWrapper,
                 mntGangsWrapper, mntWorklogWrapper, mntGanttWrapper,
-                weeklyWrapper, wagesWrapper, wagesLedgerWrapper, wagesVarianceWrapper, wagesDailyWrapper, treeLogsWrapper,
+                weeklyWrapper, wagesWrapper, wagesLedgerWrapper, wagesVarianceWrapper, wagesDailyWrapper, wagesEmployeesWrapper, treeLogsWrapper,
                 userMgmtWrapper, excelReportsWrapper, auditLogWrapper,
                 dashboardWrapper
             ];
@@ -1965,6 +1968,10 @@ const runMainApplication = () => {
             } else if (state.activeViewType === 'wages_daily') {
                 showView(wagesDailyWrapper, () => {
                     if (typeof window.renderWagesDailyView === 'function') window.renderWagesDailyView();
+                }, 'wages');
+            } else if (state.activeViewType === 'wages_employees') {
+                showView(wagesEmployeesWrapper, () => {
+                    if (typeof window.renderWagesEmployeesView === 'function') window.renderWagesEmployeesView();
                 }, 'wages');
             } else if (state.activeViewType === 'tree_logs') {
                 showView(treeLogsWrapper, () => {
@@ -3873,6 +3880,17 @@ const runMainApplication = () => {
                     };
                 }
 
+                // ── Employees (master listing) nav handler ──────────────
+                const sidebarWagesEmployees = document.getElementById('sidebar-wages-employees');
+                if (sidebarWagesEmployees) {
+                    sidebarWagesEmployees.onclick = (e) => {
+                        e.preventDefault();
+                        if (!state.wagesEmployees) state.wagesEmployees = {};
+                        state.activeViewType = 'wages_employees';
+                        renderSidebar(); renderTable();
+                    };
+                }
+
                 // ── Tree Logs Recording nav handler ─────────────────────
                 const sidebarTreeLogs = document.getElementById('sidebar-tree-logs');
                 if (sidebarTreeLogs) {
@@ -4225,6 +4243,7 @@ const runMainApplication = () => {
                     'shared/wages_data': false,
                     'shared/wages_ledger_data': false,
                     'shared/wages_daily_data': false,
+                    'shared/wages_employees_data': false,
                     'shared/tree_logs_data': false,
                     'shared/maintenance_data': false
                 };
@@ -4446,6 +4465,24 @@ const runMainApplication = () => {
                 } catch (e) {
                     console.warn("Could not load Daily Wage Ledger data:", e.message);
                     if (!state.wagesDaily) state.wagesDaily = {};
+                }
+
+                // Load Employee Master data (EMS master listing import — shared across all users)
+                window._wagesEmployeesDb = db;
+                try {
+                    if (cloudUnreachable) throw new Error('cloud unreachable — skipped');
+                    const weSnap = await readWithTimeout('shared/wages_employees_data');
+                    const weData = weSnap.val();
+                    if (weData) {
+                        state.wagesEmployees = JSON.parse(weData);
+                        console.log("Employee master data loaded from cloud.");
+                    } else if (!state.wagesEmployees) {
+                        state.wagesEmployees = {};
+                    }
+                    window._sharedLoadOk['shared/wages_employees_data'] = true;
+                } catch (e) {
+                    console.warn("Could not load Employee Master data:", e.message);
+                    if (!state.wagesEmployees) state.wagesEmployees = {};
                 }
 
                 // Load Tree Logs data (delivery batches + species detail — shared across all users).

@@ -26,6 +26,7 @@ or open with VS Code Live Server (right-click index.html → Open with Live Serv
 | `render_maintenance.js` | Maintenance Gangs, Work Log & Gantt Chart (digitises the hand-written Gantt sheets) |
 | `render_wages.js` | **Rate of Wages** — per-gang/month payment calc (FFB rate × net MT − daily-rate blocks − penalty) + Excel report |
 | `render_weekly.js` | **Weekly Activity** — track-driven field report: KMZ/KML/GPX import, Leaflet satellite map, photo storage, Word `.docx` export |
+| `render_wages_employees.js` | **Employee Master** — EMS master-listing import (.xls via SheetJS), per-agent headcount, first sub-tab under Rate of Wages |
 | `render_tree_logs.js` | **Tree Logs Recording** (Tree Planting workspace only) — ACMG-style master summary of all delivery batches, KU-style species/grade drilldown, manual entry, Excel import/template/export, analytics |
 | `Report samples/` | Excel templates used as base for downloads |
 
@@ -219,6 +220,16 @@ Top-level sidebar menu **💵 Rate of Wages** (id `sidebar-wages`, between Iron 
 } } }
 ```
 - Menu key **`wages`** shared (no new permission). DB rule `shared/wages_daily_data` (+ `ws/$ws` mirror) in `database.rules.json` — **must be published in the Firebase console** or writes are denied. Wired in script.js: view branch beside `wages_variance`, `_switchableWrappers` + clear list, `_sharedLoadOk['shared/wages_daily_data']`, loaded in `init()` after `wages_ledger_data`. In sw.js precache (VERSION bumped).
+
+---
+
+## Employee Master module (render_wages_employees.js)
+
+**"👥 Employees"** — FIRST sub-tab under 💵 Rate of Wages (`sidebar-wages-employees`, view type `wages_employees`, wrapper `wages-employees-wrapper`). Digitises the EMS **"Employee Master Listing"** export: every worker with the **Vendor Code (= agent, e.g. "RONI AGENT")** their wages are allocated under — the key that lets Wage-Ledger employee rows be differentiated / rolled up per agent. Menu key **`wages`** shared.
+- **Import** (`window.importWagesEmployees(file)`, edit-gated `_canEdit('wages')`) — the EMS export is a **binary .xls (BIFF)**, which ExcelJS can't read, so the importer lazy-loads **SheetJS** (`xlsx@0.18.5 full`, `weEnsureSheetJS`) and reads .xls AND .xlsx. `sheet_to_json(raw:false)` keeps formatted text (IC leading zeros survive; dates arrive as the displayed `dd/mm/yyyy` text → `weToISO`). Header row found by signature (`EMPLOYEEID` + `DISPLAYNAME`/`STAFFCATEGORY`); columns mapped **first-occurrence-wins** (the export repeats Country/State/… headers). Of the 55 source columns only the ~25 populated ones are stored (addresses/phones/Grade/Job Function are empty). Duplicate Employee IDs skipped. Import **replaces** the whole list (confirm shows counts). Validated vs the real Jul-2026 export: 471 employees / 43 agents / 295 active / 0 bad dates (~243 KB JSON).
+- **View** — summary tiles (total, active = CONFIRMED+PROBATION, left, foreign/local, agents); **☰ List** mode: search (name/ID/IC/position) + Status (default **Active only**) / Agent / Category filters, 200-row cap + Show all, click a row → expandable detail (IC, DOB, remark…); **🤝 By agent** mode: per-vendor active/left headcount with position breakdown — the wage-allocation grouping.
+- **Template** (`downloadWagesEmployeesTemplate`) + **Export** (`downloadWagesEmployeesReport`) via ExcelJS, available read-only. Lookup hooks for other wages tabs: `window.weFindEmployee(nameOrId)` / `window.weAgentOf(nameOrId)` (exact-ci display-name/ID match).
+- Data: `state.wagesEmployees = { list:[{no,employeeId,type,vendor,firstName,middleName,lastName,title,displayName,centralization,icNo,dob,gender,maritalStatus,nationality,race,email,dateJoin,dateConfirm,employmentType,dateLeave,position,staffCategory,staffStatus,remark}], importedAt, importedBy, sourceFile }` → Firebase `shared/wages_employees_data` (`window._wagesEmployeesDb`, `saveWagesEmployeesData`). DB rule (+ `ws/$ws` mirror) in `database.rules.json` — **must be published in the Firebase console** or writes are denied. Wired in script.js (view branch, `_switchableWrappers` + clear list, `_sharedLoadOk` entry, loaded in `init()` after `wages_daily_data`). In sw.js precache (VERSION bumped).
 
 ---
 
