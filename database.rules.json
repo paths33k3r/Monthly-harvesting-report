@@ -43,7 +43,13 @@
     },
 
     "shared": {
-      ".read": "auth != null",
+      // Read access requires a provisioned account (has allowedMenus), not
+      // just any signed-in user — closes the gap where the repo being public
+      // + open self-signup let a stranger register and read all business/
+      // payroll data. Admin-provisioned users always have allowedMenus; a
+      // self-created default record (loadUserRole in app_user_mgmt.js) is
+      // deliberately barred from having it, so it stays locked out.
+      ".read": "auth != null && root.child('user_roles').child(auth.uid).child('allowedMenus').exists()",
 
       // main app state: planting record, gangs, harvesting performance,
       // rainfall, FFB budget — written by saveState()
