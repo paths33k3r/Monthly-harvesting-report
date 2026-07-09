@@ -25,6 +25,7 @@ const runMainApplication = () => {
             wagesDaily: {}, // { "2026": { "JUN": { periodFrom, periodTo, activities:[] } } } — loaded from shared/wages_daily_data
             wagesEmployees: {}, // { list:[{employeeId, displayName, vendor, position, staffStatus, …}], importedAt } — loaded from shared/wages_employees_data
             treeLogs: {}, // { company, codes:{categories,species,grades}, years:{ "2024": { batches:[] } } } — loaded from shared/tree_logs_data
+            hyr: {}, // { year, half, master:{fileName,importedAt,importedBy}, periods:{ "2025-JUL-DEC": { appendix9:{coupes:[]} } } } — loaded from shared/hyr_data
             selectedReportYear: null,
             activeViewType: 'report_year',
             activeViewValue: null,
@@ -1830,6 +1831,8 @@ const runMainApplication = () => {
             const wagesEmployeesWrapper = document.getElementById('wages-employees-wrapper');
             const wagesProdCostWrapper = document.getElementById('wages-prodcost-wrapper');
             const treeLogsWrapper    = document.getElementById('tree-logs-wrapper');
+            const hyrReportWrapper   = document.getElementById('hyr-report-wrapper');
+            const hyrAppendix9Wrapper = document.getElementById('hyr-appendix9-wrapper');
             if (ffbWrapper) ffbWrapper.innerHTML = ''; // Clear FFB budget widgets
             if (rainfallWrapper) rainfallWrapper.innerHTML = ''; // Clear Rainfall widgets
             if (ytdWrapper) ytdWrapper.innerHTML = '';
@@ -1853,6 +1856,8 @@ const runMainApplication = () => {
             if (wagesEmployeesWrapper) { wagesEmployeesWrapper.innerHTML = ''; wagesEmployeesWrapper.classList.add('hidden'); }
             if (wagesProdCostWrapper) { wagesProdCostWrapper.innerHTML = ''; wagesProdCostWrapper.classList.add('hidden'); }
             if (treeLogsWrapper)    { treeLogsWrapper.innerHTML = '';   treeLogsWrapper.classList.add('hidden'); }
+            if (hyrReportWrapper)    { hyrReportWrapper.innerHTML = '';    hyrReportWrapper.classList.add('hidden'); }
+            if (hyrAppendix9Wrapper) { hyrAppendix9Wrapper.innerHTML = ''; hyrAppendix9Wrapper.classList.add('hidden'); }
             if (userMgmtWrapper) { userMgmtWrapper.innerHTML = ''; userMgmtWrapper.classList.add('hidden'); }
             if (excelReportsWrapper) { excelReportsWrapper.innerHTML = ''; excelReportsWrapper.classList.add('hidden'); }
             const auditLogWrapper = document.getElementById('audit-log-wrapper');
@@ -1887,6 +1892,7 @@ const runMainApplication = () => {
                 gangOverviewWrapper, selectorWrapper,
                 mntGangsWrapper, mntWorklogWrapper, mntGanttWrapper,
                 weeklyWrapper, wagesWrapper, wagesLedgerWrapper, wagesVarianceWrapper, wagesDailyWrapper, wagesEmployeesWrapper, wagesProdCostWrapper, treeLogsWrapper,
+                hyrReportWrapper, hyrAppendix9Wrapper,
                 userMgmtWrapper, excelReportsWrapper, auditLogWrapper,
                 dashboardWrapper
             ];
@@ -2026,6 +2032,14 @@ const runMainApplication = () => {
                 showView(treeLogsWrapper, () => {
                     if (typeof window.renderTreeLogs === 'function') window.renderTreeLogs();
                 }, 'treelogs');
+            } else if (state.activeViewType === 'hyr_report') {
+                showView(hyrReportWrapper, () => {
+                    if (typeof window.renderHyrReportView === 'function') window.renderHyrReportView();
+                }, 'hyr');
+            } else if (state.activeViewType === 'hyr_appendix9') {
+                showView(hyrAppendix9Wrapper, () => {
+                    if (typeof window.renderHyrAppendix9View === 'function') window.renderHyrAppendix9View();
+                }, 'hyr');
             } else if (state.activeViewType === 'audit_log') {
                 showView(auditLogWrapper, () => {
                     if (typeof window.renderAuditLog === 'function') window.renderAuditLog();
@@ -3961,6 +3975,26 @@ const runMainApplication = () => {
                     };
                 }
 
+                // ── Half-Yearly Report nav handlers ─────────────────────
+                const sidebarHyrReport = document.getElementById('sidebar-hyr-report');
+                if (sidebarHyrReport) {
+                    sidebarHyrReport.onclick = (e) => {
+                        e.preventDefault();
+                        if (!state.hyr) state.hyr = {};
+                        state.activeViewType = 'hyr_report';
+                        renderSidebar(); renderTable();
+                    };
+                }
+                const sidebarHyrAppendix9 = document.getElementById('sidebar-hyr-appendix9');
+                if (sidebarHyrAppendix9) {
+                    sidebarHyrAppendix9.onclick = (e) => {
+                        e.preventDefault();
+                        if (!state.hyr) state.hyr = {};
+                        state.activeViewType = 'hyr_appendix9';
+                        renderSidebar(); renderTable();
+                    };
+                }
+
                 // ── Audit Log nav handler ───────────────────────────────
                 const sidebarAuditLog = document.getElementById('sidebar-audit-log');
                 if (sidebarAuditLog) {
@@ -4304,6 +4338,7 @@ const runMainApplication = () => {
                     'shared/wages_daily_data': false,
                     'shared/wages_employees_data': false,
                     'shared/tree_logs_data': false,
+                    'shared/hyr_data': false,
                     'shared/maintenance_data': false
                 };
                 const readWithTimeout = (path, ms = 8000) => Promise.race([
@@ -4570,6 +4605,26 @@ const runMainApplication = () => {
                         if (attempt < 4) await new Promise(r => setTimeout(r, 500 * attempt));
                         else if (!state.treeLogs) state.treeLogs = {};
                     }
+                }
+
+                // Load Half-Yearly Report data (period picker + Appendix 9 — shared across all users).
+                // The master workbook itself lives separately at shared/hyr_master_file (fetched
+                // lazily on Export) so this small JSON record loads fast.
+                window._hyrDb = db;
+                try {
+                    if (cloudUnreachable) throw new Error('cloud unreachable — skipped');
+                    const hyrSnap = await readWithTimeout('shared/hyr_data');
+                    const hyrData = hyrSnap.val();
+                    if (hyrData) {
+                        state.hyr = JSON.parse(hyrData);
+                        console.log("Half-Yearly Report data loaded from cloud.");
+                    } else if (!state.hyr) {
+                        state.hyr = {};
+                    }
+                    window._sharedLoadOk['shared/hyr_data'] = true;
+                } catch (e) {
+                    console.warn("Could not load Half-Yearly Report data:", e.message);
+                    if (!state.hyr) state.hyr = {};
                 }
 
                 // Load Maintenance data (gangs, work log, gantt — shared across all users)

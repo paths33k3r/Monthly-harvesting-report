@@ -29,6 +29,7 @@ or open with VS Code Live Server (right-click index.html → Open with Live Serv
 | `render_wages_employees.js` | **Employee Master** — EMS master-listing import (.xls via SheetJS), per-agent headcount, working-permit flags, first sub-tab under Rate of Wages |
 | `render_wages_prodcost.js` | **Production Cost** — labour-cost summary derived from the Wage Ledger for a free date range, Local/Permit/Gelap split via Employee-Master ID prefixes |
 | `render_tree_logs.js` | **Tree Logs Recording** (Tree Planting workspace only) — ACMG-style master summary of all delivery batches, KU-style species/grade drilldown, manual entry, Excel import/template/export, analytics |
+| `render_hyr.js` | **Half-Yearly Report** (Tree Planting workspace only) — Director-of-Forests filing: master-template import/export via row-cloning XML surgery, Appendix 9 (planting summary) live-editable — Phase 1 pilot |
 | `Report samples/` | Excel templates used as base for downloads |
 
 ## Cache busting
@@ -292,6 +293,50 @@ Plus: **Analytics** (qty+volume by species/grade/category) and **editable Code L
 - **Open** (`tlOpenInvoice`) loads the data URL → Blob URL → new tab (avoids long-`data:`-nav blocking). **Helpers:** `tlUploadInvoicePdf`/`tlLoadInvoicePdf` (in-memory `_tlInvCache`)/`tlDeleteInvoicePdf`; `tlBatchInvoice(batchNo)` (registry → map fallback). Delete uses `notifyUndo` (cache-based restore within the session).
 - **Column states:** clickable 🧾 when the PDF is imported; greyed 🧾 (link known, PDF not yet imported) otherwise; `—` if the batch has no invoice. Same link appears in the batch detail card (`#tl-detail-inv`).
 - DB rule `shared/tree_logs_invoice_files` (+ `ws/$ws` mirror) gated by `treelogs` — **must be published in the Firebase console** or invoice-PDF writes are denied.
+
+---
+
+## Half-Yearly Report module (render_hyr.js) — Tree Planting workspace only
+
+### Overview
+Top-level sidebar menu **📄 Half-Yearly Report** (Tree-Planting-exclusive — hidden in Oil Palm via `WORKSPACES.oil_palm.hiddenAreas`), with sub-tabs **Report** (`sidebar-hyr-report`) and **Appendix 9: Planting Summary** (`sidebar-hyr-appendix9`). Digitises the ~23-sheet workbook the licensee submits to the Sarawak Director of Forests every 6 months (Licence for Planted Forest). Most sheets are maintained by hand and just need their period stamp + filename refreshed each half-year; **PHASE 1 ships one live-editable appendix (9 — all-coupes planting summary) as a pilot** for the export engine before the other three (Appendix 4A/4B planting-by-block, 5 roads, 6A/6B silviculture) are built on top of it.
+
+**Critical constraint:** the export engine edits the workbook's XML directly (JSZip) to preserve exact regulatory formatting — this only works on the ZIP-based **.xlsx** container, not legacy binary **.xls** (confirmed via magic-byte check: `D0CF11E0` = OLE/BIFF, not `504B0304` = ZIP). Users must upload `.xlsx` — Excel's own "Save As" conversion from old `.xls` is lossless and far better than anything the app could do; `importHyrMaster` rejects `.xls` uploads with a message pointing to this.
+
+### View wiring
+- `state.activeViewType === 'hyr_report'` / `'hyr_appendix9'`; wrappers `hyr-report-wrapper` / `hyr-appendix9-wrapper`; registered in `_switchableWrappers` + hide/clear lists; view branches beside `tree_logs`; sidebar handlers near the Tree Logs handler. All in `script.js`.
+- Edit-gated by menu key **`hyr`** (`window._canEdit('hyr')`, in `ALL_MENU_KEYS` + user-management `allMenuOptions`). Export is available to read-only users; Import + row edit/delete are gated.
+
+### Data structure
+```js
+state.hyr = {
+  year: "2025", half: "JUL-DEC",                          // current period (drives filename + which period's data shows)
+  master: { fileName, importedAt, importedBy },            // metadata only — bytes stored separately
+  periods: { "2025-JUL-DEC": { appendix9: { coupes: [
+    { id, coupeNo:"OP/T2008", scheduledYear:"2023", actualYear:"2008  TO 2010", typeOfPlantation:"MONO",
+      areaNotUnderFTL:0, area:378, areaUnderFTLOthers:0,                 // → derived Total (H) = sum of these 3
+      clearing:0, planted1st:252, planted2nd:0, enrichment:0, protection:60,
+      notPlantedTerIV:0, notPlantedBuffer:5, notPlantedNative:61,        // → derived Total (Q) = sum of these 8
+      groundVerification:"YES", remarks:"Completed" } ] } } }
+}
+```
+→ Firebase `shared/hyr_data` (`window._hyrDb`, `saveHyrData`) — small JSON, `_sharedLoadOk` entry, loaded in `init()` after `wages_employees_data`. The master **workbook itself** is stored separately at `shared/hyr_master_file` as a single data URL (kept OUT of `hyr_data`, like `weekly_images`/`tree_logs_invoice_files`, so period-data saves stay tiny) — **not** in `_sharedLoadOk` (untracked path, matches the existing convention: only eagerly-loaded sections need the race guard; this is fetched lazily on Export).
+
+### Import (`window.importHyrMaster(file, year, half)`, edit-gated, .xlsx only)
+One upload does two things at once: (1) stores the raw file bytes as the new master template for Export, (2) parses the **Appendix 9** sheet (found by name, header-signature-detected at `Coupe No.` + `Actual planting year`, data starts 3 rows below the 3-row merged header) into `state.hyr.periods[key].appendix9.coupes`, skipping the trailing `Gross` totals row. `confirm()` shows the coupe count before committing (matches Tree Logs/Wage Ledger import UX); re-import **replaces** the period's coupes.
+
+### Export engine (`window.downloadHyrReport(year, half)`) — the reusable part
+JSZip-based row-cloning XML surgery, generic enough for the Phase-2 appendices to reuse:
+- `hyrFindSheetPath(zip, sheetName)` — resolves a sheet's display name → `xl/worksheets/sheetN.xml` via `workbook.xml`'s `<sheet name=... r:id=...>` (attributes extracted independently since order isn't guaranteed) + `workbook.xml.rels`.
+- `hyrRegenSheetRows(sheetXml, opts)` — the row-count-safe regenerator: takes the template's own data rows as a **per-column style lookup** (so fonts/borders/number formats survive even though the row count can differ from the template), builds new `<row>` XML from app-state records (values only — no formulas, matching the "static values" convention used by every other export in this app), rebuilds the totals row from a `totalsFn`, and **shifts every row number, cell reference, and `<mergeCell>` below the managed block** by the resulting delta (records could be more or fewer than the template had). Validated end-to-end: importing a 13-coupe sample, editing one value + adding a 14th coupe, exporting, and confirming (a) the totals row correctly moved from row 17→18, (b) all `mergeCell` refs in the trailing notes section shifted +1, (c) `<dimension>` extended, (d) the file re-parses cleanly in ExcelJS with correct values, (e) untouched sheets (frozen **and** not-yet-live passthrough) are **byte-identical** to the imported master.
+- Sheet tiers for Phase 1: **live** (Appendix 9, rebuilt from state) · **passthrough** (everything else — FRONT, Appendix 1–8, 10–12, Bamboo — carried through unchanged; period-stamp relabelling for these is Phase 2, since Appendix 9 itself has no period stamp on its own sheet) · nothing is dropped — all ~23 sheets ship in every export.
+- Filename: `HYR (<Mon>-<Mon> <year>).xlsx` (3-letter months, e.g. `HYR (Jul-Dec 2025).xlsx`).
+
+### Firebase rules
+`shared/hyr_data` and `shared/hyr_master_file` write rules (+ the `ws/$ws` mirror) gated by `hyr` in `database.rules.json` — **must be published in the Firebase console** or Tree Planting writes are denied.
+
+### Not yet built (Phase 2)
+Appendix 4A/4B (planting progress by block, carry-down block/species groups split by coupe T/2015 vs T/2016), Appendix 6A/6B (3–4 row silviculture groups per block, same coupe split), Appendix 5 (carry-down road-type groups) — same `hyrRegenSheetRows` engine, plus extending period-stamp text patching to the passthrough sheets now that a live appendix's own period is meaningfully "current."
 
 ---
 
