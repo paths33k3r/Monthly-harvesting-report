@@ -1087,6 +1087,49 @@ const runMainApplication = () => {
                         window.open(window.location.pathname + hash, '_blank');
                     };
                 });
+
+                // ── Period FFB widget (Harvesting Interval only) ─────────
+                // Total FFB delivered in a free FROM→TO range, summed from
+                // the Wage Ledger's harvest tickets (window.wpFfbForRange in
+                // render_wages_prodcost.js) — matches the cut-off periods on
+                // the labour-cost sheet (e.g. 01/05→25/05), so it can span
+                // month boundaries.
+                if (target === 'interval_month' && typeof window.wpFfbForRange === 'function') {
+                    const pad2 = (n) => String(n).padStart(2, '0');
+                    if (!/^\d{4}-\d{2}-\d{2}$/.test(state.intervalFfbFrom || '') || !/^\d{4}-\d{2}-\d{2}$/.test(state.intervalFfbTo || '')) {
+                        const now = new Date();
+                        state.intervalFfbFrom = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-01`;
+                        state.intervalFfbTo = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+                    }
+                    const card = document.createElement('div');
+                    card.style.cssText = 'margin-top:1.25rem; padding:1rem 1.25rem; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-primary);';
+                    const inp = 'padding:0.4rem 0.6rem; border:1px solid var(--border-color); border-radius:4px; background:var(--bg-primary); color:var(--text-primary); font-size:0.88rem;';
+                    card.innerHTML = `
+                        <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+                            <div style="font-weight:700; color:var(--text-primary);">Total FFB for a period</div>
+                            <label style="font-size:0.82rem; color:var(--text-secondary);">From
+                                <input type="date" id="iv-ffb-from" value="${state.intervalFfbFrom}" style="${inp} margin-left:4px;"></label>
+                            <label style="font-size:0.82rem; color:var(--text-secondary);">To
+                                <input type="date" id="iv-ffb-to" value="${state.intervalFfbTo}" style="${inp} margin-left:4px;"></label>
+                            <div id="iv-ffb-result" style="margin-left:auto; font-weight:700; font-size:1.1rem; color:var(--primary-color);"></div>
+                        </div>
+                        <div id="iv-ffb-note" style="font-size:0.74rem; color:var(--text-secondary); margin-top:0.4rem;"></div>`;
+                    wrapper.appendChild(card);
+                    const showFfb = () => {
+                        const from = state.intervalFfbFrom, to = state.intervalFfbTo;
+                        const resEl = card.querySelector('#iv-ffb-result');
+                        const noteEl = card.querySelector('#iv-ffb-note');
+                        if (from > to) { resEl.textContent = '—'; noteEl.textContent = 'The From date is after the To date.'; return; }
+                        const R = window.wpFfbForRange(from, to);
+                        resEl.textContent = `${R.mt.toLocaleString('en-MY', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} MT`;
+                        noteEl.textContent = R.tickets
+                            ? `${R.tickets.toLocaleString()} harvest tickets from the Wage Ledger (${R.monthsUsed.join(', ')})${R.undated ? ` · ${R.undated} undated rows skipped` : ''} — range can span months, e.g. 26/05 → 25/06.`
+                            : 'No Wage Ledger harvest tickets in this range — import the month(s) under 💵 Rate of Wages → 📒 Wage Ledger.';
+                    };
+                    card.querySelector('#iv-ffb-from').onchange = (e) => { if (e.target.value) { state.intervalFfbFrom = e.target.value; showFfb(); } };
+                    card.querySelector('#iv-ffb-to').onchange = (e) => { if (e.target.value) { state.intervalFfbTo = e.target.value; showFfb(); } };
+                    showFfb();
+                }
             } else {
                 // Year-only: render the actual report table inline, directly below the toolbar.
                 // The report wrappers (ffb-budget-wrapper / rainfall-wrapper) live elsewhere in the
@@ -1785,6 +1828,7 @@ const runMainApplication = () => {
             const wagesVarianceWrapper = document.getElementById('wages-variance-wrapper');
             const wagesDailyWrapper  = document.getElementById('wages-daily-wrapper');
             const wagesEmployeesWrapper = document.getElementById('wages-employees-wrapper');
+            const wagesProdCostWrapper = document.getElementById('wages-prodcost-wrapper');
             const treeLogsWrapper    = document.getElementById('tree-logs-wrapper');
             if (ffbWrapper) ffbWrapper.innerHTML = ''; // Clear FFB budget widgets
             if (rainfallWrapper) rainfallWrapper.innerHTML = ''; // Clear Rainfall widgets
@@ -1807,6 +1851,7 @@ const runMainApplication = () => {
             if (wagesVarianceWrapper) { wagesVarianceWrapper.innerHTML = ''; wagesVarianceWrapper.classList.add('hidden'); }
             if (wagesDailyWrapper)  { wagesDailyWrapper.innerHTML = '';  wagesDailyWrapper.classList.add('hidden'); }
             if (wagesEmployeesWrapper) { wagesEmployeesWrapper.innerHTML = ''; wagesEmployeesWrapper.classList.add('hidden'); }
+            if (wagesProdCostWrapper) { wagesProdCostWrapper.innerHTML = ''; wagesProdCostWrapper.classList.add('hidden'); }
             if (treeLogsWrapper)    { treeLogsWrapper.innerHTML = '';   treeLogsWrapper.classList.add('hidden'); }
             if (userMgmtWrapper) { userMgmtWrapper.innerHTML = ''; userMgmtWrapper.classList.add('hidden'); }
             if (excelReportsWrapper) { excelReportsWrapper.innerHTML = ''; excelReportsWrapper.classList.add('hidden'); }
@@ -1841,7 +1886,7 @@ const runMainApplication = () => {
                 ihAssetsWrapper, ihExpensesWrapper, ihCostPerHaWrapper,
                 gangOverviewWrapper, selectorWrapper,
                 mntGangsWrapper, mntWorklogWrapper, mntGanttWrapper,
-                weeklyWrapper, wagesWrapper, wagesLedgerWrapper, wagesVarianceWrapper, wagesDailyWrapper, wagesEmployeesWrapper, treeLogsWrapper,
+                weeklyWrapper, wagesWrapper, wagesLedgerWrapper, wagesVarianceWrapper, wagesDailyWrapper, wagesEmployeesWrapper, wagesProdCostWrapper, treeLogsWrapper,
                 userMgmtWrapper, excelReportsWrapper, auditLogWrapper,
                 dashboardWrapper
             ];
@@ -1972,6 +2017,10 @@ const runMainApplication = () => {
             } else if (state.activeViewType === 'wages_employees') {
                 showView(wagesEmployeesWrapper, () => {
                     if (typeof window.renderWagesEmployeesView === 'function') window.renderWagesEmployeesView();
+                }, 'wages');
+            } else if (state.activeViewType === 'wages_prodcost') {
+                showView(wagesProdCostWrapper, () => {
+                    if (typeof window.renderWagesProdCostView === 'function') window.renderWagesProdCostView();
                 }, 'wages');
             } else if (state.activeViewType === 'tree_logs') {
                 showView(treeLogsWrapper, () => {
@@ -3876,6 +3925,16 @@ const runMainApplication = () => {
                         e.preventDefault();
                         if (!state.wagesDaily) state.wagesDaily = {};
                         state.activeViewType = 'wages_daily';
+                        renderSidebar(); renderTable();
+                    };
+                }
+
+                // ── Production Cost nav handler ─────────────────────────
+                const sidebarWagesProdCost = document.getElementById('sidebar-wages-prodcost');
+                if (sidebarWagesProdCost) {
+                    sidebarWagesProdCost.onclick = (e) => {
+                        e.preventDefault();
+                        state.activeViewType = 'wages_prodcost';
                         renderSidebar(); renderTable();
                     };
                 }

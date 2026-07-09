@@ -74,6 +74,11 @@
         { key: 'staffCategory', header: 'Staff Category', w: 26 },
         { key: 'staffStatus', header: 'Staff Status', w: 12 },
         { key: 'remark', header: 'Remark', w: 12 },
+        // Not in the EMS export — maintained in-app (and round-tripped via
+        // template/export): GTF workers with a working permit count as
+        // PERMIT in the Production Cost summary, the rest as NO PERMIT.
+        { key: 'workPermit', header: 'Working Permit', w: 13 },
+        { key: 'workPermitNo', header: 'Permit No.', w: 14 },
     ];
     const WE_FIELD_MAP = {};
     WE_COLS.forEach(c => { WE_FIELD_MAP[weNormHeader(c.header)] = c.key; });
@@ -198,6 +203,7 @@
                     rec[c.key] = c.date ? weToISO(v) : v;
                 });
                 if (!rec.displayName) rec.displayName = [rec.firstName, rec.middleName, rec.lastName].filter(Boolean).join(' ');
+                rec.workPermit = /^(Y|YES|TRUE|1|✓)/i.test(String(rec.workPermit || ''));
                 list.push(rec);
             }
             if (list.length) return { list, dupes, sheet: name };
@@ -219,8 +225,20 @@
 
             let msg = `Import employee master listing:\n\n• ${parsed.list.length} employees (${nActive} active, ${parsed.list.length - nActive} left)\n• ${vendors.size} agents / vendors`;
             if (parsed.dupes) msg += `\n• ${parsed.dupes} duplicate Employee ID row(s) skipped`;
-            if (prev) msg += `\n\n⚠ This REPLACES the current list of ${prev} employees.`;
+            if (prev) msg += `\n\n⚠ This REPLACES the current list of ${prev} employees (working-permit ticks are kept).`;
             if (!confirm(msg + '\n\nProceed?')) return;
+
+            // The EMS export doesn't know about permits — carry the manually
+            // maintained Working Permit tick + number over by Employee ID.
+            const prevById = {};
+            weList().forEach(e => { if (e.employeeId) prevById[e.employeeId] = e; });
+            parsed.list.forEach(e => {
+                const old = prevById[e.employeeId];
+                if (old && !e.workPermit && !e.workPermitNo) {
+                    e.workPermit = !!old.workPermit;
+                    e.workPermitNo = old.workPermitNo || '';
+                }
+            });
 
             window.state.wagesEmployees = {
                 list: parsed.list,
@@ -265,7 +283,7 @@
         WE_COLS.forEach((c, i) => { ws.getColumn(i + 1).width = c.w; });
         const ex = ws.getRow(HR + 1);
         ex.values = [1, 'GTG-A00001', 'Draft(Without Doc)', 'RONI AGENT', 'ANDI', '', 'SAPUTRA', 'Mr', 'ANDI SAPUTRA', 'GLOBAL',
-            '', '01/01/1990', 'Male', 'Married', 'Indonesian', '', '', '01/01/2025', '', 'Permanent', '', 'HARVESTER', 'DAILY FOREIGN', 'CONFIRMED', 'AG-R001'];
+            '', '01/01/1990', 'Male', 'Married', 'Indonesian', '', '', '01/01/2025', '', 'Permanent', '', 'HARVESTER', 'DAILY FOREIGN', 'CONFIRMED', 'AG-R001', '', ''];
         ex.font = { italic: true, color: { argb: 'FF999999' } };
         // IC / date columns stay text so leading zeros & dd/mm/yyyy survive
         const txtCols = WE_COLS.map((c, i) => (c.date || c.key === 'icNo' ? i + 1 : null)).filter(Boolean);
@@ -308,7 +326,12 @@
         hdr.font = { bold: true };
         hdr.border = { bottom: { style: 'medium' } };
         WE_COLS.forEach((c, i) => { ws.getColumn(i + 1).width = c.w; });
-        list.forEach(e => { ws.getRow(r++).values = WE_COLS.map(c => e[c.key] == null ? '' : e[c.key]); });
+        list.forEach(e => {
+            ws.getRow(r++).values = WE_COLS.map(c => {
+                if (c.key === 'workPermit') return e.workPermit ? 'YES' : '';
+                return e[c.key] == null ? '' : e[c.key];
+            });
+        });
 
         const buf = await wb.xlsx.writeBuffer();
         const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -452,9 +475,20 @@
         const TH = 'padding:6px 8px; border-bottom:2px solid var(--border-color,#ccc); position:sticky; top:0; background:var(--bg-card,#fff); z-index:1; white-space:nowrap; text-align:left;';
         const TD = 'padding:4px 8px; border-bottom:1px solid var(--border-color,#eee); white-space:nowrap;';
 
+        const canEdit = (typeof window._canEdit !== 'function') || window._canEdit('wages');
         let rowsHtml = '';
         shown.forEach(e => {
             const id = weText(e.employeeId);
+            // Working-permit cell: only GTF (foreign, valid-ID) workers need the
+            // tick — it decides PERMIT vs NO PERMIT in the Production Cost view.
+            const isGTF = /^GTF/i.test(id);
+            const permitCell = isGTF
+                ? `<label class="we-permit" style="display:inline-flex; align-items:center; gap:5px; cursor:${canEdit ? 'pointer' : 'default'};">
+                     <input type="checkbox" class="we-permit-chk" data-id="${weEsc(id)}" ${e.workPermit ? 'checked' : ''} ${canEdit ? '' : 'disabled'}>
+                     <input type="text" class="we-permit-no" data-id="${weEsc(id)}" value="${weEsc(e.workPermitNo || '')}" placeholder="permit no."
+                        ${canEdit ? '' : 'disabled'} style="width:95px; padding:2px 5px; font-size:0.75rem; border:1px solid var(--border-color,#ccc); border-radius:3px; background:var(--bg-card,#fff); color:var(--text-primary);">
+                   </label>`
+                : '<span style="color:var(--text-secondary);">—</span>';
             rowsHtml += `<tr class="we-row" data-id="${weEsc(id)}" style="cursor:pointer;">
                 <td style="${TD} color:var(--text-secondary);">${weEsc(String(e.no || ''))}</td>
                 <td style="${TD} font-family:monospace;">${weEsc(id)}</td>
@@ -465,19 +499,21 @@
                 <td style="${TD}">${weEsc(e.nationality)}</td>
                 <td style="${TD}">${weEsc(e.dateJoin)}</td>
                 <td style="${TD}">${weEsc(e.dateLeave) || ''}</td>
-                <td style="${TD}">${weStatusChip(e.staffStatus)}</td></tr>`;
+                <td style="${TD}">${weStatusChip(e.staffStatus)}</td>
+                <td style="${TD}" data-stop-row>${permitCell}</td></tr>`;
             if (_weOpenId === id) {
                 const dl = (k, v) => v ? `<div><span style="color:var(--text-secondary);">${k}:</span> ${weEsc(v)}</div>` : '';
-                rowsHtml += `<tr><td colspan="10" style="${TD} background:var(--bg-main,#f7f9f7); white-space:normal;">
+                rowsHtml += `<tr><td colspan="11" style="${TD} background:var(--bg-main,#f7f9f7); white-space:normal;">
                     <div style="display:flex; flex-wrap:wrap; gap:0.3rem 2rem; font-size:0.8rem; padding:0.3rem 0.2rem;">
                       ${dl('Type', e.type)}${dl('IC No.', e.icNo)}${dl('Date of birth', e.dob)}${dl('Gender', e.gender)}
                       ${dl('Marital status', e.maritalStatus)}${dl('Race', e.race)}${dl('Email', e.email)}
                       ${dl('Centralization', e.centralization)}${dl('Employment', e.employmentType)}
                       ${dl('Date confirm', e.dateConfirm)}${dl('Remark', e.remark)}
+                      ${isGTF ? dl('Working permit', e.workPermit ? 'YES' + (e.workPermitNo ? ' — ' + e.workPermitNo : '') : 'no') : ''}
                     </div></td></tr>`;
             }
         });
-        if (!rowsHtml) rowsHtml = `<tr><td colspan="10" style="padding:16px; text-align:center; color:var(--text-secondary);">No employees match the current filters.</td></tr>`;
+        if (!rowsHtml) rowsHtml = `<tr><td colspan="11" style="padding:16px; text-align:center; color:var(--text-secondary);">No employees match the current filters.</td></tr>`;
 
         body.innerHTML = summary + `
         <div style="${CARD} padding:0; overflow:hidden;">
@@ -502,6 +538,7 @@
                 <th style="${TH} width:38px;">No.</th><th style="${TH}">Employee ID</th><th style="${TH}">Name</th>
                 <th style="${TH}">Agent / Vendor</th><th style="${TH}">Position</th><th style="${TH}">Category</th>
                 <th style="${TH}">Nationality</th><th style="${TH}">Join</th><th style="${TH}">Leave</th><th style="${TH}">Status</th>
+                <th style="${TH}" title="GTF workers only — ticked = counted as PERMIT in Production Cost">Working Permit</th>
               </tr></thead>
               <tbody>${rowsHtml}</tbody>
             </table>
@@ -526,7 +563,32 @@
         const showAllBtn = body.querySelector('#we-showall');
         if (showAllBtn) showAllBtn.onclick = () => { _weShowAll = !_weShowAll; rerender(); };
         body.querySelectorAll('.we-row').forEach(tr => {
-            tr.onclick = () => { const id = tr.dataset.id; _weOpenId = (_weOpenId === id ? null : id); rerender(); };
+            tr.onclick = (ev) => {
+                if (ev.target.closest('[data-stop-row]')) return;   // permit cell — don't toggle the detail row
+                const id = tr.dataset.id; _weOpenId = (_weOpenId === id ? null : id); rerender();
+            };
+        });
+        // Working-permit tick + number (GTF rows) — saved silently on change
+        const weByIdEdit = (id) => weList().find(x => weText(x.employeeId) === id);
+        body.querySelectorAll('.we-permit-chk').forEach(chk => {
+            chk.onchange = () => {
+                const e = weByIdEdit(chk.dataset.id);
+                if (!e) return;
+                e.workPermit = chk.checked;
+                saveWagesEmployeesData(true);
+                if (typeof window.logAudit === 'function') window.logAudit('edit', 'wages_employees', `${chk.dataset.id}: working permit ${chk.checked ? 'YES' : 'no'}`, '');
+                if (window.notify) window.notify(`${chk.dataset.id}: working permit ${chk.checked ? 'ticked' : 'cleared'}.`, 'success', 2000);
+            };
+        });
+        let _wePermitNoTimer = null;
+        body.querySelectorAll('.we-permit-no').forEach(inp => {
+            inp.oninput = () => {
+                const e = weByIdEdit(inp.dataset.id);
+                if (!e) return;
+                e.workPermitNo = inp.value.trim();
+                clearTimeout(_wePermitNoTimer);
+                _wePermitNoTimer = setTimeout(() => saveWagesEmployeesData(true), 800);
+            };
         });
     };
 
