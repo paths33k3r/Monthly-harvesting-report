@@ -1832,6 +1832,9 @@ const runMainApplication = () => {
             const wagesProdCostWrapper = document.getElementById('wages-prodcost-wrapper');
             const treeLogsWrapper    = document.getElementById('tree-logs-wrapper');
             const hyrReportWrapper   = document.getElementById('hyr-report-wrapper');
+            const hyrAppendix4Wrapper = document.getElementById('hyr-appendix4-wrapper');
+            const hyrAppendix5Wrapper = document.getElementById('hyr-appendix5-wrapper');
+            const hyrAppendix6Wrapper = document.getElementById('hyr-appendix6-wrapper');
             const hyrAppendix9Wrapper = document.getElementById('hyr-appendix9-wrapper');
             if (ffbWrapper) ffbWrapper.innerHTML = ''; // Clear FFB budget widgets
             if (rainfallWrapper) rainfallWrapper.innerHTML = ''; // Clear Rainfall widgets
@@ -1857,6 +1860,9 @@ const runMainApplication = () => {
             if (wagesProdCostWrapper) { wagesProdCostWrapper.innerHTML = ''; wagesProdCostWrapper.classList.add('hidden'); }
             if (treeLogsWrapper)    { treeLogsWrapper.innerHTML = '';   treeLogsWrapper.classList.add('hidden'); }
             if (hyrReportWrapper)    { hyrReportWrapper.innerHTML = '';    hyrReportWrapper.classList.add('hidden'); }
+            if (hyrAppendix4Wrapper) { hyrAppendix4Wrapper.innerHTML = ''; hyrAppendix4Wrapper.classList.add('hidden'); }
+            if (hyrAppendix5Wrapper) { hyrAppendix5Wrapper.innerHTML = ''; hyrAppendix5Wrapper.classList.add('hidden'); }
+            if (hyrAppendix6Wrapper) { hyrAppendix6Wrapper.innerHTML = ''; hyrAppendix6Wrapper.classList.add('hidden'); }
             if (hyrAppendix9Wrapper) { hyrAppendix9Wrapper.innerHTML = ''; hyrAppendix9Wrapper.classList.add('hidden'); }
             if (userMgmtWrapper) { userMgmtWrapper.innerHTML = ''; userMgmtWrapper.classList.add('hidden'); }
             if (excelReportsWrapper) { excelReportsWrapper.innerHTML = ''; excelReportsWrapper.classList.add('hidden'); }
@@ -1892,7 +1898,7 @@ const runMainApplication = () => {
                 gangOverviewWrapper, selectorWrapper,
                 mntGangsWrapper, mntWorklogWrapper, mntGanttWrapper,
                 weeklyWrapper, wagesWrapper, wagesLedgerWrapper, wagesVarianceWrapper, wagesDailyWrapper, wagesEmployeesWrapper, wagesProdCostWrapper, treeLogsWrapper,
-                hyrReportWrapper, hyrAppendix9Wrapper,
+                hyrReportWrapper, hyrAppendix4Wrapper, hyrAppendix5Wrapper, hyrAppendix6Wrapper, hyrAppendix9Wrapper,
                 userMgmtWrapper, excelReportsWrapper, auditLogWrapper,
                 dashboardWrapper
             ];
@@ -2035,6 +2041,18 @@ const runMainApplication = () => {
             } else if (state.activeViewType === 'hyr_report') {
                 showView(hyrReportWrapper, () => {
                     if (typeof window.renderHyrReportView === 'function') window.renderHyrReportView();
+                }, 'hyr');
+            } else if (state.activeViewType === 'hyr_appendix4') {
+                showView(hyrAppendix4Wrapper, () => {
+                    if (typeof window.renderHyrAppendix4View === 'function') window.renderHyrAppendix4View();
+                }, 'hyr');
+            } else if (state.activeViewType === 'hyr_appendix5') {
+                showView(hyrAppendix5Wrapper, () => {
+                    if (typeof window.renderHyrAppendix5View === 'function') window.renderHyrAppendix5View();
+                }, 'hyr');
+            } else if (state.activeViewType === 'hyr_appendix6') {
+                showView(hyrAppendix6Wrapper, () => {
+                    if (typeof window.renderHyrAppendix6View === 'function') window.renderHyrAppendix6View();
                 }, 'hyr');
             } else if (state.activeViewType === 'hyr_appendix9') {
                 showView(hyrAppendix9Wrapper, () => {
@@ -3982,6 +4000,33 @@ const runMainApplication = () => {
                         e.preventDefault();
                         if (!state.hyr) state.hyr = {};
                         state.activeViewType = 'hyr_report';
+                        renderSidebar(); renderTable();
+                    };
+                }
+                const sidebarHyrAppendix4 = document.getElementById('sidebar-hyr-appendix4');
+                if (sidebarHyrAppendix4) {
+                    sidebarHyrAppendix4.onclick = (e) => {
+                        e.preventDefault();
+                        if (!state.hyr) state.hyr = {};
+                        state.activeViewType = 'hyr_appendix4';
+                        renderSidebar(); renderTable();
+                    };
+                }
+                const sidebarHyrAppendix5 = document.getElementById('sidebar-hyr-appendix5');
+                if (sidebarHyrAppendix5) {
+                    sidebarHyrAppendix5.onclick = (e) => {
+                        e.preventDefault();
+                        if (!state.hyr) state.hyr = {};
+                        state.activeViewType = 'hyr_appendix5';
+                        renderSidebar(); renderTable();
+                    };
+                }
+                const sidebarHyrAppendix6 = document.getElementById('sidebar-hyr-appendix6');
+                if (sidebarHyrAppendix6) {
+                    sidebarHyrAppendix6.onclick = (e) => {
+                        e.preventDefault();
+                        if (!state.hyr) state.hyr = {};
+                        state.activeViewType = 'hyr_appendix6';
                         renderSidebar(); renderTable();
                     };
                 }

@@ -29,7 +29,7 @@ or open with VS Code Live Server (right-click index.html → Open with Live Serv
 | `render_wages_employees.js` | **Employee Master** — EMS master-listing import (.xls via SheetJS), per-agent headcount, working-permit flags, first sub-tab under Rate of Wages |
 | `render_wages_prodcost.js` | **Production Cost** — labour-cost summary derived from the Wage Ledger for a free date range, Local/Permit/Gelap split via Employee-Master ID prefixes |
 | `render_tree_logs.js` | **Tree Logs Recording** (Tree Planting workspace only) — ACMG-style master summary of all delivery batches, KU-style species/grade drilldown, manual entry, Excel import/template/export, analytics |
-| `render_hyr.js` | **Half-Yearly Report** (Tree Planting workspace only) — Director-of-Forests filing: master-template import/export via row-cloning XML surgery, Appendix 9 (planting summary) live-editable — Phase 1 pilot |
+| `render_hyr.js` | **Half-Yearly Report** (Tree Planting workspace only) — Director-of-Forests filing: master-template import/export via row-cloning XML surgery; Appendix 9/5/4A/4B/6A/6B live-editable (flat + grouped row-cloning engines) |
 | `Report samples/` | Excel templates used as base for downloads |
 
 ## Cache busting
@@ -335,8 +335,68 @@ JSZip-based row-cloning XML surgery, generic enough for the Phase-2 appendices t
 ### Firebase rules
 `shared/hyr_data` and `shared/hyr_master_file` write rules (+ the `ws/$ws` mirror) gated by `hyr` in `database.rules.json` — **must be published in the Firebase console** or Tree Planting writes are denied.
 
-### Not yet built (Phase 2)
-Appendix 4A/4B (planting progress by block, carry-down block/species groups split by coupe T/2015 vs T/2016), Appendix 6A/6B (3–4 row silviculture groups per block, same coupe split), Appendix 5 (carry-down road-type groups) — same `hyrRegenSheetRows` engine, plus extending period-stamp text patching to the passthrough sheets now that a live appendix's own period is meaningfully "current."
+### Phase 2 — Appendix 4A/4B, 5, 6A/6B (live-editable, grouped rows)
+Adds three more live appendices on top of Phase 1's engine, plus a second row-cloning
+mode for GROUPED data (one record → a variable number of sub-rows):
+
+- **Appendix 5** (`sidebar-hyr-appendix5`, flat list, reuses `hyrRegenSheetRows`) — road
+  segments with a carry-down "Type of Road" column (shown once per contiguous
+  same-type run). `compute(rec, i, records)` on `hyrRegenSheetRows`'s column spec was
+  extended to take the row index + full array so a column can look at its *neighbour*
+  to decide whether to repeat or blank itself — needed for this carry-down, not needed
+  by Appendix 9. No totals row; the notes-section heading doubles as the row-shift
+  boundary marker (`hyrRegenFlatSheet`'s `boundaryCol/boundaryNeedle` params).
+- **Appendix 4A/4B** (planting progress by block) and **Appendix 6A/6B** (silviculture by
+  month) — both **grouped**: a block record expands into a variable number of sub-rows
+  (species/planting lines for 4, Slashing/Spraying/Fertilizing/Pruning operation lines
+  for 6), with the group's key columns (Coupe No, Block No…) written once on the first
+  row and **merged** across the group's row span — mirroring the template's own
+  `A4:A6`-style merges. New engine: `hyrRegenGroupedRows` (parallel to
+  `hyrRegenSheetRows`, same row-shift/mergeCell-reconciliation logic, but builds
+  `keyColumns` once per group + `lineColumns` once per sub-row, and supports
+  `wholeTableColumns`/`wholeTableValues` for fields that apply to the *entire* table,
+  not per-group — Appendix 4's single Coupe No / felling-date columns).
+- **A and B aren't identical layouts** — confirmed against the real template, not
+  assumed: **6A's columns sit one letter right of 6B's** (`B/C/D/E-P/Q` vs
+  `A/B/C/D-O/P`) and 6A has no separate totals row (the "TOTAL" label shares a row with
+  the notes footer) — handled via a per-coupe `HYR_A6_LAYOUT` lookup rather than
+  hardcoded columns. **4A doesn't use 4B's whole-table Coupe-No merge** — 4A merges
+  Coupe No **per block** like every other key column instead; discovered by this
+  exact bug (see below), not assumed up front.
+- **Import parsers must detect group boundaries by "changed from previous row," not
+  truthiness.** ExcelJS resolves a read on *any* cell inside a merged range to the
+  anchor cell's value — so a block's Coupe No/Block No reads as populated on **every**
+  row of the group, not just its first (`hyrParseAppendix4`, `hyrParseAppendix6`). A
+  truthiness-based "start new group when non-empty" check therefore treats every row
+  as a new group; the fix compares the (coupe, block) key to the *previous* row's key.
+  Caught by testing against a real converted sample (471-employee-style validation,
+  not synthetic data) — the bug produced obviously-wrong block counts (19 instead of
+  6) that a hand-built test fixture would never have exposed. The same wide-merge
+  behaviour also means a template's "Note:" footer row, if merged across the block/type
+  columns too, reads as literal "Note: ..." text in those columns — the import loop's
+  stop condition checks for a `NOTE`-prefixed value explicitly, not just emptiness.
+- **Overlapping-merge defence, generic to `hyrRegenGroupedRows`**: a header-area merge
+  can extend one row into the data region (seen for real — a "Start/Completed" header
+  cell merged `B9:B10`, spilling into row 10, the first data row). Excel forbids
+  overlapping merged ranges. Before adding a new group/whole-table merge, the engine
+  checks it against every *preserved* header merge and silently drops the new merge on
+  conflict (the cell value still renders correctly, just without the extra visual
+  merge) rather than emitting an invalid file. Caught by exporting the real sample data
+  and diffing merge ranges for overlaps — worth re-checking if a future appendix's
+  export seems to hang when reopened in Excel.
+- Verified end-to-end against a real converted sample: imported, edited a value **and**
+  changed the row count on every live appendix simultaneously (13→13 coupes with an
+  edit, 16→17 roads, 6→7 blocks on 4A, 6→7 blocks on 6A), exported, and confirmed for
+  each: the totals row/merges shifted to the exact right row, grand totals
+  recalculated correctly by hand-verified arithmetic, no overlapping merges, no
+  duplicate row numbers, correct `<dimension>`, and all 32 XML parts (worksheets +
+  rels) parse cleanly via the browser's native `DOMParser` — frozen and not-yet-live
+  passthrough sheets confirmed byte-identical to the imported master throughout.
+
+### Not yet built (Phase 3)
+Period-stamp text patching (`AS AT ... 2025`, `REPORTING PERIOD`/`YEAR` pairs) for the
+passthrough sheets (FRONT, Appendix 1–3, 7–8, 10–12, Bamboo) — still carried through
+unchanged on every export, since Phase 1/2 focused on the four live appendices first.
 
 ---
 
