@@ -40,7 +40,10 @@
         },
         tree_planting: {
             id: 'tree_planting', label: 'Tree Planting', logo: '🌳', subtitle: 'Tree Planting Report',
-            hiddenAreas: [], hiddenItems: []
+            // Oil-Palm-only features: FFB budget, harvesting performance (tree
+            // planting measures performance differently — own module later),
+            // Iron Horse machinery and the Weekly Activity field report.
+            hiddenAreas: ['ffbBudget', 'performance', 'ironhorse', 'weekly'], hiddenItems: []
         }
     };
 

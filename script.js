@@ -4450,6 +4450,35 @@ const runMainApplication = () => {
                     finishInit();
                 }
 
+                // ── One-time rainfall seed for non-Oil-Palm workspaces ──────
+                // Rainfall to date is the same for both systems, so a fresh
+                // Tree Planting workspace starts from a COPY of Oil Palm's
+                // rainfall record; after this the two are edited separately.
+                // db.ref('shared/…') strings are workspace-namespaced by
+                // _wsPatchDb, but .child() on the root ref is not — that's how
+                // this one read reaches Oil Palm's legacy shared/app_state.
+                // Runs only once (state._rainfallSeededFromOilPalm), and only
+                // when this workspace's rainfall is still empty.
+                try {
+                    const rainfallEmpty = !state.rainfall ||
+                        !Object.keys(state.rainfall).some(k => /^\d{4}$/.test(k));
+                    if (!cloudUnreachable && window._isOilPalmWorkspace && !window._isOilPalmWorkspace() &&
+                        rainfallEmpty && !state._rainfallSeededFromOilPalm) {
+                        const opSnap = await db.ref().child('shared/app_state').once('value');
+                        const opParsed = opSnap.val() ? JSON.parse(opSnap.val()) : null;
+                        if (opParsed && opParsed.rainfall && Object.keys(opParsed.rainfall).length) {
+                            state.rainfall = JSON.parse(JSON.stringify(opParsed.rainfall));
+                            state._rainfallSeededFromOilPalm = new Date().toISOString();
+                            saveState(true);
+                            renderSidebar();   // finishInit already ran — refresh the rainfall year list
+                            console.log("Seeded rainfall record from Oil Palm workspace.");
+                            window.notify('Rainfall record copied from Oil Palm (one-time). From now on the two workspaces track rainfall separately.', 'info', 8000);
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Rainfall seed from Oil Palm skipped:", e.message);
+                }
+
                 // Load Spraying data (shared across all users)
                 try {
                     if (cloudUnreachable) throw new Error('cloud unreachable — skipped');

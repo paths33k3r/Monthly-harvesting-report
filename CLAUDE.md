@@ -71,6 +71,11 @@ The whole app uses ONE Firebase Realtime DB object (`firebase.database()` is a s
 ### Empty-workspace guards (script.js `init()`)
 So a fresh Tree Planting never inherits Oil Palm data, three reads are guarded with `_isOilPalmWorkspace()`: the `users/<uid>/app_state` & `users/<uid>/spraying_data` legacy migrations, and the `harvesting_app_state` localStorage fallback. `loadFreshData()` also skips the `grouped_data.json` block seed for non-oil-palm (blank planting record).
 
+**Exception — one-time rainfall seed:** rainfall-to-date is the same for both systems, so a non-Oil-Palm workspace whose rainfall record is still empty copies Oil Palm's `state.rainfall` once on load (block right after the app_state load in `init()`), then the two are edited separately. Guarded by `state._rainfallSeededFromOilPalm` (ISO timestamp) so it never re-seeds. The read reaches Oil Palm's legacy path via `db.ref().child('shared/app_state')` — `_wsPatchDb` only rewrites *string* `ref()` calls, so a no-arg root ref + `.child()` bypasses the workspace namespacing (verified: `ref('shared/app_state')` → `shared/ws/tree_planting/app_state`, `ref().child('shared/app_state')` → legacy path).
+
+### Workspace menu split (current state)
+`WORKSPACES.oil_palm.hiddenAreas = ['treelogs', 'hyr']` (Tree-Planting-only features) · `WORKSPACES.tree_planting.hiddenAreas = ['ffbBudget', 'performance', 'ironhorse', 'weekly']` (Oil-Palm-only — tree planting will get its own performance module later). Everything else shows in both.
+
 ### Per-workspace menu exclusivity (groundwork — default = full copy)
 `WORKSPACES[ws].hiddenAreas` (array of `data-menu-key` values, e.g. `ironhorse`, `wages`, `maintenance`) hides whole functional areas incl. submenus; `hiddenItems` (array of sidebar element ids, e.g. `sidebar-ytd`) hides single rows. Both default `[]` so every menu shows in both workspaces. `applyWorkspaceMenus()` marks rows it hides with `data-ws-hidden` and restores them on re-run, so it never reveals role-hidden items. **To make a report exclusive, add its key/id to the list** — no other code needed. (Deep-link `#nav=` / command-palette / Reports-panel guarding is NOT yet wired — a later refinement.)
 
