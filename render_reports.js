@@ -478,9 +478,9 @@
             };
             const active = m => MONTHS_UP.indexOf(m) <= cutIdx;
 
-            function renderHeader(half) {
+            function renderHeader(half, firstLabel) {
                 const top = r, sub = r + 1;
-                const fixedLabels = ['BLOCK NO', 'HA PREV', 'HA PRESENT', 'PARTICULAR'];
+                const fixedLabels = [firstLabel || 'BLOCK NO', 'HA PREV', 'HA PRESENT', 'PARTICULAR'];
                 for (let c = 1; c <= FIXED; c++) {
                     ws.mergeCells(top, c, sub, c);
                     styleCell(ws.getCell(top, c), { fill: C.headFill, font: { bold: true, size: 8, color: white } });
@@ -506,7 +506,7 @@
                 r += 2;
             }
 
-            function renderPhaseHalf(phase, half) {
+            function renderPhaseHalf(phase, half, pd) {
                 renderHeader(half);
 
                 (phase.blocks || []).forEach((blk, bi) => {
@@ -596,6 +596,7 @@
                 // Per-month sums — litres/GM on row 1, Ha on row 2
                 let gG = 0, gA = 0, gHG = 0, gHA = 0;
                 const gXl = {}, gXh = {}; extraChemicals.forEach(ch => { gXl[ch.name] = 0; gXh[ch.name] = 0; });
+                const perMonth = [];   // collected for the bottom GRAND TOTAL summary
                 half.months.forEach((m, mi) => {
                     const base = FIXED + 1 + mi * colsPerMonth;
                     const on = active(m);
@@ -612,6 +613,7 @@
                     });
                     gG += lG; gA += gA_; gHG += hG; gHA += hA;
                     extraChemicals.forEach(ch => { gXl[ch.name] += exL[ch.name]; gXh[ch.name] += exH[ch.name]; });
+                    perMonth.push({ on, lG, gA: gA_, hG, hA, exL, exH });
                     setTot(tr1, base,     on ? lG  : null);
                     setTot(tr1, base + 1, on ? gA_ : null);
                     setTot(tr2, base,     on ? hG  : null);
@@ -631,7 +633,14 @@
                 ws.getRow(tr1).height = 15;
                 ws.getRow(tr2).height = 15;
                 r += 2;
+
+                pd.haPrev    = Math.round(sumHaPrev * 100) / 100;
+                pd.haPresent = Math.round(sumHaPresent * 100) / 100;
+                pd.halves.push({ perMonth, gG, gA, gHG, gHA, gXl, gXh });
             }
+
+            const summaryData     = [];   // per phase: { name, haPrev, haPresent, halves:[{perMonth, gG,…}] }
+            const secondHalfSpans = [];   // JUL–DEC row ranges — hidden when the report is cut off at JUN or earlier
 
             (sprayData.phases || []).forEach(phase => {
                 ws.mergeCells(r, 1, r, lastCol);
@@ -643,9 +652,154 @@
                 pc.border = allThin;
                 ws.getRow(r).height = 18;
                 r++;
-                HALVES.forEach(half => renderPhaseHalf(phase, half));
+                const pd = { name: phase.phaseName || 'PHASE', haPrev: 0, haPresent: 0, halves: [] };
+                summaryData.push(pd);
+                HALVES.forEach((half, hi) => {
+                    const from = r;
+                    renderPhaseHalf(phase, half, pd);
+                    if (hi === 1) secondHalfSpans.push([from, r - 1]);
+                });
                 r++;  // spacer between phases
             });
+
+            // ══ GRAND TOTAL summary — per-phase totals, JAN–JUN and JUL–DEC ══
+            // Mirrors the user's hand-made bottom table: per phase a No.Litre/GM
+            // row + a Ha row (zeros shown as '–'), per-half GRAND TOTAL rows,
+            // then a combined FULL YEAR pair (TOTAL group only, since JAN and
+            // JUL share the same month columns).
+            const dashN = v => { const n = Math.round((v || 0) * 100) / 100; return n ? n : '–'; };
+            const sumCell = (row, col, val, opt) => {
+                styleCell(ws.getCell(row, col), Object.assign({ font: { size: 8, color: dark }, numFmt: '#,##0.##' }, opt || {}));
+                ws.getCell(row, col).value = val;
+            };
+            // One phase (or grand-total) entry = two rows: No.Litre/GM + Ha
+            const writeSummaryPair = (half, label, haPrev, haPresent, perMonth, tot, opt) => {
+                opt = opt || {};
+                const r0 = r, fill = opt.fill || 'FFFFFFFF';
+                ws.mergeCells(r0, 1, r0 + 1, 1);
+                styleCell(ws.getCell(r0, 1), { fill, font: { bold: true, size: opt.big ? 9 : 8, color: dark } });
+                ws.getCell(r0, 1).value = label;
+                ws.mergeCells(r0, 2, r0 + 1, 2);
+                styleCell(ws.getCell(r0, 2), { fill, font: { size: 8, color: dark }, numFmt: '0.00', align: { horizontal: 'right' } });
+                ws.getCell(r0, 2).value = haPrev || null;
+                ws.mergeCells(r0, 3, r0 + 1, 3);
+                styleCell(ws.getCell(r0, 3), { fill, font: { size: 8, color: dark }, numFmt: '0.00', align: { horizontal: 'right' } });
+                ws.getCell(r0, 3).value = haPresent || null;
+                sumCell(r0,     FIXED, 'No.Litre / GM', { fill, align: { horizontal: 'left' } });
+                sumCell(r0 + 1, FIXED, 'Ha',            { fill, align: { horizontal: 'left' } });
+                half.months.forEach((m, mi) => {
+                    const base = FIXED + 1 + mi * colsPerMonth;
+                    const pm = perMonth && perMonth[mi];
+                    const on = pm && pm.on;
+                    sumCell(r0,     base,     on ? dashN(pm.lG) : null, { fill });
+                    sumCell(r0,     base + 1, on ? dashN(pm.gA) : null, { fill });
+                    sumCell(r0 + 1, base,     on ? dashN(pm.hG) : null, { fill });
+                    sumCell(r0 + 1, base + 1, on ? dashN(pm.hA) : null, { fill });
+                    extraChemicals.forEach((ch, xi) => {
+                        sumCell(r0,     base + 2 + xi, on ? dashN(pm.exL[ch.name]) : null, { fill });
+                        sumCell(r0 + 1, base + 2 + xi, on ? dashN(pm.exH[ch.name]) : null, { fill });
+                    });
+                });
+                const bf = { bold: true, size: 8, color: dark };
+                sumCell(r0,     T_BASE,     tot ? dashN(tot.g)  : null, { fill, font: bf });
+                sumCell(r0,     T_BASE + 1, tot ? dashN(tot.a)  : null, { fill, font: bf });
+                sumCell(r0 + 1, T_BASE,     tot ? dashN(tot.hg) : null, { fill, font: bf });
+                sumCell(r0 + 1, T_BASE + 1, tot ? dashN(tot.ha) : null, { fill, font: bf });
+                extraChemicals.forEach((ch, xi) => {
+                    sumCell(r0,     T_BASE + 2 + xi, tot ? dashN(tot.xl[ch.name]) : null, { fill, font: bf });
+                    sumCell(r0 + 1, T_BASE + 2 + xi, tot ? dashN(tot.xh[ch.name]) : null, { fill, font: bf });
+                });
+                ws.getRow(r0).height = 15;
+                ws.getRow(r0 + 1).height = 15;
+                r += 2;
+            };
+
+            r++;  // spacer before summary
+            ws.mergeCells(r, 1, r, lastCol);
+            const gtc = ws.getCell(r, 1);
+            gtc.value = `GRAND TOTAL — ${year}`;
+            gtc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.phaseFill } };
+            gtc.font = { bold: true, size: 10, color: white };
+            gtc.alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+            gtc.border = allThin;
+            ws.getRow(r).height = 18;
+            r++;
+
+            let haPrevAll = 0, haPresAll = 0;
+            summaryData.forEach(pd => { haPrevAll += pd.haPrev || 0; haPresAll += pd.haPresent || 0; });
+            haPrevAll = Math.round(haPrevAll * 100) / 100;
+            haPresAll = Math.round(haPresAll * 100) / 100;
+            const yearTot = { g: 0, a: 0, hg: 0, ha: 0, xl: {}, xh: {} };
+            extraChemicals.forEach(ch => { yearTot.xl[ch.name] = 0; yearTot.xh[ch.name] = 0; });
+
+            HALVES.forEach((half, hi) => {
+                const from = r;
+                renderHeader(half, 'PHASE');
+                // across-phase accumulators for this half
+                const accM = half.months.map(m => {
+                    const a = { on: MONTHS_UP.indexOf(m) <= cutIdx, lG: 0, gA: 0, hG: 0, hA: 0, exL: {}, exH: {} };
+                    extraChemicals.forEach(ch => { a.exL[ch.name] = 0; a.exH[ch.name] = 0; });
+                    return a;
+                });
+                const accT = { g: 0, a: 0, hg: 0, ha: 0, xl: {}, xh: {} };
+                extraChemicals.forEach(ch => { accT.xl[ch.name] = 0; accT.xh[ch.name] = 0; });
+
+                summaryData.forEach((pd, pi) => {
+                    const d = pd.halves[hi];
+                    if (!d) return;
+                    d.perMonth.forEach((pm, mi) => {
+                        if (!pm.on) return;
+                        accM[mi].lG += pm.lG; accM[mi].gA += pm.gA; accM[mi].hG += pm.hG; accM[mi].hA += pm.hA;
+                        extraChemicals.forEach(ch => {
+                            accM[mi].exL[ch.name] += pm.exL[ch.name] || 0;
+                            accM[mi].exH[ch.name] += pm.exH[ch.name] || 0;
+                        });
+                    });
+                    accT.g += d.gG; accT.a += d.gA; accT.hg += d.gHG; accT.ha += d.gHA;
+                    extraChemicals.forEach(ch => { accT.xl[ch.name] += d.gXl[ch.name] || 0; accT.xh[ch.name] += d.gXh[ch.name] || 0; });
+                    writeSummaryPair(half, pd.name, pd.haPrev, pd.haPresent, d.perMonth,
+                        { g: d.gG, a: d.gA, hg: d.gHG, ha: d.gHA, xl: d.gXl, xh: d.gXh },
+                        { fill: pi % 2 === 1 ? C.zebra : 'FFFFFFFF' });
+                });
+
+                writeSummaryPair(half, 'GRAND TOTAL', haPrevAll, haPresAll, accM, accT, { fill: C.totalFill, big: true });
+
+                yearTot.g += accT.g; yearTot.a += accT.a; yearTot.hg += accT.hg; yearTot.ha += accT.ha;
+                extraChemicals.forEach(ch => { yearTot.xl[ch.name] += accT.xl[ch.name]; yearTot.xh[ch.name] += accT.xh[ch.name]; });
+
+                r++;  // spacer after this half's summary block
+                if (hi === 1) secondHalfSpans.push([from, r - 1]);
+            });
+
+            writeSummaryPair(HALVES[0], `FULL YEAR ${year}`, haPrevAll, haPresAll, null, yearTot, { fill: C.totalFill, big: true });
+
+            // ══ Hide unused chemicals (all-zero through the cut-off) + the not-
+            //    yet-reached JUL–DEC half. Hidden, not omitted — un-hide in Excel
+            //    to see them (user preference). ══
+            const usedChem = { 0: false, 1: false };            // col offset within a month group → seen a value
+            extraChemicals.forEach((ch, xi) => { usedChem[2 + xi] = false; });
+            (sprayData.phases || []).forEach(p => (p.blocks || []).forEach(blk => {
+                MONTHS_UP.forEach((m, mi) => {
+                    if (mi > cutIdx) return;
+                    const md = (blk.months || {})[m] || {};
+                    if (num(md.litresGly) || num(md.roundGly) || num(md.haGly)) usedChem[0] = true;
+                    if (num(md.gmAly)     || num(md.roundAly) || num(md.haAly)) usedChem[1] = true;
+                    const ex = md.extras || {};
+                    extraChemicals.forEach((ch, xi) => {
+                        if (num(ex[ch.name]) || num(ex[ch.name + '_round']) || num(ex[ch.name + '_ha'])) usedChem[2 + xi] = true;
+                    });
+                });
+            }));
+            const hideOffs = Object.keys(usedChem).filter(k => !usedChem[k]).map(Number);
+            if (hideOffs.length && hideOffs.length < colsPerMonth) {   // never hide every chemical
+                hideOffs.forEach(off => {
+                    for (let mi = 0; mi < HALF_MONTHS; mi++) ws.getColumn(FIXED + 1 + mi * colsPerMonth + off).hidden = true;
+                    ws.getColumn(T_BASE + off).hidden = true;
+                });
+            }
+            if (cutIdx <= 5) {
+                secondHalfSpans.forEach(([a, b]) => { for (let i = a; i <= b; i++) ws.getRow(i).hidden = true; });
+            }
 
             const buf = await wb.xlsx.writeBuffer();
             downloadBuffer(buf, `Spraying_GLY_ALLY_${year}.xlsx`);
