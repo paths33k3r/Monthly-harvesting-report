@@ -707,6 +707,7 @@
       c.alignment = { horizontal: 'center', vertical: 'middle' };
       c.border = xlBorder(true, true);
       ws.getRow(r).height = 20;
+      hideUnusedSlots(ws, blocks, SLOTS, monthCol, allowed);
       ws.views = [{ state: 'frozen', xSplit: 3, ySplit: HR }];
       ws.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
       return;
@@ -780,7 +781,26 @@
     pt.alignment = { horizontal: 'right', vertical: 'middle' };
     pt.fill = PHASE_FILL;
     for (let c = 1; c <= 3; c++) ws.getCell(r, c).border = xlBorder(true, true);
-    SLOTS.forEach(s => { const c = ws.getCell(r, monthCol[s]); c.fill = PHASE_FILL; c.border = xlBorder(true, true); });
+    ws.getRow(r).height = 26;
+    SLOTS.forEach(s => {
+        const c = ws.getCell(r, monthCol[s]);
+        c.fill = PHASE_FILL; c.border = xlBorder(true, true);
+        if (!allowed(s)) return;
+        // per-month phase totals (bags + mt), mirroring the spraying report
+        let mb = 0, mm = 0;
+        blocks.forEach(b => { const a = (b.apps || {})[s]; if (a) { mb += a.bags || 0; mm += a.mt || 0; } });
+        if (mb || mm) {
+          mm = Math.round(mm * 1000) / 1000;
+          c.value = { richText: [
+            { font: { bold: true, size: 9, color: { argb: 'FF111827' } }, text: `${mb}` },
+            { font: { size: 8, color: { argb: 'FF4B5563' } }, text: `\n${mm}mt` },
+          ] };
+        } else {
+          c.value = '–';
+          c.font = { size: 8, color: { argb: 'FF6B7280' } };
+        }
+        c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    });
     const setGrand = (col, val, fmt) => {
       const c = ws.getCell(r, col);
       c.value = val; c.numFmt = fmt;
@@ -791,8 +811,18 @@
     setGrand(TOT_BAGS, grandBags || null, '#,##0');
     setGrand(TOT_MT, Math.round(grandMt * 1000) / 1000 || null, '0.000');
 
+    hideUnusedSlots(ws, blocks, SLOTS, monthCol, allowed);
     ws.views = [{ state: 'frozen', xSplit: 3, ySplit: HR }];
     ws.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+  }
+
+  // Hide not-yet-reached month columns + an AUG* slot nothing uses (hidden,
+  // not omitted — un-hide in Excel to see them), mirroring the spraying report.
+  function hideUnusedSlots(ws, blocks, SLOTS, monthCol, allowed) {
+    const aug2Used = blocks.some(b => { const a = (b.apps || {})['Aug2']; return a && (a.bags || a.mt); });
+    SLOTS.forEach(s => {
+      if (!allowed(s) || (s === 'Aug2' && !aug2Used)) ws.getColumn(monthCol[s]).hidden = true;
+    });
   }
 
   function buildSummarySheet(ws, allYearData, year, upToMonth) {
@@ -860,6 +890,91 @@
     ws.getCell(row,5).value = grandBags; ws.getCell(row,5).numFmt='#,##0';
     ws.getCell(row,6).value = Math.round(grandMt*1000)/1000; ws.getCell(row,6).numFmt='0.000';
     for (let c=1;c<=6;c++) {
+      ws.getCell(row,c).fill = HEADER_GOLD;
+      ws.getCell(row,c).font = { bold:true, size:9, color:{ argb:'FFFFFFFF' } };
+      ws.getCell(row,c).border = { top:MED, bottom:MED, left:THIN, right:THIN };
+      ws.getCell(row,c).alignment = { horizontal:'center', vertical:'middle' };
+    }
+    ws.getCell(row,1).alignment.horizontal = 'left';
+
+    // ── By-fertiliser breakdown (through the cut-off month) ──
+    // Bags per phase for each fertiliser type, plus total bags / mt — the
+    // manuring analogue of the spraying report's per-chemical summary.
+    const fertTotals = {};   // fert → { phases:{phase→bags}, bags, mt }
+    for (const phaseName of PHASE_NAMES) {
+      const pd2 = allYearData[phaseName] || { blocks:[] };
+      for (const b of (pd2.blocks || [])) {
+        for (const [k, v] of Object.entries(b.apps || {})) {
+          if (!allowedMonths.has(k)) continue;
+          const f = String(v.fert || '').trim().toUpperCase() || 'UNSPECIFIED';
+          const t = fertTotals[f] || (fertTotals[f] = { phases:{}, bags:0, mt:0 });
+          t.phases[phaseName] = (t.phases[phaseName] || 0) + (v.bags || 0);
+          t.bags += v.bags || 0; t.mt += v.mt || 0;
+        }
+      }
+    }
+    const ferts = Object.keys(fertTotals).sort((a, b) => fertTotals[b].bags - fertTotals[a].bags);
+    if (!ferts.length) return;
+
+    const FB0 = 3;                                  // first phase column
+    const FB_BAGS = FB0 + PHASE_NAMES.length;       // Total Bags col
+    const FB_MT   = FB_BAGS + 1;                    // Total Mt col
+    for (let c = FB0; c <= FB_MT; c++) ws.getColumn(c).width = Math.max(ws.getColumn(c).width || 0, 14);
+
+    row += 2;
+    ws.mergeCells(row, 1, row, FB_MT);
+    ws.getCell(row,1).value = 'BY FERTILISER TYPE';
+    ws.getCell(row,1).font = { bold:true, size:11 };
+    ws.getCell(row,1).alignment = { horizontal:'left', vertical:'middle' };
+    ws.getRow(row).height = 20;
+    row++;
+
+    ws.getRow(row).height = 18;
+    ws.mergeCells(row, 1, row, 2);
+    const fbHdrs = ['Fertiliser (bags)', ...PHASE_NAMES, 'Total Bags', 'Total Mt'];
+    fbHdrs.forEach((h, i) => {
+      const c = ws.getCell(row, i === 0 ? 1 : FB0 + i - 1);
+      c.value = h;
+      c.fill = HEADER_DARK; c.font = { color:{ argb:'FFFFFFFF' }, bold:true, size:8 };
+      c.alignment = { horizontal:'center', vertical:'middle' };
+      c.border = { top:THIN, bottom:THIN, left:THIN, right:THIN };
+    });
+    row++;
+
+    const fbCell = (rw, col, val, numFmt) => {
+      const c = ws.getCell(rw, col);
+      c.value = val;
+      if (numFmt && typeof val === 'number') c.numFmt = numFmt;
+      c.border = { top:THIN, bottom:THIN, left:THIN, right:THIN };
+      c.alignment = { horizontal:'center', vertical:'middle' };
+      return c;
+    };
+    for (const f of ferts) {
+      const t = fertTotals[f];
+      ws.getRow(row).height = 16;
+      ws.mergeCells(row, 1, row, 2);
+      fbCell(row, 1, f).font = { bold:true, size:9 };
+      ws.getCell(row,1).alignment.horizontal = 'left';
+      PHASE_NAMES.forEach((p, pi) => fbCell(row, FB0 + pi, t.phases[p] || '–', '#,##0'));
+      fbCell(row, FB_BAGS, t.bags, '#,##0').font = { bold:true, size:9 };
+      fbCell(row, FB_MT, Math.round(t.mt*1000)/1000, '0.000').font = { bold:true, size:9 };
+      row++;
+    }
+    // TOTAL row — matches the grand total above
+    ws.getRow(row).height = 18;
+    ws.mergeCells(row, 1, row, 2);
+    let fAllBags = 0, fAllMt = 0;
+    const fPhase = {};
+    ferts.forEach(f => {
+      const t = fertTotals[f];
+      fAllBags += t.bags; fAllMt += t.mt;
+      PHASE_NAMES.forEach(p => { fPhase[p] = (fPhase[p] || 0) + (t.phases[p] || 0); });
+    });
+    fbCell(row, 1, 'TOTAL');
+    PHASE_NAMES.forEach((p, pi) => fbCell(row, FB0 + pi, fPhase[p] || '–', '#,##0'));
+    fbCell(row, FB_BAGS, fAllBags, '#,##0');
+    fbCell(row, FB_MT, Math.round(fAllMt*1000)/1000, '0.000');
+    for (let c = 1; c <= FB_MT; c++) {
       ws.getCell(row,c).fill = HEADER_GOLD;
       ws.getCell(row,c).font = { bold:true, size:9, color:{ argb:'FFFFFFFF' } };
       ws.getCell(row,c).border = { top:MED, bottom:MED, left:THIN, right:THIN };
