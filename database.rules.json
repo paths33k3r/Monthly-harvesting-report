@@ -102,6 +102,15 @@
         ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('treelogs').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
       },
 
+      // PEC Application register — Forest Dept applications (menu key 'pec')
+      "pec_data": {
+        ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('pec').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+      },
+      // PEC letter PDFs (stored as data URLs, kept out of the main record) — 'pec'
+      "pec_files": {
+        ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('pec').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+      },
+
       // Half-Yearly Report — period picker + Appendix 9 data (menu key 'hyr')
       "hyr_data": {
         ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('hyr').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
@@ -176,6 +185,12 @@
           },
           "tree_logs_invoice_files": {
             ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('treelogs').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+          },
+          "pec_data": {
+            ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('pec').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+          },
+          "pec_files": {
+            ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('pec').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
           },
           "hyr_data": {
             ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('hyr').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"

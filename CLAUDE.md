@@ -29,6 +29,7 @@ or open with VS Code Live Server (right-click index.html → Open with Live Serv
 | `render_wages_employees.js` | **Employee Master** — EMS master-listing import (.xls via SheetJS), per-agent headcount, working-permit flags, first sub-tab under Rate of Wages |
 | `render_wages_prodcost.js` | **Production Cost** — labour-cost summary derived from the Wage Ledger for a free date range, Local/Permit/Gelap split via Employee-Master ID prefixes |
 | `render_tree_logs.js` | **Tree Logs Recording** (Tree Planting workspace only) — ACMG-style master summary of all delivery batches, KU-style species/grade drilldown, manual entry, Excel import/template/export, analytics |
+| `render_pec.js` | **PEC Application** (Tree Planting workspace only) — Forest Dept PEC register: applications with nested blocks, derived status, pending-approval banner, letter PDF attachments, coupe analytics, Excel import/template/export |
 | `render_hyr.js` | **Half-Yearly Report** (Tree Planting workspace only) — Director-of-Forests filing: master-template import/export via row-cloning XML surgery; Appendix 9/5/4A/4B/6A/6B live-editable (flat + grouped row-cloning engines) |
 | `Report samples/` | Excel templates used as base for downloads |
 
@@ -298,6 +299,36 @@ Plus: **Analytics** (qty+volume by species/grade/category) and **editable Code L
 - **Open** (`tlOpenInvoice`) loads the data URL → Blob URL → new tab (avoids long-`data:`-nav blocking). **Helpers:** `tlUploadInvoicePdf`/`tlLoadInvoicePdf` (in-memory `_tlInvCache`)/`tlDeleteInvoicePdf`; `tlBatchInvoice(batchNo)` (registry → map fallback). Delete uses `notifyUndo` (cache-based restore within the session).
 - **Column states:** clickable 🧾 when the PDF is imported; greyed 🧾 (link known, PDF not yet imported) otherwise; `—` if the batch has no invoice. Same link appears in the batch detail card (`#tl-detail-inv`).
 - DB rule `shared/tree_logs_invoice_files` (+ `ws/$ws` mirror) gated by `treelogs` — **must be published in the Firebase console** or invoice-PDF writes are denied.
+
+---
+
+## PEC Application module (render_pec.js) — Tree Planting workspace only
+
+### Overview
+Top-level sidebar menu **📜 PEC Application** (id `sidebar-pec`, under **Operations** after Tree Logs). Tree-Planting-only — Oil Palm hides it via `WORKSPACES.oil_palm.hiddenAreas` (now `['treelogs','pec','hyr']`). Digitises the "PEC applied and approved" register (Permission to Enter Coupe applications to the Sarawak Forest Department). The source Excel is FLAT (one row per block, application fields repeated); the app stores **one record per application with blocks nested**, and the block total is **computed**, never typed (import flags stated-total mismatches).
+
+### Key behaviours
+- **Status is derived**, not stored: `approvedDate` → Approved (chip shows days-to-approval) · `applicationDate` only → Pending (chip shows days waiting; red past 90) · neither → Draft.
+- **Pending banner** at the top of the list: every pending application as a days-waiting chip, sorted longest first.
+- **Letter PDF attachments** — two slots per application (`app` = application letter, `apr` = approval letter), data URLs stored OUT of the main record at `shared/pec_files/<appId>_<slot>` (mirrors Tree Logs invoices: in-memory `_pcFileCache`, Blob-URL open, `notifyUndo` on remove with cache-based byte restore). Record only carries `files:{app|apr:{fileName,uploadedAt,uploadedBy}}`.
+- **Coupe analytics card** under the list: per-Forest-Dept-coupe applications/blocks/area/approved-area (+ pending count), plus avg/min/max days-to-approval across approved applications.
+- **Import** (`window.importPecApplications(file)`, edit-gated) — flat register: header row detected by signature (`FORESTDEPTCOUPENO` or `PECREFNO` + `BLOCKNO`), rows grouped into applications by (letterRef | pecRefNo | forestCoupeNo); later rows may fill fields the first row lacked (real file: Coupe 2014 rows have no PEC ref/areas — imports fine as incomplete). **Idempotent**: existing application matched by letterRef/pecRefNo is replaced (blocks & dates), keeping its id + attachments; validated against the real register (5 applications / 36 block rows, per-coupe Ha sums = the sheet's stated totals 240/400/441/373).
+- **Template** + **Export** (flat one-row-per-block layout back) available read-only; ExcelJS lazy-loaded (`pcEnsureExcelJS`).
+- Editor is a working-copy form (nothing touches `state.pec` until Save): application fields + dynamic block rows with live Ha total; validation (needs some ref, approved⇒applied, approved ≥ applied).
+
+### View wiring
+`state.activeViewType === 'pec'`; wrapper `pec-wrapper`; in `_switchableWrappers` + clear list; view branch beside `hyr_report`; sidebar handler near the HYR handlers; module-local `_pcMode` (`list | edit`). Edit-gated by menu key **`pec`** (`ALL_MENU_KEYS` + user-management `allMenuOptions`).
+
+### Data structure (`state.pec`) → Firebase `shared/pec_data` (`window._pecDb`, `savePecData`, `_pecLoaded` gate)
+```js
+{ applications: [ { id, forestCoupeNo:"04A", internalCoupeNo:"COUPE 2016",
+    letterRef:"PFB/21/020", pecRefNo:"LPF0042/21/04A", operationHeading:"1-4 (HILL/RAMP)",
+    applicationDate:"2021-09-08", approvedDate:"2021-11-19",
+    blocks:[ { blockNo:"001", areaHa:49 } ],
+    files:{ app:{fileName,uploadedAt,uploadedBy}, apr:{…} },   // PDFs at shared/pec_files/<id>_<slot>
+    remarks, createdAt, updatedAt, updatedBy } ] }
+```
+DB rules `shared/pec_data` + `shared/pec_files` (+ `ws/$ws` mirrors) gated by `pec` in `database.rules.json` — **must be published in the Firebase console** or Tree Planting writes are denied. Loaded in `init()` before `hyr_data` (retry loop + `_sharedLoadOk['shared/pec_data']`). In sw.js precache (VERSION bumped).
 
 ---
 
