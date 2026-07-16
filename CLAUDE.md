@@ -256,7 +256,7 @@ Top-level sidebar menu **💵 Rate of Wages** (id `sidebar-wages`, between Iron 
 ## Tree Logs Recording module (render_tree_logs.js)
 
 ### Overview
-Top-level sidebar menu **🪵 Tree Logs Recording** (id `sidebar-tree-logs`, first item under **Operations**). **Tree-Planting-workspace only** — Oil Palm hides it via `WORKSPACES.oil_palm.hiddenAreas = ['treelogs']`. Digitises the user's "Logs Species Summary" workbook, which has two sheet shapes:
+Top-level sidebar menu **🪵 Tree Logs Recording** (id `sidebar-tree-logs`, second item under **Operations**, after PEC Application). **Tree-Planting-workspace only** — Oil Palm hides it via `WORKSPACES.oil_palm.hiddenAreas = ['treelogs']`. Digitises the user's "Logs Species Summary" workbook, which has two sheet shapes:
 - **KU… sheets** = one **delivery batch** with a *detailed* species/grade breakdown (`SPECIES CATEGORY | SPECIES | GRADE | QUANTITY (PCS) | VOLUME (MT)`, grouped by category+grade with Sub-Totals + a Grand Total).
 - **ACMG… sheets** = monthly *summary-only* lists of batches that have no detail sheet (just `NO. | DELIVERY DATE | BATCH NO. | QTY | VOLUME`), tagged to one species (Acacia Mangium).
 
@@ -305,7 +305,7 @@ Plus: **Analytics** (qty+volume by species/grade/category) and **editable Code L
 ## PEC Application module (render_pec.js) — Tree Planting workspace only
 
 ### Overview
-Top-level sidebar menu **📜 PEC Application** (id `sidebar-pec`, under **Operations** after Tree Logs). Tree-Planting-only — Oil Palm hides it via `WORKSPACES.oil_palm.hiddenAreas` (now `['treelogs','pec','hyr']`). Digitises the "PEC applied and approved" register (Permission to Enter Coupe applications to the Sarawak Forest Department). The source Excel is FLAT (one row per block, application fields repeated); the app stores **one record per application with blocks nested**, and the block total is **computed**, never typed (import flags stated-total mismatches).
+Top-level sidebar menu **📜 PEC Application** (id `sidebar-pec`, first item under **Operations**, before Tree Logs). Tree-Planting-only — Oil Palm hides it via `WORKSPACES.oil_palm.hiddenAreas` (now `['treelogs','pec','hyr']`). Digitises the "PEC applied and approved" register (Permission to Enter Coupe applications to the Sarawak Forest Department). The source Excel is FLAT (one row per block, application fields repeated); the app stores **one record per application with blocks nested**, and the block total is **computed**, never typed (import flags stated-total mismatches).
 
 ### Key behaviours
 - **Status is derived**, not stored: `approvedDate` → Approved (chip shows days-to-approval) · `applicationDate` only → Pending (chip shows days waiting; red past 90) · neither → Draft.
