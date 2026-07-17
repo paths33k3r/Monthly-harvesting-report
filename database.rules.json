@@ -111,6 +111,16 @@
         ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('pec').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
       },
 
+      // Leave Management — applications + entitlements (menu key 'leave';
+      // 'leaveApprove' also grants write since approving updates the record)
+      "leave_data": {
+        ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('leave').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('leaveApprove').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+      },
+      // Leave form/MC attachments (stored as data URLs, kept out of the main record) — 'leave'
+      "leave_files": {
+        ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('leave').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('leaveApprove').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+      },
+
       // Half-Yearly Report — period picker + Appendix 9 data (menu key 'hyr')
       "hyr_data": {
         ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('hyr').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
@@ -191,6 +201,12 @@
           },
           "pec_files": {
             ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('pec').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+          },
+          "leave_data": {
+            ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('leave').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('leaveApprove').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+          },
+          "leave_files": {
+            ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('leave').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('leaveApprove').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
           },
           "hyr_data": {
             ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('hyr').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"

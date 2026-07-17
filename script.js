@@ -27,6 +27,7 @@ const runMainApplication = () => {
             treeLogs: {}, // { company, codes:{categories,species,grades}, years:{ "2024": { batches:[] } } } — loaded from shared/tree_logs_data
             hyr: {}, // { year, half, master:{fileName,importedAt,importedBy}, periods:{ "2025-JUL-DEC": { appendix9:{coupes:[]} } } } — loaded from shared/hyr_data
             pec: {}, // { applications:[{ id, forestCoupeNo, letterRef, pecRefNo, blocks:[], applicationDate, approvedDate, files:{} }] } — loaded from shared/pec_data
+            leave: {}, // { entitlements:{year:{defaults,perEmployee}}, applications:[{ id, employeeId, name, type, dates:[], status, files:{}, gcal:{} }], gcalOrphans:[] } — loaded from shared/leave_data
             selectedReportYear: null,
             activeViewType: 'report_year',
             activeViewValue: null,
@@ -1833,6 +1834,7 @@ const runMainApplication = () => {
             const wagesProdCostWrapper = document.getElementById('wages-prodcost-wrapper');
             const treeLogsWrapper    = document.getElementById('tree-logs-wrapper');
             const pecWrapper         = document.getElementById('pec-wrapper');
+            const leaveWrapper       = document.getElementById('leave-wrapper');
             const hyrReportWrapper   = document.getElementById('hyr-report-wrapper');
             const hyrAppendix4Wrapper = document.getElementById('hyr-appendix4-wrapper');
             const hyrAppendix5Wrapper = document.getElementById('hyr-appendix5-wrapper');
@@ -1862,6 +1864,7 @@ const runMainApplication = () => {
             if (wagesProdCostWrapper) { wagesProdCostWrapper.innerHTML = ''; wagesProdCostWrapper.classList.add('hidden'); }
             if (treeLogsWrapper)    { treeLogsWrapper.innerHTML = '';   treeLogsWrapper.classList.add('hidden'); }
             if (pecWrapper)         { pecWrapper.innerHTML = '';        pecWrapper.classList.add('hidden'); }
+            if (leaveWrapper)       { leaveWrapper.innerHTML = '';      leaveWrapper.classList.add('hidden'); }
             if (hyrReportWrapper)    { hyrReportWrapper.innerHTML = '';    hyrReportWrapper.classList.add('hidden'); }
             if (hyrAppendix4Wrapper) { hyrAppendix4Wrapper.innerHTML = ''; hyrAppendix4Wrapper.classList.add('hidden'); }
             if (hyrAppendix5Wrapper) { hyrAppendix5Wrapper.innerHTML = ''; hyrAppendix5Wrapper.classList.add('hidden'); }
@@ -1900,7 +1903,7 @@ const runMainApplication = () => {
                 ihAssetsWrapper, ihExpensesWrapper, ihCostPerHaWrapper,
                 gangOverviewWrapper, selectorWrapper,
                 mntGangsWrapper, mntWorklogWrapper, mntGanttWrapper,
-                weeklyWrapper, wagesWrapper, wagesLedgerWrapper, wagesVarianceWrapper, wagesDailyWrapper, wagesEmployeesWrapper, wagesProdCostWrapper, treeLogsWrapper, pecWrapper,
+                weeklyWrapper, wagesWrapper, wagesLedgerWrapper, wagesVarianceWrapper, wagesDailyWrapper, wagesEmployeesWrapper, wagesProdCostWrapper, treeLogsWrapper, pecWrapper, leaveWrapper,
                 hyrReportWrapper, hyrAppendix4Wrapper, hyrAppendix5Wrapper, hyrAppendix6Wrapper, hyrAppendix9Wrapper,
                 userMgmtWrapper, excelReportsWrapper, auditLogWrapper,
                 dashboardWrapper
@@ -2045,6 +2048,10 @@ const runMainApplication = () => {
                 showView(pecWrapper, () => {
                     if (typeof window.renderPecView === 'function') window.renderPecView();
                 }, 'pec');
+            } else if (state.activeViewType === 'leave') {
+                showView(leaveWrapper, () => {
+                    if (typeof window.renderLeaveView === 'function') window.renderLeaveView();
+                }, 'leave');
             } else if (state.activeViewType === 'hyr_report') {
                 showView(hyrReportWrapper, () => {
                     if (typeof window.renderHyrReportView === 'function') window.renderHyrReportView();
@@ -4011,6 +4018,17 @@ const runMainApplication = () => {
                     };
                 }
 
+                // ── Leave Management nav handler ────────────────────────
+                const sidebarLeave = document.getElementById('sidebar-leave');
+                if (sidebarLeave) {
+                    sidebarLeave.onclick = (e) => {
+                        e.preventDefault();
+                        if (!state.leave) state.leave = {};
+                        state.activeViewType = 'leave';
+                        renderSidebar(); renderTable();
+                    };
+                }
+
                 // ── Half-Yearly Report nav handlers ─────────────────────
                 const sidebarHyrReport = document.getElementById('sidebar-hyr-report');
                 if (sidebarHyrReport) {
@@ -4402,6 +4420,7 @@ const runMainApplication = () => {
                     'shared/wages_employees_data': false,
                     'shared/tree_logs_data': false,
                     'shared/pec_data': false,
+                    'shared/leave_data': false,
                     'shared/hyr_data': false,
                     'shared/maintenance_data': false
                 };
@@ -4722,6 +4741,31 @@ const runMainApplication = () => {
                         console.warn(`PEC load attempt ${attempt} failed:`, e.message);
                         if (attempt < 4) await new Promise(r => setTimeout(r, 500 * attempt));
                         else if (!state.pec) state.pec = {};
+                    }
+                }
+
+                // Load Leave Management data (applications + entitlements — shared across all
+                // users). Same guard as PEC: window._leaveLoaded gates saveLeaveData so a
+                // failed load can never be persisted over the real cloud data.
+                window._leaveDb = db;
+                window._leaveLoaded = false;
+                for (let attempt = 1; attempt <= 4 && !cloudUnreachable; attempt++) {
+                    try {
+                        const leaveSnap = await readWithTimeout('shared/leave_data');
+                        const leaveData = leaveSnap.val();
+                        if (leaveData) {
+                            state.leave = JSON.parse(leaveData);
+                            console.log("Leave Management data loaded from cloud.");
+                        } else if (!state.leave) {
+                            state.leave = {};
+                        }
+                        window._leaveLoaded = true;
+                        window._sharedLoadOk['shared/leave_data'] = true;
+                        break;
+                    } catch (e) {
+                        console.warn(`Leave load attempt ${attempt} failed:`, e.message);
+                        if (attempt < 4) await new Promise(r => setTimeout(r, 500 * attempt));
+                        else if (!state.leave) state.leave = {};
                     }
                 }
 

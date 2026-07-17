@@ -260,6 +260,12 @@
                         </ul>
                     </li>
 
+                    <li class="nav-item" data-menu-key="leave">
+                        <a href="#" id="sidebar-leave" class="nav-link">
+                            <span class="nav-icon">🏖️</span><span class="nav-label">Leave Management</span>
+                        </a>
+                    </li>
+
                     <li class="nav-item" data-menu-key="weekly">
                         <a href="#" id="sidebar-weekly" class="nav-link">
                             <span class="nav-icon">🗺️</span><span class="nav-label">Weekly Activity</span>
@@ -586,6 +592,11 @@
                     <!-- JS will generate the PEC Application register here -->
                 </div>
 
+                <div id="leave-wrapper" class="report-wrapper hidden"
+                    style="max-width: 1300px; padding: 0; background: transparent; border: none; box-shadow: none;">
+                    <!-- JS will generate the Leave Management views here -->
+                </div>
+
                 <div id="hyr-report-wrapper" class="report-wrapper hidden"
                     style="max-width: 1300px; padding: 0; background: transparent; border: none; box-shadow: none;">
                     <!-- JS will generate the Half-Yearly Report period/import/export panel here -->
@@ -678,14 +689,15 @@
     <script src="render_wages_prodcost.js?v=1"></script>
     <script src="render_tree_logs.js?v=12"></script>
     <script src="render_pec.js?v=1"></script>
+    <script src="render_leave.js?v=3"></script>
     <script src="render_hyr.js?v=2"></script>
     <script src="render_spraying.js?v=14"></script>
     <script src="render_manuring.js?v=16"></script>
     <script src="render_reports.js?v=31"></script>
     <script src="workspace.js?v=5"></script>
     <script src="app_boot.js?v=2"></script>
-    <script src="app_user_mgmt.js?v=7"></script>
-    <script src="script.js?v=82"></script>
+    <script src="app_user_mgmt.js?v=8"></script>
+    <script src="script.js?v=83"></script>
     <script src="ui_enhancements.js?v=12"></script>
     <script src="field_mode.js?v=1"></script>
     <script>

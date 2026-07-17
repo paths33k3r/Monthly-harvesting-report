@@ -31,6 +31,7 @@ or open with VS Code Live Server (right-click index.html → Open with Live Serv
 | `render_tree_logs.js` | **Tree Logs Recording** (Tree Planting workspace only) — ACMG-style master summary of all delivery batches, KU-style species/grade drilldown, manual entry, Excel import/template/export, analytics |
 | `render_pec.js` | **PEC Application** (Tree Planting workspace only) — Forest Dept PEC register: applications with nested blocks, derived status, pending-approval banner, letter PDF attachments, coupe analytics, Excel import/template/export |
 | `render_hyr.js` | **Half-Yearly Report** (Tree Planting workspace only) — Director-of-Forests filing: master-template import/export via row-cloning XML surgery; Appendix 9/5/4A/4B/6A/6B live-editable (flat + grouped row-cloning engines) |
+| `render_leave.js` | **Leave Management** — digitised bilingual leave form: apply on behalf of staff (Employee-Master picker), one-step approval, monthly manpower calendar, entitlement balances, half-A4 print, Web-Share, Vision-OCR scan of handwritten forms, Google Calendar sync |
 | `Report samples/` | Excel templates used as base for downloads |
 
 ## Cache busting
@@ -433,6 +434,43 @@ mode for GROUPED data (one record → a variable number of sub-rows):
 Period-stamp text patching (`AS AT ... 2025`, `REPORTING PERIOD`/`YEAR` pairs) for the
 passthrough sheets (FRONT, Appendix 1–3, 7–8, 10–12, Bamboo) — still carried through
 unchanged on every export, since Phase 1/2 focused on the four live appendices first.
+
+---
+
+## Leave Management module (render_leave.js) — both workspaces
+
+### Overview
+Top-level sidebar menu **🏖️ Leave Management** (id `sidebar-leave`, after Rate of Wages, before Weekly Activity). Digitises the bilingual (中文/English) paper **Leave Application Form**: office users enter applications **on behalf of staff** (picker fed by the Employee Master, free-text fallback), a one-step approval flow (pending → approved/rejected; cancelled kept in history), monthly manpower calendar, per-employee entitlement balances, half-A4 form printing, Teams sharing, handwritten-form OCR scanning, and Google Calendar sync.
+
+### Key behaviours
+- **Two menu keys**: `leave` (see/apply/edit/cancel/print/share/sync) + `leaveApprove` (approve/reject/reset-to-pending buttons; client-side gate `_canEdit('leaveApprove')`). Both in `ALL_MENU_KEYS` + `allMenuOptions`. `leaveApprove` has no sidebar item — only its ✏ Can-Edit box matters.
+- **Types** fixed to the paper form: Annual 年假 / Sick 病假 / Casual 事假. **Entitlements**: per-year `defaults` (seeded 14/14/6 — placeholder until the user confirms real values) + `perEmployee` overrides; balance = entitlement − approved days in that year. Identity key = `employeeId` else `NAME:<uppercased name>` (`lvEmpKey`).
+- **Editor warnings** (non-blocking): over-balance, duplicate dates for the same employee, other-staff-overlap per day. Multi-date entry via single-day add + range add (chips); dates may be non-contiguous (the sample form is 4 Sundays).
+- **Print** (`lvPrintFormData`): new window + `document.write` with its own `@page { size:A4; margin:0 }` CSS — the bilingual form replica occupies exactly the **top half of A4** (148.5 mm) with a ✂ cut line; approved forms print the approver under 批准 APPROVED BY. Shared builder `lvFormHtml`/`LV_FORM_CSS` also feeds Share.
+- **Share** (`lvShareApp`): Web Share API with files (Teams/WhatsApp appear in the native sheet); shares the scanned paper photo if attached, else rasterises the form replica via `htmlToImage.toBlob` (lazy CDN); PNG-download fallback + toast when `canShare` unsupported. (html-to-image logs harmless cross-origin Google-Fonts CSS warnings — same as render_weekly's map rasterise.)
+- **Scan** (`lvScanForm`): photo or PDF (pdf.js first-page rasterise, same lazy loader pattern as render_wages_daily) → downscaled JPEG stored as the `form` attachment on Save → **Google Vision** `DOCUMENT_TEXT_DETECTION` (OAuth scope `cloud-vision`) → `lvParseFormOcr` (exposed as `window._lvParseFormOcr` for tuning) extracts date/applicant/type-tick/leave dates/address/remarks by label anchors; applicant **fuzzy-matched to the Employee Master** (token overlap, 1-edit tolerance — validated: "BABOH AE LONDEK" → "BABOH AK LONDEK"). Review-first: opens the editor prefilled with amber notes, never saves directly. OCR failure still opens a blank editor with the photo attached on Save. **Requires the user to enable the Cloud Vision API + billing in the Google Cloud console** (first 1,000 scans/month free).
+- **Google Calendar sync** (`lvSyncGcal`): GIS token client (same OAuth client id as the Drive backup, scope `calendar.events`, own localStorage token keys). Idempotent: one **all-day event per approved leave date** (`app.gcal[date] = eventId`); removes events for un-approved/edited dates; deleted applications park their event ids in `state.leave.gcalOrphans` for cleanup on next sync. Designed for one account (the boss's) — foreign-calendar deletes 404 and are treated as gone. **Requires the Google Calendar API enabled** in the same Cloud project.
+- **Attachments**: slots `form` (signed paper form, photo/PDF) + `mc` (medical cert, sick leave only) at `shared/leave_files/<id>_<slot>` — PEC letter-PDF pattern (`_lvFileCache`, Blob-open) but with **weekly-photo-style deferred byte purge**: removing an attachment *or deleting a whole application* leaves the bytes until the undo entry expires (tray eviction / `pagehide`), so Undo restores without depending on the in-memory cache. `lvDeleteApp` must purge its slots too — the record and the bytes live at different paths, so deleting only the record orphans them. `lvPurgeSlotIfVacant` guards the re-attach hazard: the storage key is `<id>_<slot>`, so a replacement file reuses the path and a blind expiry-purge would destroy it.
+- **Excel export** (`downloadLeaveReport`): Register + per-employee Summary (taken/entitled/balance) + Monthly man-days matrix; available read-only.
+
+### Views (single view type `leave`, module-local `_lvMode`)
+`list` (register + pending banner + filters + YTD taken counter) | `month` (Sun-start calendar grid, approved chips green / pending dimmed "?", per-day count badge, month totals) | `employee` (picker → balance cards + all-years history; all-staff summary table, click row to drill) | `edit` (working-copy form) | `settings` (entitlement defaults + per-employee overrides). Month/year selectors persisted in `state.leaveYear`/`state.leaveMonth` (0-based month).
+
+### Data structure (`state.leave`) → Firebase `shared/leave_data` (`window._leaveDb`, `saveLeaveData`, `_leaveLoaded` gate)
+```js
+{ entitlements: { "2026": { defaults:{annual:14,sick:14,casual:6}, perEmployee:{ "GTL-0012":{annual:16} } } },
+  applications: [ { id, appliedDate:"2026-07-01", employeeId:"GTL-0012", name:"BABOH AK LONDEK",
+      position:"Operation Manager", type:"casual", dates:["2026-07-05","2026-07-12",…],
+      addressDuringLeave, phone, remarks, status:"pending|approved|rejected|cancelled",
+      createdBy, createdAt, approvedBy, approvedAt, rejectedBy, rejectReason, cancelledBy,
+      files:{ form:{fileName,uploadedAt,uploadedBy}, mc:{…} },      // bytes at shared/leave_files/<id>_<slot>
+      gcal:{ "2026-07-05":"<eventId>" }, gcalSyncedBy } ],
+  gcalOrphans: [ "<eventId>" ] }    // events of deleted apps, purged on next sync
+```
+DB rules `shared/leave_data` + `shared/leave_files` (+ `ws/$ws` mirrors) gated on `leave` OR `leaveApprove` in `database.rules.json` — **must be published in the Firebase console** or saves silently fail. Wired in script.js (wrapper/clear/`_switchableWrappers`/view branch/sidebar handler; `_sharedLoadOk['shared/leave_data']`; loaded in `init()` between `pec_data` and `hyr_data`). In sw.js precache (VERSION bumped).
+
+### One-time Google Cloud setup (user, console)
+1. Calendar sync → enable **Google Calendar API**. 2. Form scanning → enable **Cloud Vision API** + attach billing. Both on the existing project of OAuth client `1073324997940-…` (same as Drive backup); no code changes needed afterwards.
 
 ---
 
