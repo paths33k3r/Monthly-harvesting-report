@@ -1441,7 +1441,12 @@
                 window.renderLeaveView();
                 return;
             }
+            // Keep the raw response for diagnosis — handwriting OCR needs
+            // tuning against real scans, and the parsed result alone doesn't
+            // show WHY a field came out wrong. Inspect in the console via
+            // window._lvLastOcr (text = what Vision read, parsed = our result).
             _lvOcrPrefill = lvParseFormOcr(text, fta);
+            window._lvLastOcr = { text, fta, parsed: _lvOcrPrefill, fileName: file.name, at: new Date().toISOString() };
             _lvMode = 'edit'; _lvEditId = null;
             window.renderLeaveView();
             if (typeof window.logAudit === 'function') window.logAudit('import', 'leave', `Scanned paper form — ${file.name}`, '');
@@ -1449,6 +1454,15 @@
             if (window.notify) window.notify('Scan failed: ' + e.message, 'error');
         }
     };
+
+    // Tidy an OCR'd free-text value: drop stray leading/trailing punctuation
+    // the scanner picks off ruled lines and field borders (quotes, colons,
+    // dots), and collapse whitespace.
+    const lvTidy = (s) => String(s || '')
+        .replace(/^[\s:."'`,;|/\\*_-]+/, '')
+        .replace(/[\s:."'`;|\\*_]+$/, '')
+        .replace(/\s+/g, ' ')
+        .trim();
 
     // Strip CJK characters — every value field on this form (name, position,
     // address, phone, remarks) is Latin-script per the paper template, so any
@@ -1485,6 +1499,11 @@
         }))));
         return out;
     };
+    // Group words into rows. Used to LOCATE printed labels (which share a
+    // baseline among themselves) — NOT to collect values: handwriting sits on
+    // its own baseline and is much taller, so it frequently falls outside the
+    // label's row band. Tolerance keys off the SMALL printed text so the
+    // printed labels group tightly.
     const lvGroupLines = (words) => {
         if (!words.length) return [];
         const sorted = words.slice().sort((a, b) => a.cy - b.cy || a.x0 - b.x0);
@@ -1500,15 +1519,37 @@
         lines.forEach(l => l.words.sort((a, b) => a.x0 - b.x0));
         return lines.sort((a, b) => a.cy - b.cy);
     };
-    // First word-position where the accumulated line text satisfies `re` — the
-    // right edge of the printed label, so words further right are its value.
-    const lvLabelEndX = (line, re) => {
-        let acc = '';
-        for (const w of line.words) {
-            acc += (acc ? ' ' : '') + w.text;
-            if (re.test(acc)) return w.x1;
+    // Locate a printed label: the first row whose accumulated left-to-right
+    // text satisfies `re`. Returns the label's right edge + vertical centre,
+    // which together define where its handwritten value lives.
+    const lvFindLabel = (lines, re) => {
+        for (const line of lines) {
+            let acc = '';
+            for (const w of line.words) {
+                acc += (acc ? ' ' : '') + w.text;
+                if (re.test(acc)) {
+                    return { endX: w.x1, cy: line.cy, h: Math.max(...line.words.map(x => x.h)) };
+                }
+            }
         }
         return null;
+    };
+    const LV_LABEL_WORD_RE = /APPLICANT|POSITION|TYPE|LEAVE|DATE|DURING|Address|REMARKS|CERTIFIED|APPROVED|DAYS|請|職|申|備|核|批|連|電|年|假|天/i;
+    // Collect a label's value: every word to its RIGHT whose vertical centre is
+    // near the label's — searched across ALL words, not just the label's row,
+    // because handwriting rarely shares the printed baseline. `boundRe` stops
+    // the scan at a second label on the same line (e.g. the 電話/To phone column).
+    const lvValueWordsFor = (words, lines, labelRe, boundRe) => {
+        const lbl = lvFindLabel(lines, labelRe);
+        if (!lbl) return null;
+        // Generous band: handwriting is taller than print and often rides high.
+        const tol = Math.max(lbl.h * 1.3, 16);
+        let cand = words.filter(w => w.x0 > lbl.endX + 3 && Math.abs(w.cy - lbl.cy) <= tol);
+        if (boundRe) {
+            const stop = cand.slice().sort((a, b) => a.x0 - b.x0).find(w => boundRe.test(w.text));
+            if (stop) cand = cand.filter(w => w.x0 < stop.x0);
+        }
+        return { words: cand.sort((a, b) => a.x0 - b.x0), lbl };
     };
     // Parse the Vision response using word positions when available (accurate,
     // avoids cross-language/cross-section bleed); falls back to a plain-text
@@ -1522,17 +1563,9 @@
         // Geometry-based single-line value lookup: label anchor → words to its
         // right on the same row (bounded by an optional second label on that row).
         const geomValue = (labelRe, boundRe) => {
-            for (const line of lines) {
-                const endX = lvLabelEndX(line, labelRe);
-                if (endX == null) continue;
-                const boundStartX = boundRe ? (() => {
-                    for (const w of line.words) { if (w.x0 > endX && boundRe.test(w.text)) return w.x0; }
-                    return null;
-                })() : null;
-                const val = line.words.filter(w => w.x0 > endX + 3 && (boundStartX == null || w.x0 < boundStartX)).map(w => w.text).join(' ');
-                return val.replace(/^[:：.\s]+/, '').trim();
-            }
-            return null;
+            const r = lvValueWordsFor(words, lines, labelRe, boundRe);
+            if (!r) return null;
+            return r.words.map(w => w.text).join(' ').replace(/^[:：.\s]+/, '').trim();
         };
         // Plain-text fallback (used only when `pages` geometry isn't present).
         const textLines = text.split(/\n/).map(s => s.trim()).filter(Boolean);
@@ -1580,44 +1613,83 @@
         const pos = lvStripCJK(valueFor(/\bPOSITION\b/i), null);
         if (pos && !out.position) out.position = pos.replace(/[^A-Za-z&/'\- .]/g, ' ').replace(/\s+/g, ' ').trim();
 
-        // type of leave — tick between the brackets after each label
+        // type of leave — the tick sits between a "( )" bracket pair after each
+        // label. Try the flat text first, then geometry: a handwritten ✓ is
+        // often transcribed as some other glyph (or as its own word, breaking
+        // the flat-text bracket pattern), so also treat "any word inside this
+        // label's bracket pair" as a tick.
+        const tickCharRe = /[✓✔√v\/x×J]/i;
         const tickRe = (label) => new RegExp(label + String.raw`\s*\(\s*([^()]*?)\s*\)`, 'i');
-        const ticked = (label) => { const m = tickRe(label).exec(text); return !!(m && /[✓✔VvJX✗]/.test(m[1].trim())); };
-        if (ticked('Annual\\s*Leave')) out.type = 'annual';
-        if (ticked('Sick\\s*Leave')) out.type = out.type ? out.type : 'sick';
-        if (ticked('Casual\\s*Leave')) out.type = out.type ? out.type : 'casual';
-        if (!out.type) { out.type = 'annual'; notes.push('Leave type tick could not be read — defaulted to Annual, please check.'); }
+        const tickedText = (label) => { const m = tickRe(label).exec(text); return !!(m && tickCharRe.test(m[1].trim())); };
+        // Geometry: find the label, then look for any word between the next '('
+        // and ')' to its right, within the label's vertical band.
+        const tickedGeom = (labelRe) => {
+            const r = lvValueWordsFor(words, lines, labelRe);
+            if (!r || !r.words.length) return false;
+            const open = r.words.find(w => w.text.includes('('));
+            if (!open) return false;
+            const close = r.words.find(w => w.x0 > open.x0 && w.text.includes(')'));
+            const inner = r.words.filter(w => w.x0 >= open.x1 - 1 && (!close || w.x1 <= close.x0 + 1));
+            // An empty bracket pair yields no inner words; a ticked one yields
+            // the mark. Only a tick-shaped, NON-CJK glyph counts: the value band
+            // spans neighbouring rows, so the printed Chinese type labels
+            // (年假/病假/事假) sit inside these brackets' x-range and would
+            // otherwise register as ticks on every option.
+            return inner.some(w => {
+                const t = w.text.replace(LV_CJK_RE, '').trim();
+                return t.length > 0 && t.length <= 2 && tickCharRe.test(t);
+            });
+        };
+        const ticked = (labelStr, labelRe) => tickedText(labelStr) || tickedGeom(labelRe);
+        if (ticked('Annual\\s*Leave', /Annual\s*Leave/i)) out.type = 'annual';
+        if (!out.type && ticked('Sick\\s*Leave', /Sick\s*Leave/i)) out.type = 'sick';
+        if (!out.type && ticked('Casual\\s*Leave', /Casual\s*Leave/i)) out.type = 'casual';
+        if (!out.type) { out.type = 'annual'; notes.push('Leave type tick could not be read — defaulted to Annual, please check it against the form.'); }
 
-        // dates of leave — anchor on the DATE OF LEAVE row itself (not a blind
-        // line-window); extend to the next row only if it carries no label of
-        // its own and is mostly digits (a wrapped date list).
-        const dateLeaveRe = /DATE\s*OF\s*LEAVE/i;
-        let dateZone = '';
-        const dlLine = lines.find(l => lvLabelEndX(l, dateLeaveRe) != null);
-        if (dlLine) {
-            const endX = lvLabelEndX(dlLine, dateLeaveRe);
-            dateZone = dlLine.words.filter(w => w.x0 > endX + 3).map(w => w.text).join(' ');
-            const idx = lines.indexOf(dlLine);
-            const next = lines[idx + 1];
-            if (next && /^[\d\/.,\s]+$/.test(next.words.map(w => w.text).join(''))) dateZone += ' ' + next.words.map(w => w.text).join(' ');
-        }
-        if (!dateZone) {
-            for (let i = 0; i < textLines.length; i++) {
-                if (/DATE OF LEAVE/i.test(textLines[i])) { dateZone = textLines.slice(i, i + 3).join(' '); break; }
+        // Dates of leave. Handwritten separators ("5/7/26") are transcribed
+        // very inconsistently — as / | . ) \ or a bare space — so the matcher
+        // is deliberately loose about the separator but strict about shape.
+        const reD = /\b(\d{1,2})\s*[\/|.,)\\l-]\s*(\d{1,2})\s*[\/|.,)\\l-]\s*(\d{2,4})\b/g;
+        const collectDates = (zone, skipApplied) => {
+            const found = [];
+            let dm;
+            reD.lastIndex = 0;
+            while ((dm = reD.exec(zone)) !== null) {
+                const d = parseInt(dm[1], 10), mo = parseInt(dm[2], 10);
+                if (d < 1 || d > 31 || mo < 1 || mo > 12) continue;
+                const yy = dm[3].length === 2 ? '20' + dm[3] : dm[3];
+                const iso = `${yy}-${lvPad(mo)}-${lvPad(d)}`;
+                if (skipApplied && iso === out.appliedDate) continue;
+                if (isNaN(new Date(iso))) continue;
+                if (!found.includes(iso)) found.push(iso);
             }
+            return found;
+        };
+        // 1) Preferred: the DATE OF LEAVE label's own vertical band, plus any
+        //    wrapped continuation row directly beneath it.
+        const dlRes = lvValueWordsFor(words, lines, /DATE\s*OF\s*LEAVE/i);
+        if (dlRes) {
+            let zone = dlRes.words.map(w => w.text).join(' ');
+            const below = words.filter(w =>
+                w.cy > dlRes.lbl.cy + dlRes.lbl.h * 0.5 &&
+                w.cy < dlRes.lbl.cy + dlRes.lbl.h * 3 &&
+                w.x0 > dlRes.lbl.endX - 10 &&
+                !LV_LABEL_WORD_RE.test(w.text));
+            if (below.length) zone += ' ' + below.sort((a, b) => a.x0 - b.x0).map(w => w.text).join(' ');
+            out.dates = collectDates(zone, true);
         }
-        if (!dateZone) dateZone = text;
-        const seen = new Set();
-        let dm;
-        const reD = /(\d{1,2})\s*[\/|.]\s*(\d{1,2})\s*[\/|.]\s*(\d{2,4})/g;
-        while ((dm = reD.exec(dateZone)) !== null) {
-            const yy = dm[3].length === 2 ? '20' + dm[3] : dm[3];
-            const iso = `${yy}-${lvPad(dm[2])}-${lvPad(dm[1])}`;
-            if (out.appliedDate === iso && dateZone === text) continue;   // skip the header date in whole-text fallback
-            if (!seen.has(iso) && !isNaN(new Date(iso))) { seen.add(iso); out.dates.push(iso); }
-        }
+        // 2) Fallback: scan the WHOLE document. The header "Date :" is the only
+        //    other date on this form and is excluded, so anything else found is
+        //    a leave date. Covers the case where the label band missed them.
+        if (!out.dates.length) out.dates = collectDates(text, true);
         out.dates.sort();
         if (!out.dates.length) notes.push('Leave dates could not be read — add them manually.');
+        else if (out.dates.length !== new Set(out.dates).size) notes.push('Some leave dates repeated — please check.');
+        // Cross-check against the "( N ) DAYS" count the form states.
+        const statedDays = /\(\s*(\d{1,2})\s*\)\s*(?:天\s*)?DAYS/i.exec(text);
+        if (statedDays && out.dates.length && parseInt(statedDays[1], 10) !== out.dates.length) {
+            notes.push(`The form states (${statedDays[1]}) days but ${out.dates.length} date${out.dates.length === 1 ? ' was' : 's were'} read — please check the dates.`);
+        }
 
         // address / phone share a row (…Address : <value>   電話/To <phone>) —
         // bound the address value at the phone marker so it never bleeds in.
@@ -1625,17 +1697,32 @@
         // would stop at "LEAVE" and let the trailing "Address :" word leak
         // into the value, since it's on the same physical row.
         const phoneMarkerRe = /^(電話|To)$/i;
-        let addr = geomValue(/DURING\s*LEAVE\s*Address\s*[:：]?/i, phoneMarkerRe);
-        if (addr == null) addr = geomValue(/\bAddress\b/i, phoneMarkerRe);
-        if (addr == null) addr = textAfter(/DURING LEAVE|Address/i).replace(/^.*?Address\s*[:：]?\s*/i, '').replace(/\s*(電話|To)\s*$/, '');
-        out.addressDuringLeave = lvStripCJK(addr, notes, 'Address during leave');
+        const addrRes = lvValueWordsFor(words, lines, /DURING\s*LEAVE\s*Address\s*[:：]?/i, phoneMarkerRe)
+                     || lvValueWordsFor(words, lines, /\bAddress\b/i, phoneMarkerRe);
+        let addr;
+        if (addrRes) {
+            addr = addrRes.words.map(w => w.text).join(' ');
+            // The address field wraps onto the ruled line below ("…Selampit /
+            // Lundu") — pull in the row beneath, left of the phone column and
+            // carrying no label of its own.
+            const cont = words.filter(w =>
+                w.cy > addrRes.lbl.cy + addrRes.lbl.h * 0.5 &&
+                w.cy < addrRes.lbl.cy + addrRes.lbl.h * 3.2 &&
+                w.x0 > addrRes.lbl.endX - 10 &&
+                !LV_LABEL_WORD_RE.test(w.text) &&
+                !/^[\d\/|.,)\\-]+$/.test(w.text));
+            if (cont.length) addr += ' ' + cont.sort((a, b) => a.x0 - b.x0).map(w => w.text).join(' ');
+        } else {
+            addr = textAfter(/DURING LEAVE|Address/i).replace(/^.*?Address\s*[:：]?\s*/i, '').replace(/\s*(電話|To)\s*$/, '');
+        }
+        out.addressDuringLeave = lvTidy(lvStripCJK(addr, notes, 'Address during leave'));
 
         let phone = geomValue(phoneMarkerRe);
         if (!phone) { const m = /(?:電話|To)\s*[:：]?\s*([\d\- +]{6,})/.exec(text); if (m) phone = m[1]; }
-        if (phone) out.phone = phone.trim();
+        if (phone) out.phone = phone.replace(/[^\d\- +]/g, '').trim();
 
         const rem = valueFor(/\bREMARKS\b/i);
-        out.remarks = lvStripCJK(rem, notes, 'Remarks');
+        out.remarks = lvTidy(lvStripCJK(rem, notes, 'Remarks'));
 
         return out;
     };
