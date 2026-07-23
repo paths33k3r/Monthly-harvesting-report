@@ -27,6 +27,7 @@ const runMainApplication = () => {
             treeLogs: {}, // { company, codes:{categories,species,grades}, years:{ "2024": { batches:[] } } } — loaded from shared/tree_logs_data
             hyr: {}, // { year, half, master:{fileName,importedAt,importedBy}, periods:{ "2025-JUL-DEC": { appendix9:{coupes:[]} } } } — loaded from shared/hyr_data
             pec: {}, // { applications:[{ id, forestCoupeNo, letterRef, pecRefNo, blocks:[], applicationDate, approvedDate, files:{} }] } — loaded from shared/pec_data
+            phc: {}, // { applications:[{ id, forestCoupeNo, letterRef, phcRefNo, blocks:[], applicationDate, approvedDate, files:{} }] } — loaded from shared/phc_data (twin of pec)
             selectedReportYear: null,
             activeViewType: 'report_year',
             activeViewValue: null,
@@ -1833,6 +1834,7 @@ const runMainApplication = () => {
             const wagesProdCostWrapper = document.getElementById('wages-prodcost-wrapper');
             const treeLogsWrapper    = document.getElementById('tree-logs-wrapper');
             const pecWrapper         = document.getElementById('pec-wrapper');
+            const phcWrapper         = document.getElementById('phc-wrapper');
             const hyrReportWrapper   = document.getElementById('hyr-report-wrapper');
             const hyrAppendix4Wrapper = document.getElementById('hyr-appendix4-wrapper');
             const hyrAppendix5Wrapper = document.getElementById('hyr-appendix5-wrapper');
@@ -1862,6 +1864,7 @@ const runMainApplication = () => {
             if (wagesProdCostWrapper) { wagesProdCostWrapper.innerHTML = ''; wagesProdCostWrapper.classList.add('hidden'); }
             if (treeLogsWrapper)    { treeLogsWrapper.innerHTML = '';   treeLogsWrapper.classList.add('hidden'); }
             if (pecWrapper)         { pecWrapper.innerHTML = '';        pecWrapper.classList.add('hidden'); }
+            if (phcWrapper)         { phcWrapper.innerHTML = '';        phcWrapper.classList.add('hidden'); }
             if (hyrReportWrapper)    { hyrReportWrapper.innerHTML = '';    hyrReportWrapper.classList.add('hidden'); }
             if (hyrAppendix4Wrapper) { hyrAppendix4Wrapper.innerHTML = ''; hyrAppendix4Wrapper.classList.add('hidden'); }
             if (hyrAppendix5Wrapper) { hyrAppendix5Wrapper.innerHTML = ''; hyrAppendix5Wrapper.classList.add('hidden'); }
@@ -1900,7 +1903,7 @@ const runMainApplication = () => {
                 ihAssetsWrapper, ihExpensesWrapper, ihCostPerHaWrapper,
                 gangOverviewWrapper, selectorWrapper,
                 mntGangsWrapper, mntWorklogWrapper, mntGanttWrapper,
-                weeklyWrapper, wagesWrapper, wagesLedgerWrapper, wagesVarianceWrapper, wagesDailyWrapper, wagesEmployeesWrapper, wagesProdCostWrapper, treeLogsWrapper, pecWrapper,
+                weeklyWrapper, wagesWrapper, wagesLedgerWrapper, wagesVarianceWrapper, wagesDailyWrapper, wagesEmployeesWrapper, wagesProdCostWrapper, treeLogsWrapper, pecWrapper, phcWrapper,
                 hyrReportWrapper, hyrAppendix4Wrapper, hyrAppendix5Wrapper, hyrAppendix6Wrapper, hyrAppendix9Wrapper,
                 userMgmtWrapper, excelReportsWrapper, auditLogWrapper,
                 dashboardWrapper
@@ -2045,6 +2048,10 @@ const runMainApplication = () => {
                 showView(pecWrapper, () => {
                     if (typeof window.renderPecView === 'function') window.renderPecView();
                 }, 'pec');
+            } else if (state.activeViewType === 'phc') {
+                showView(phcWrapper, () => {
+                    if (typeof window.renderPhcView === 'function') window.renderPhcView();
+                }, 'phc');
             } else if (state.activeViewType === 'hyr_report') {
                 showView(hyrReportWrapper, () => {
                     if (typeof window.renderHyrReportView === 'function') window.renderHyrReportView();
@@ -4011,6 +4018,17 @@ const runMainApplication = () => {
                     };
                 }
 
+                // ── PHC Application nav handler ─────────────────────────
+                const sidebarPhc = document.getElementById('sidebar-phc');
+                if (sidebarPhc) {
+                    sidebarPhc.onclick = (e) => {
+                        e.preventDefault();
+                        if (!state.phc) state.phc = {};
+                        state.activeViewType = 'phc';
+                        renderSidebar(); renderTable();
+                    };
+                }
+
                 // ── Half-Yearly Report nav handlers ─────────────────────
                 const sidebarHyrReport = document.getElementById('sidebar-hyr-report');
                 if (sidebarHyrReport) {
@@ -4402,6 +4420,7 @@ const runMainApplication = () => {
                     'shared/wages_employees_data': false,
                     'shared/tree_logs_data': false,
                     'shared/pec_data': false,
+                    'shared/phc_data': false,
                     'shared/hyr_data': false,
                     'shared/maintenance_data': false
                 };
@@ -4722,6 +4741,31 @@ const runMainApplication = () => {
                         console.warn(`PEC load attempt ${attempt} failed:`, e.message);
                         if (attempt < 4) await new Promise(r => setTimeout(r, 500 * attempt));
                         else if (!state.pec) state.pec = {};
+                    }
+                }
+
+                // Load PHC Application data (twin of PEC — Forest Dept applications register,
+                // shared across all users). window._phcLoaded gates savePhcData so a failed
+                // load can never be persisted over the real cloud data.
+                window._phcDb = db;
+                window._phcLoaded = false;
+                for (let attempt = 1; attempt <= 4 && !cloudUnreachable; attempt++) {
+                    try {
+                        const phcSnap = await readWithTimeout('shared/phc_data');
+                        const phcData = phcSnap.val();
+                        if (phcData) {
+                            state.phc = JSON.parse(phcData);
+                            console.log("PHC application data loaded from cloud.");
+                        } else if (!state.phc) {
+                            state.phc = {};
+                        }
+                        window._phcLoaded = true;
+                        window._sharedLoadOk['shared/phc_data'] = true;
+                        break;
+                    } catch (e) {
+                        console.warn(`PHC load attempt ${attempt} failed:`, e.message);
+                        if (attempt < 4) await new Promise(r => setTimeout(r, 500 * attempt));
+                        else if (!state.phc) state.phc = {};
                     }
                 }
 

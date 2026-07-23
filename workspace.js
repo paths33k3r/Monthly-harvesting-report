@@ -35,8 +35,8 @@
     window.WORKSPACES = {
         oil_palm: {
             id: 'oil_palm', label: 'Oil Palm', logo: '🌴', subtitle: 'Harvesting Report',
-            // Tree Logs Recording + PEC Application + Half-Yearly Report are Tree-Planting-only → hide here.
-            hiddenAreas: ['treelogs', 'pec', 'hyr'], hiddenItems: []
+            // Tree Logs Recording + PEC/PHC Application + Half-Yearly Report are Tree-Planting-only → hide here.
+            hiddenAreas: ['treelogs', 'pec', 'phc', 'hyr'], hiddenItems: []
         },
         tree_planting: {
             id: 'tree_planting', label: 'Tree Planting', logo: '🌳', subtitle: 'Tree Planting Report',

@@ -111,6 +111,15 @@
         ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('pec').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
       },
 
+      // PHC Application register — twin of PEC (menu key 'phc')
+      "phc_data": {
+        ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('phc').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+      },
+      // PHC letter PDFs (stored as data URLs, kept out of the main record) — 'phc'
+      "phc_files": {
+        ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('phc').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+      },
+
       // Half-Yearly Report — period picker + Appendix 9 data (menu key 'hyr')
       "hyr_data": {
         ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('hyr').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
@@ -191,6 +200,12 @@
           },
           "pec_files": {
             ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('pec').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+          },
+          "phc_data": {
+            ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('phc').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
+          },
+          "phc_files": {
+            ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('phc').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
           },
           "hyr_data": {
             ".write": "auth != null && (root.child('user_roles').child(auth.uid).child('role').val() === 'admin' || root.child('user_roles').child(auth.uid).child('editableMenus').val() === 'all' || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('hyr').val() === true || root.child('user_roles').child(auth.uid).child('editableMenusMap').child('dataManagement').val() === true)"
