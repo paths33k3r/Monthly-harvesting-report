@@ -88,10 +88,14 @@ const runMainApplication = () => {
             return peak > 0 ? peak : 0;
         };
 
+        // Resolves to { ok:true } or { ok:false, error } — never rejects, so the
+        // many callers that ignore the return value can't raise unhandled
+        // rejections, while callers that must know (the Excel import) can wait
+        // for the real outcome instead of assuming the write landed.
         const saveState = (silent = false) => {
-            if (!auth.currentUser) return;
+            if (!auth.currentUser) return Promise.resolve({ ok: false, error: new Error('not signed in') });
             try {
-                db.ref('shared/app_state').set(JSON.stringify(state))
+                return db.ref('shared/app_state').set(JSON.stringify(state))
                     .then(() => {
                         window.dispatchEvent(new CustomEvent('harvesting:activity'));
                         if (!silent) {
@@ -116,14 +120,17 @@ const runMainApplication = () => {
                                 window.logAudit('save', sec, `Year ${yr}`, details);
                             }
                         }
+                        return { ok: true };
                     })
                     .catch(e => {
                         console.error("Firebase save error:", e);
                         if (!silent) window.notify("Failed to save data. Please check console for errors.", 'error');
+                        return { ok: false, error: e };
                     });
             } catch (e) {
                 console.error("Error saving state:", e);
                 if (!silent) window.notify("Failed to save data completely.", 'error');
+                return Promise.resolve({ ok: false, error: e });
             }
         };
         window.saveState = saveState;
@@ -211,6 +218,70 @@ const runMainApplication = () => {
         const performanceChartInstances = {};
 
         const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const MONTHS_FULL = ["january", "february", "march", "april", "may", "june",
+            "july", "august", "september", "october", "november", "december"];
+
+        // "Aug"/"august"/"AUGUST"/"8"/"08" → "Aug"; anything else → null.
+        const canonicalMonth = (raw) => {
+            const t = String(raw == null ? '' : raw).trim().toLowerCase();
+            if (!t) return null;
+            if (/^\d{1,2}$/.test(t)) {
+                const n = parseInt(t, 10);
+                return (n >= 1 && n <= 12) ? months[n - 1] : null;
+            }
+            const i = MONTHS_FULL.findIndex(f => f === t || (t.length >= 3 && f.startsWith(t)));
+            return i >= 0 ? months[i] : null;
+        };
+        window._canonicalMonth = canonicalMonth;
+
+        // Rescue for data imported before the month answer was validated: a
+        // month key the app can't reach ("August", "AUGUST", "8") is folded
+        // into its canonical sibling ("Aug"). The stranded copy is the newer
+        // import, so its blocks win on conflict. Returns what it moved.
+        const normalisePerformanceMonths = () => {
+            const moved = [];
+            const perf = state.performance || {};
+            Object.keys(perf).forEach(year => {
+                const yearObj = perf[year];
+                if (!yearObj || typeof yearObj !== 'object') return;
+                Object.keys(yearObj).forEach(key => {
+                    if (months.indexOf(key) >= 0) return;          // already canonical
+                    const canon = canonicalMonth(key);
+                    if (!canon || canon === key) return;           // not a month at all
+                    const from = yearObj[key];
+                    if (!from || typeof from !== 'object') return;
+                    const to = yearObj[canon] || (yearObj[canon] = { gangAssignments: {} });
+                    let blocks = 0;
+                    Object.keys(from).forEach(gang => {
+                        if (gang === 'gangAssignments') {
+                            Object.assign(to.gangAssignments || (to.gangAssignments = {}), from[gang] || {});
+                            return;
+                        }
+                        const src = from[gang];
+                        if (!src || typeof src !== 'object') return;
+                        const dst = to[gang] || (to[gang] = { manpower: 0, leave: 0, blocks: {} });
+                        if (!dst.blocks) dst.blocks = {};
+                        Object.keys(src.blocks || {}).forEach(bId => { dst.blocks[bId] = src.blocks[bId]; blocks++; });
+                        if (src.manpower) dst.manpower = src.manpower;
+                    });
+                    delete yearObj[key];
+                    moved.push({ year, from: key, to: canon, blocks });
+                });
+            });
+            if (moved.length && months.indexOf(state.activePerfMonth) < 0) {
+                const c = canonicalMonth(state.activePerfMonth);
+                if (c) state.activePerfMonth = c;
+            }
+            return moved;
+        };
+
+        // "Aug 2026" / "August 2026" / "8/2026" / "aug-2026" → {month:"Aug", year:"2026"}
+        const parseMonthYearAnswer = (raw) => {
+            const m = String(raw == null ? '' : raw).trim().match(/^([A-Za-z]+|\d{1,2})[\s\/\-.,]*(\d{4})$/);
+            if (!m) return null;
+            const month = canonicalMonth(m[1]);
+            return month ? { month, year: m[2] } : null;
+        };
 
         // ── Reusable month-navigation arrows (shared by every single-month view) ──
         // Returns {prevBtn, nextBtn} DOM <button>s. Disabled buttons are dimmed + unclickable.
@@ -446,14 +517,21 @@ const runMainApplication = () => {
                     return;
                 }
 
-                const [monthStr, yearStr] = importTargetStr.trim().split(" ");
-                if (!monthStr || !yearStr) {
-                    window.notify("Import cancelled. Please enter a valid Month and Year format (e.g., Mar 2026).", 'warn');
+                // The answer is free text, so normalise it to the canonical month
+                // key. Anything else ("August", "AUGUST", "8") used to be stored
+                // verbatim, creating a month bucket like performance[2026].August
+                // that no month list or selector can ever reach — the data was
+                // saved but looked lost.
+                const parsedTarget = parseMonthYearAnswer(importTargetStr);
+                if (!parsedTarget) {
+                    window.notify(
+                        `Import cancelled — "${sEsc(importTargetStr.trim())}" is not a month and year. ` +
+                        `Use a month name and a 4-digit year, e.g. "Aug 2026", "August 2026" or "8 2026".`,
+                        'error', 9000);
                     return;
                 }
-
-                const targetMonth = monthStr.charAt(0).toUpperCase() + monthStr.slice(1).toLowerCase();
-                const targetYear = yearStr;
+                const targetMonth = parsedTarget.month;
+                const targetYear = parsedTarget.year;
 
                 // Ensure we have a report year to add to
                 if (!state.reports[targetYear]) {
@@ -590,12 +668,37 @@ const runMainApplication = () => {
                 if (typeof window.logAudit === 'function') {
                     window.logAudit('import', 'harvesting', `${targetMonth} ${targetYear}`, `File: ${file.name} — ${newBlocks.length} blocks imported`);
                 }
-                // Update UI
-                window.notify(`Successfully imported ${newBlocks.length} blocks!`, 'success');
-                renderSidebar();
-                renderTable();
-                recalculateTotals();
-                saveState(true);
+
+                // Persist FIRST. The write used to run last and silently
+                // (saveState(true) swallowed every failure), so a rejected save
+                // — rules, the load-race guard, or a rendering exception thrown
+                // before it ran — left the import in memory only: it looked
+                // imported until the next refresh, then it was gone.
+                const savePromise = saveState(true);
+
+                try {
+                    renderSidebar();
+                    renderTable();
+                    recalculateTotals();
+                } catch (renderErr) {
+                    console.error('Import: rendering failed after a successful import', renderErr);
+                    window.notify('Imported, but this view failed to draw: ' + renderErr.message +
+                        ' — your data is saved; try switching month or reloading.', 'error', 12000);
+                }
+
+                savePromise.then(res => {
+                    if (res && res.ok) {
+                        window.notify(`Imported ${newBlocks.length} blocks into ${targetMonth} ${targetYear} — saved to the cloud.`, 'success');
+                    } else {
+                        const msg = (res && res.error && (res.error.message || String(res.error))) || 'unknown error';
+                        console.error('Import save failed:', res && res.error);
+                        window.notify(
+                            `⚠ ${newBlocks.length} blocks were read from the file but COULD NOT BE SAVED to the cloud: ` +
+                            `${msg}. The data is only in this tab — do not reload. ` +
+                            `Check your permissions / connection, then press 💾 Save.`,
+                            'error', 20000);
+                    }
+                });
             };
             reader.readAsArrayBuffer(file);
         };
@@ -4549,6 +4652,22 @@ const runMainApplication = () => {
                     if (cloudData) {
                         console.log("Loading shared cloud state...");
                         Object.assign(state, JSON.parse(cloudData));
+                        // Recover any month bucket the UI can't reach (see
+                        // normalisePerformanceMonths) and persist the repair.
+                        const _moved = normalisePerformanceMonths();
+                        if (_moved.length) {
+                            const detail = _moved.map(m => `${m.from} → ${m.to} ${m.year} (${m.blocks} blocks)`).join(', ');
+                            console.warn('Recovered unreachable performance months:', detail);
+                            saveState(true).then(res => {
+                                window.notify(res && res.ok
+                                    ? `Recovered harvesting data filed under an unrecognised month: ${detail}.`
+                                    : `Found harvesting data under an unrecognised month (${detail}) but could not save the repair — check your connection.`,
+                                    res && res.ok ? 'success' : 'error', 12000);
+                            });
+                            if (typeof window.logAudit === 'function') {
+                                window.logAudit('repair', 'harvesting', 'month key recovery', detail);
+                            }
+                        }
                         finishInit();
                     } else {
                         console.log("No cloud state found. Checking local storage for migration...");
