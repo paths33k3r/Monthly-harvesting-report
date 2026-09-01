@@ -88,6 +88,72 @@ const runMainApplication = () => {
             return peak > 0 ? peak : 0;
         };
 
+        // Sections that own a Firebase path of their own. saveState used to
+        // stringify the WHOLE state object, so every one of these was
+        // duplicated into the shared/app_state blob — the Wage Ledger alone
+        // runs to thousands of rows a month, the Employee Master to hundreds
+        // of people. That duplication pushed app_state past the Realtime
+        // Database's 10 MB per-string limit, and once it did, EVERY save
+        // failed with "value argument contains a string greater than 10485760
+        // utf8 bytes" — silently, because the callers passed silent=true.
+        // init() loads each of these from its own path and assigns it
+        // unconditionally, so the copies here were never read: dead weight.
+        // state key -> the shared path that section is really stored under
+        const APP_STATE_OWN_PATHS = {
+            spraying: 'shared/spraying_data',
+            manuring: 'shared/manuring_data',
+            ironHorse: 'shared/ironhorse_data',
+            weekly: 'shared/weekly_activity_data',
+            wages: 'shared/wages_data',
+            wagesLedger: 'shared/wages_ledger_data',
+            wagesDaily: 'shared/wages_daily_data',
+            wagesEmployees: 'shared/wages_employees_data',
+            treeLogs: 'shared/tree_logs_data',
+            pec: 'shared/pec_data',
+            phc: 'shared/phc_data',
+            hyr: 'shared/hyr_data',
+            maintenance: 'shared/maintenance_data'
+        };
+        const APP_STATE_OWN_PATH_KEYS = Object.keys(APP_STATE_OWN_PATHS);
+
+        // A section is dropped from the blob only once its own path has been
+        // read successfully this session. If that read failed, the copy in
+        // app_state may be the only one in memory, so it is kept — the size
+        // guard below still stops an oversized write either way.
+        const sectionIsSafeToOmit = (key) => {
+            const path = APP_STATE_OWN_PATHS[key];
+            if (!path) return false;
+            return !!(window._sharedLoadOk && window._sharedLoadOk[path] === true);
+        };
+
+        // Realtime Database refuses any string value beyond 10 MB (UTF-8).
+        const RTDB_STRING_LIMIT = 10485760;
+        const utf8Bytes = (str) => {
+            try { return new TextEncoder().encode(str).length; }
+            catch (e) { return str.length; }
+        };
+
+        // What app_state actually has to carry: the planting record, harvesting
+        // performance, budget, rainfall, gangs and the UI's own preferences.
+        const appStateJson = () => {
+            const slim = {};
+            Object.keys(state).forEach(k => {
+                if (!sectionIsSafeToOmit(k)) slim[k] = state[k];
+            });
+            return JSON.stringify(slim);
+        };
+
+        // Size breakdown for diagnosing a bloated state (console + the toast
+        // shown when a save is refused for size).
+        window._appStateSizes = () => Object.keys(state)
+            .map(k => {
+                let kb = 0;
+                try { kb = Math.round(JSON.stringify(state[k] === undefined ? null : state[k]).length / 1024); }
+                catch (e) { kb = -1; }
+                return { key: k, kb, ownPath: APP_STATE_OWN_PATH_KEYS.indexOf(k) >= 0 };
+            })
+            .sort((a, b) => b.kb - a.kb);
+
         // Resolves to { ok:true } or { ok:false, error } — never rejects, so the
         // many callers that ignore the return value can't raise unhandled
         // rejections, while callers that must know (the Excel import) can wait
@@ -95,7 +161,22 @@ const runMainApplication = () => {
         const saveState = (silent = false) => {
             if (!auth.currentUser) return Promise.resolve({ ok: false, error: new Error('not signed in') });
             try {
-                return db.ref('shared/app_state').set(JSON.stringify(state))
+                const payload = appStateJson();
+                const bytes = utf8Bytes(payload);
+                if (bytes > RTDB_STRING_LIMIT * 0.95) {
+                    // Refuse locally rather than let the database reject it —
+                    // and say what is big, so it can actually be dealt with.
+                    const top = window._appStateSizes().filter(r => !sectionIsSafeToOmit(r.key)).slice(0, 5)
+                        .map(r => `${r.key} ${r.kb} KB`).join(', ');
+                    console.error('app_state too large for Realtime Database:',
+                        Math.round(bytes / 1024) + ' KB', window._appStateSizes());
+                    const err = new Error(`app_state is ${Math.round(bytes / 1048576 * 10) / 10} MB, over the 10 MB limit. Largest: ${top}`);
+                    window.notify('Save refused: the harvesting record is ' +
+                        Math.round(bytes / 1048576 * 10) / 10 + ' MB, past the database\'s 10 MB limit. Largest sections: ' +
+                        top + '. Nothing was overwritten — tell your administrator.', 'error', 20000);
+                    return Promise.resolve({ ok: false, error: err });
+                }
+                return db.ref('shared/app_state').set(payload)
                     .then(() => {
                         window.dispatchEvent(new CustomEvent('harvesting:activity'));
                         if (!silent) {
@@ -3972,7 +4053,14 @@ const runMainApplication = () => {
                         reader.onload = async (ev) => {
                             try {
                                 const restored = JSON.parse(ev.target.result);
-                                window.state = restored;
+                                // Replace the CONTENTS of the live state object.
+                                // Reassigning window.state used to leave every
+                                // module holding the previous object (script.js
+                                // captures `state` in its closure), so the save
+                                // below persisted the pre-restore data instead
+                                // of the backup.
+                                Object.keys(state).forEach(k => { delete state[k]; });
+                                Object.assign(state, restored);
                                 await saveState(false);
                                 window.notify('Backup restored successfully! The page will now reload.', 'success');
                                 setTimeout(() => location.reload(), 1200);

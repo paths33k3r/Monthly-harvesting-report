@@ -740,6 +740,28 @@ Extra chemical Round and Ha inputs use keys `extras[name_round]` and `extras[nam
 - **Iron Horse import (Data Management)**: Wired up — auto-detects headers, prompts for unknown columns.
 - **Iron Horse template download**: Fixed — anchor is appended to `document.body`, clicked, then `URL.revokeObjectURL` + `a.remove()` are deferred via `setTimeout`. All cells use static values (no `{ formula }`). See `downloadIronHorseTemplate()` in render_ironhorse.js.
 
+### app_state size limit (root cause of "imports vanish after refresh")
+`saveState` writes ONE string to `shared/app_state`, and Realtime Database
+refuses any string over **10 MB** (UTF-8). It used to stringify the *whole*
+`state` object, which duplicated every module section that already has its own
+path — Wage Ledger (thousands of rows a month), Employee Master, Tree Logs,
+Weekly, HYR… Once the blob crossed 10 MB every save failed with
+`value argument contains a string greater than 10485760 utf8 bytes`, silently,
+because callers pass `silent=true`. Symptom: imports look fine, then vanish on
+refresh.
+
+- `APP_STATE_OWN_PATHS` (script.js) maps each such state key to its real path;
+  `appStateJson()` omits a section **only when `_sharedLoadOk[path] === true`**,
+  so a section whose own read failed keeps its copy rather than risking loss.
+- A payload over 95% of the limit is refused **locally** with a size breakdown
+  (`window._appStateSizes()`) instead of being sent and rejected.
+- **Any new module section must be added to `APP_STATE_OWN_PATHS`**, or its data
+  will be duplicated into app_state again.
+- Backup restore now replaces the live state object's *contents*
+  (`delete`+`Object.assign`) — it used to reassign `window.state`, which left
+  script.js's closure holding the old object, so the save after a restore
+  persisted the pre-restore data.
+
 ### Access control (important)
 - Role/permission enforcement is **client-side only** (`_canEdit`, `_applyReadOnly` disable buttons and set `readOnly`). The real security boundary must be **Firebase Realtime Database security rules** — confirm they restrict writes by role, otherwise a non-admin can still write via the console.
 - `loadUserRole()` in script.js grants `admin` **only** to the genuine first-ever user (when `user_roles` is empty). Any other user with no record defaults to a locked-down `user` role, and role-read failures **fail closed** (least privilege).
