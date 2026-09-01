@@ -18,7 +18,7 @@
                 return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
             });
         };</script>
-    <link rel="stylesheet" href="style.css?v=26">
+    <link rel="stylesheet" href="style.css?v=27">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     
@@ -190,6 +190,9 @@
                         <ul class="nav-submenu">
                             <li class="nav-item">
                                 <a href="#" id="sidebar-interval" class="nav-link"><span class="nav-label">Harvesting Interval</span></a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="#" id="sidebar-interval-monitor" class="nav-link"><span class="nav-label">Interval Monitor</span></a>
                             </li>
                             <li class="nav-item">
                                 <a href="#" id="sidebar-perf" class="nav-link"><span class="nav-label">Harvester Performance Chart</span></a>
@@ -497,6 +500,11 @@
                     <!-- JS will generate individual gang interval components here -->
                 </div>
 
+                <div id="interval-monitor-wrapper" class="report-wrapper hidden"
+                    style="max-width: 1400px; padding: 0; background: transparent; border: none; box-shadow: none;">
+                    <!-- render_interval_monitor.js renders here -->
+                </div>
+
                 <div id="performance-wrapper" class="report-wrapper hidden"
                     style="max-width: 1200px; padding: 0; background: transparent; border: none; box-shadow: none;">
                     <!-- JS will generate individual gang performance components here -->
@@ -671,7 +679,7 @@
     </div>
 
     <script src="templates.js"></script>
-    <script src="render_dashboard.js?v=15"></script>
+    <script src="render_dashboard.js?v=16"></script>
     <script src="ffbData.js"></script>
     <script src="rainfallData.js"></script>
     <script src="render_rainfall.js"></script>
@@ -693,11 +701,12 @@
     <script src="render_hyr.js?v=2"></script>
     <script src="render_spraying.js?v=14"></script>
     <script src="render_manuring.js?v=16"></script>
+    <script src="render_interval_monitor.js?v=1"></script>
     <script src="render_reports.js?v=31"></script>
     <script src="workspace.js?v=5"></script>
     <script src="app_boot.js?v=2"></script>
     <script src="app_user_mgmt.js?v=7"></script>
-    <script src="script.js?v=82"></script>
+    <script src="script.js?v=83"></script>
     <script src="ui_enhancements.js?v=12"></script>
     <script src="field_mode.js?v=1"></script>
     <script>

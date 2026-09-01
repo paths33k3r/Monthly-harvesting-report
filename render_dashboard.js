@@ -274,11 +274,29 @@
 
     // =================================================================
     // Harvest-interval alerts (roadmap Phase 7)
-    // A block's "last harvested" date is the latest non-empty cell in
-    // its per-day interval grid (performance[year][month][gang].blocks
-    // [id].days). Blocks past ALERT_OVERDUE_DAYS show as alerts.
+    // Preferred source is the interval engine in render_interval_monitor.js
+    // (window.imBlockStatus), which knows where each round STARTED and so
+    // reports the real days-since-last-round against the user's own target.
+    // The fallback below reads the grid directly: a block's "last harvested"
+    // day is the latest cell carrying manpower.
+    //
+    // NB the fallback must look at .hpVal, not the cell itself — since the
+    // importer moved to { roundVal, hpVal } objects, String(cell) yields
+    // "[object Object]" for EVERY day, which silently made every block look
+    // harvested on the last day of the month.
     // =================================================================
     const ALERT_OVERDUE_DAYS = 21;
+
+    // true when this day's cell records actual harvesting work
+    function dayHasHarvest(cell) {
+        if (cell && typeof cell === 'object') {
+            const hp = String(cell.hpVal == null ? '' : cell.hpVal).trim();
+            if (hp !== '' && parseFloat(hp) > 0) return true;
+            // no manpower column filled in — fall back to the day counter
+            return String(cell.roundVal == null ? '' : cell.roundVal).trim() !== '';
+        }
+        return String(cell == null ? '' : cell).trim() !== '';
+    }
 
     function lastHarvestByBlock(perfYearObj, yearNum) {
         const last = {}; // blockId -> Date of most recent harvest mark
@@ -296,7 +314,7 @@
                     const days = blocks[bId] && blocks[bId].days;
                     if (!Array.isArray(days)) return;
                     for (let d = days.length - 1; d >= 0; d--) {
-                        if (String(days[d] == null ? '' : days[d]).trim() !== '') {
+                        if (dayHasHarvest(days[d])) {
                             const dt = new Date(yearNum, mIdx, d + 1);
                             if (!last[bId] || dt > last[bId]) last[bId] = dt;
                             break;
@@ -309,6 +327,28 @@
     }
 
     function buildHarvestAlerts(s, yrCurr) {
+        // Preferred path — the interval engine measures from the last ROUND
+        // START (what the estate's target is actually about) and uses the
+        // user's own target rather than this file's fallback constant.
+        if (typeof window.imBlockStatus === 'function' && typeof window.imTarget === 'function') {
+            let rows = [];
+            try { rows = window.imBlockStatus(yrCurr, new Date()) || []; } catch (e) { rows = []; }
+            if (rows.length) {
+                const threshold = window.imTarget();
+                const overdue = rows
+                    .filter(r => !r.dormant && r.days != null && r.days > threshold)
+                    .map(r => ({ bId: r.blockId, days: r.days }))
+                    .sort((a, b) => b.days - a.days);
+                const known = {};
+                rows.forEach(r => { known[String(r.blockId).trim()] = 1; });
+                let neverCount = 0;
+                if (Array.isArray(s.reports && s.reports[yrCurr])) {
+                    s.reports[yrCurr].forEach(b => { if (!known[String(b.block_id).trim()]) neverCount++; });
+                }
+                return { overdue, neverCount, threshold, fromEngine: true };
+            }
+        }
+
         const perfYear = s.performance && s.performance[yrCurr];
         const last = lastHarvestByBlock(perfYear, Number(yrCurr));
         const harvestedIds = Object.keys(last);
@@ -331,7 +371,7 @@
                 if (!known[String(b.block_id).trim()]) neverCount++;
             });
         }
-        return { overdue, neverCount };
+        return { overdue, neverCount, threshold: ALERT_OVERDUE_DAYS, fromEngine: false };
     }
 
     // Central chart registry so every re-render tears down its prior instance
@@ -494,15 +534,18 @@
 
         // ---- Harvest-interval alerts ----
         const alerts = buildHarvestAlerts(s, yrCurr);
+        const alertDays = (alerts && alerts.threshold) || ALERT_OVERDUE_DAYS;
+        const alertWhat = (alerts && alerts.fromEngine)
+            ? 'since the last round started' : 'since last recorded harvest';
         let alertsHtml = '';
         if (alerts && (alerts.overdue.length || alerts.neverCount)) {
             const MAX_CHIPS = 10;
-            const chip = (a) => `<button type="button" class="dash-alert-chip" data-target="sidebar-interval" title="Open Harvesting Interval" style="display:inline-flex; align-items:center; gap:.45rem; border:1px solid ${a.days > 2 * ALERT_OVERDUE_DAYS ? '#fca5a5' : '#fcd34d'}; background:${a.days > 2 * ALERT_OVERDUE_DAYS ? '#fef2f2' : '#fffbeb'}; color:${a.days > 2 * ALERT_OVERDUE_DAYS ? '#991b1b' : '#92400e'}; border-radius:999px; padding:.35rem .8rem; font-size:.82rem; cursor:pointer;">
+            const chip = (a) => `<button type="button" class="dash-alert-chip" data-target="${alerts.fromEngine ? 'sidebar-interval-monitor' : 'sidebar-interval'}" title="${alerts.fromEngine ? 'Open the Interval Monitor' : 'Open Harvesting Interval'}" style="display:inline-flex; align-items:center; gap:.45rem; border:1px solid ${a.days > 2 * alertDays ? '#fca5a5' : '#fcd34d'}; background:${a.days > 2 * alertDays ? '#fef2f2' : '#fffbeb'}; color:${a.days > 2 * alertDays ? '#991b1b' : '#92400e'}; border-radius:999px; padding:.35rem .8rem; font-size:.82rem; cursor:pointer;">
                 <strong>Blk ${window.escapeHtml(a.bId)}</strong> ${a.days} days</button>`;
             const shown = alerts.overdue.slice(0, MAX_CHIPS);
             const moreCount = alerts.overdue.length - shown.length;
             alertsHtml = `
-                <h3 class="dash-section">⚠️ Harvest alerts <span style="font-weight:400; font-size:.8rem; color:var(--text-muted,#6b7280);">— blocks past ${ALERT_OVERDUE_DAYS} days since last recorded harvest (${yrCurr})</span></h3>
+                <h3 class="dash-section">⚠️ Harvest alerts <span style="font-weight:400; font-size:.8rem; color:var(--text-muted,#6b7280);">— blocks past ${alertDays} days ${alertWhat} (${yrCurr})</span></h3>
                 <div style="display:flex; flex-wrap:wrap; gap:.5rem; margin-bottom:1.25rem;">
                     ${shown.map(chip).join('')}
                     ${moreCount > 0 ? `<button type="button" class="dash-alert-chip" data-target="sidebar-interval" style="border:1px solid var(--border-color,#e5e7eb); background:var(--bg-secondary,#f3f4f6); color:var(--text-secondary,#4b5563); border-radius:999px; padding:.35rem .8rem; font-size:.82rem; cursor:pointer;">+${moreCount} more…</button>` : ''}
@@ -511,7 +554,7 @@
         } else if (alerts) {
             alertsHtml = `
                 <h3 class="dash-section">⚠️ Harvest alerts</h3>
-                <p style="margin:0 0 1.25rem; font-size:.88rem; color:#065f46;">✅ All harvested blocks are within ${ALERT_OVERDUE_DAYS} days.</p>`;
+                <p style="margin:0 0 1.25rem; font-size:.88rem; color:#065f46;">✅ All harvested blocks are within ${alertDays} days.</p>`;
         }
 
         const ffbEmptyMsg = `No harvest figures captured yet for ${yrPrev} or ${yrCurr}.<br>Import the Harvesting Interval files to populate this chart.`;

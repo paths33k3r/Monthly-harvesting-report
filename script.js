@@ -581,6 +581,8 @@ const runMainApplication = () => {
                 // Reset input so the same file can be triggered again if needed
                 e.target.value = '';
 
+                if (typeof window.imInvalidate === 'function') window.imInvalidate();
+
                 // Switch view to the newly imported interval
                 state.activeViewType = 'interval_month';
                 state.activePerfMonth = targetMonth;
@@ -1832,6 +1834,7 @@ const runMainApplication = () => {
             const wagesDailyWrapper  = document.getElementById('wages-daily-wrapper');
             const wagesEmployeesWrapper = document.getElementById('wages-employees-wrapper');
             const wagesProdCostWrapper = document.getElementById('wages-prodcost-wrapper');
+            const intervalMonitorWrapper = document.getElementById('interval-monitor-wrapper');
             const treeLogsWrapper    = document.getElementById('tree-logs-wrapper');
             const pecWrapper         = document.getElementById('pec-wrapper');
             const phcWrapper         = document.getElementById('phc-wrapper');
@@ -1897,7 +1900,7 @@ const runMainApplication = () => {
             // in the branches below so a new view can't accidentally leave an
             // old panel visible.
             const _switchableWrappers = [
-                mainReportWrapper, perfWrapper, intervalWrapper,
+                mainReportWrapper, perfWrapper, intervalWrapper, intervalMonitorWrapper,
                 ffbWrapper, rainfallWrapper, ytdWrapper, currentPrevWrapper,
                 sprayingWrapper, manuringWrapper, maintenanceComingSoonWrapper,
                 ihAssetsWrapper, ihExpensesWrapper, ihCostPerHaWrapper,
@@ -1972,6 +1975,10 @@ const runMainApplication = () => {
             } else if (isIntervalView) {
                 showView(intervalWrapper, () => {
                     if (typeof renderIntervalTable === 'function') renderIntervalTable();
+                }, 'performance');
+            } else if (state.activeViewType === 'interval_monitor') {
+                showView(intervalMonitorWrapper, () => {
+                    if (typeof window.renderIntervalMonitor === 'function') window.renderIntervalMonitor();
                 }, 'performance');
             } else if (isFfbBudgetView) {
                 showView(ffbWrapper, renderFfbBudgetTable, 'ffbBudget');
@@ -2839,6 +2846,15 @@ const runMainApplication = () => {
                             <span class="font-bold">ALL BLOCKS</span>
                         </div>
                     </div>
+                    <div style="display:flex; align-items:center; gap:0.9rem; flex-wrap:wrap; margin-top:0.5rem; font-size:0.76rem; color:var(--text-secondary);">
+                        <span>Harvested days:</span>
+                        <span><span style="display:inline-block;width:11px;height:11px;background:#00B050;border:1px solid #999;vertical-align:-1px;"></span> 1st round</span>
+                        <span><span style="display:inline-block;width:11px;height:11px;background:#FFFF00;border:1px solid #999;vertical-align:-1px;"></span> 2nd</span>
+                        <span><span style="display:inline-block;width:11px;height:11px;background:#FF0000;border:1px solid #999;vertical-align:-1px;"></span> 3rd</span>
+                        <span><span style="display:inline-block;width:11px;height:11px;background:#00B0F0;border:1px solid #999;vertical-align:-1px;"></span> 4th</span>
+                        <span style="color:#dc2626; font-weight:700;">red figure = past the ${(typeof window.imTarget === 'function' ? window.imTarget() : 15)}-day target</span>
+                        <a href="#" id="interval-open-monitor" style="color:var(--primary-color); font-weight:600;">⏱ Interval Monitor →</a>
+                    </div>
                     <div style="display:flex; align-items:center; gap:0.6rem; margin-top:0.75rem;">
                         <button id="interval-prev-month" title="Previous month" aria-label="Previous month"
                             style="display:flex;align-items:center;justify-content:center;width:36px;height:40px;font-size:1.4rem;line-height:1;cursor:pointer;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-primary);color:var(--primary-color);font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,0.1);flex-shrink:0;">❮</button>
@@ -2897,6 +2913,12 @@ const runMainApplication = () => {
             intervalWrapper.appendChild(wrapper);
 
             // --- Month navigation arrows (prev / next) — shared performance stepper ---
+            const _ivMonBtn = document.getElementById('interval-open-monitor');
+            if (_ivMonBtn) _ivMonBtn.onclick = (e) => {
+                e.preventDefault();
+                if (typeof window._navTo === 'function') window._navTo('interval_monitor');
+            };
+
             const _ivNav = window.perfMonthNav();
             const _ivPrevBtn = document.getElementById('interval-prev-month');
             const _ivNextBtn = document.getElementById('interval-next-month');
@@ -2949,6 +2971,12 @@ const runMainApplication = () => {
                 tr.innerHTML = `<td style="position: sticky; left: 0; background: var(--bg-primary); font-weight: 500; border-right: 2px solid var(--border-color);" class="text-center cell-block">${sEsc(bId)}</td>
                             <td class="text-right" style="border-right: 2px solid var(--border-color);">${formatHA(block.ha)}</td>`;
 
+                // Cells are painted after the row is built (and repainted after
+                // an edit) by paintRoundColors below - the same green/yellow/red
+                // convention as the source workbook, derived from the counter
+                // resets rather than typed in. See render_interval_monitor.js.
+                const dayCells = [];
+
                 bData.days.forEach((dayObj, i) => {
                     // Support both legacy array format and new object format
                     const isObj = typeof dayObj === 'object' && dayObj !== null;
@@ -2977,6 +3005,8 @@ const runMainApplication = () => {
                     inputTop.onchange = (e) => {
                         if (!isObj) bData.days[i] = { roundVal: e.target.value, hpVal: "" };
                         else bData.days[i].roundVal = e.target.value;
+                        if (typeof window.imInvalidate === 'function') window.imInvalidate();
+                        paintRoundColors();
                     };
 
                     const inputBot = document.createElement('input');
@@ -2992,13 +3022,51 @@ const runMainApplication = () => {
                     inputBot.onchange = (e) => {
                         if (!isObj) bData.days[i] = { roundVal: dayObj, hpVal: e.target.value };
                         else bData.days[i].hpVal = e.target.value;
+                        if (typeof window.imInvalidate === 'function') window.imInvalidate();
+                        paintRoundColors();
                     };
 
                     wrapper.appendChild(inputTop);
                     wrapper.appendChild(inputBot);
                     td.appendChild(wrapper);
                     tr.appendChild(td);
+                    dayCells.push({ td, inputTop });
                 });
+
+                // Paint the round colours: 1st green, 2nd yellow, 3rd red,
+                // 4th blue on the days actually harvested; the counter turns
+                // red once it passes the interval target.
+                function paintRoundColors() {
+                    const flags = (typeof window.imDayFlags === 'function')
+                        ? window.imDayFlags(year, month, bId) : null;
+                    const target = (typeof window.imTarget === 'function') ? window.imTarget() : 15;
+                    dayCells.forEach((c, i) => {
+                        const f = flags ? flags[i] : null;
+                        const rn = f && f.roundNo;
+                        const bg = (rn && window.IM_ROUND_COLORS) ? window.IM_ROUND_COLORS[rn] : '';
+                        c.inputTop.style.background = bg || 'transparent';
+                        c.inputTop.style.color = bg
+                            ? ((window.IM_ROUND_TEXT && window.IM_ROUND_TEXT[rn]) || '#111111')
+                            : ((f && f.over) ? '#dc2626' : '');
+                        c.inputTop.style.fontWeight = (bg || (f && f.over)) ? '700' : '';
+                        let tip = '';
+                        if (f && f.counter != null) {
+                            tip = 'Day ' + (i + 1) + ' \u2014 ' + f.counter + ' day' +
+                                (f.counter === 1 ? '' : 's') + ' since this round started';
+                            if (rn) {
+                                const lbl = (window.IM_ROUND_LABEL && window.IM_ROUND_LABEL[rn]) || (rn + 'th');
+                                tip += '\nHarvested \u2014 ' + lbl + ' round of ' + month;
+                            }
+                            if (f.isStart && f.interval != null) {
+                                tip += '\nInterval closed: ' + f.interval + ' days' +
+                                    (f.interval > target ? ' (over the ' + target + '-day target)' : '');
+                            }
+                            if (f.over) tip += '\nPast the ' + target + '-day target';
+                        }
+                        c.td.title = tip;
+                    });
+                }
+                paintRoundColors();
 
                 const createPerfInput = (field, onChange, extraStyle = "") => {
                     const td = document.createElement('td');
@@ -4167,6 +4235,16 @@ const runMainApplication = () => {
                         renderTable();
                     };
                 });
+
+                const sidebarIntervalMonitor = document.getElementById('sidebar-interval-monitor');
+                if (sidebarIntervalMonitor) {
+                    sidebarIntervalMonitor.onclick = (e) => {
+                        e.preventDefault();
+                        state.activeViewType = 'interval_monitor';
+                        renderSidebar();
+                        renderTable();
+                    };
+                }
 
                 const sidebarMntWorklog = document.getElementById('sidebar-mnt-worklog');
                 if (sidebarMntWorklog) {

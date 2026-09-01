@@ -15,7 +15,7 @@
 
    Bump VERSION to invalidate all caches after big changes.
    ============================================================ */
-const VERSION = 'v29';
+const VERSION = 'v30';
 const SHELL_CACHE = 'shell-' + VERSION;
 const CDN_CACHE = 'cdn-' + VERSION;
 
@@ -34,6 +34,7 @@ const SHELL_PRECACHE = [
     './ui_enhancements.js',
     './field_mode.js',
     './render_dashboard.js',
+    './render_interval_monitor.js',
     './render_reports.js',
     './render_spraying.js',
     './render_manuring.js',

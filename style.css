@@ -1694,4 +1694,43 @@ body.field-mode .wk-obs-actions > * { flex: 1 1 auto; text-align: center; }
         max-height: none;
         overflow: visible;
     }
+
+    /* ── Interval Monitor: printable weekly review + field inspection sheet ──
+       The colour-coded status is the point of the sheet, so print it in
+       colour; controls and tabs are dropped, and rows are kept whole across
+       page breaks. */
+    .im-noprint { display: none !important; }
+    .im-print-head { display: block !important; margin-bottom: 0.6rem; }
+    .im-root { padding: 0 !important; max-width: none !important; }
+    .im-root .im-title { font-size: 1.05rem; margin-bottom: 0.4rem; }
+
+    .im-root div[style*="box-shadow"] {
+        box-shadow: none !important;
+        break-inside: auto;
+    }
+
+    .im-table { width: 100% !important; min-width: 0 !important; font-size: 9pt; }
+    .im-table th, .im-table td { padding: 3px 5px !important; }
+    .im-table tr { break-inside: avoid; page-break-inside: avoid; }
+    .im-table thead { display: table-header-group; }
+
+    .im-chip, .im-table td, .im-table th {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* field sheet: an empty box to tick in the field, and room to write */
+    .im-box {
+        display: inline-block;
+        width: 11px; height: 11px;
+        border: 1px solid #333;
+    }
+    .im-fieldtable td:last-child { border-bottom: 1px solid #999 !important; }
+    .im-sign { break-inside: avoid; page-break-inside: avoid; }
+
+    /* the day-counter grid keeps its round colours on paper */
+    #interval-wrapper input {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
 }

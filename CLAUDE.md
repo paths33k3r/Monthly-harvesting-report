@@ -23,6 +23,7 @@ or open with VS Code Live Server (right-click index.html → Open with Live Serv
 | `render_manuring.js` | Manuring section UI |
 | `render_ytd_report.js` | YTD report UI |
 | `render_ironhorse.js` | Iron Horse section UI — Assets, Expenses, template download, import |
+| `render_interval_monitor.js` | **Interval Monitor** — days-between-rounds compliance (ISO-week review, printable field sheet, interval log) derived from the Harvesting Interval grid |
 | `render_maintenance.js` | Maintenance Gangs, Work Log & Gantt Chart (digitises the hand-written Gantt sheets) |
 | `render_wages.js` | **Rate of Wages** — per-gang/month payment calc (FFB rate × net MT − daily-rate blocks − penalty) + Excel report |
 | `render_weekly.js` | **Weekly Activity** — track-driven field report: KMZ/KML/GPX import, Leaflet satellite map, photo storage, Word `.docx` export |
@@ -433,6 +434,93 @@ mode for GROUPED data (one record → a variable number of sub-rows):
 Period-stamp text patching (`AS AT ... 2025`, `REPORTING PERIOD`/`YEAR` pairs) for the
 passthrough sheets (FRONT, Appendix 1–3, 7–8, 10–12, Bamboo) — still carried through
 unchanged on every export, since Phase 1/2 focused on the four live appendices first.
+
+---
+
+## Interval Monitor module (render_interval_monitor.js)
+
+### Overview
+**"⏱ Interval Monitor"** — second sub-tab under 📈 Harvesting Performance
+(`sidebar-interval-monitor`, view type `interval_monitor`, wrapper
+`interval-monitor-wrapper`), right under **Harvesting Interval**. Measures the
+gap between harvesting rounds per block against the estate's **≤ 15-day**
+target and reviews it **by ISO week (Mon–Sun, crossing month ends)**. **Purely
+derived** — reads `state.performance`, stores nothing but the user's own
+settings (`state.intervalTargetDays`, `imWeek`, `imAsAt`, `imLogMonth`,
+`imLogGang`) inside the existing `app_state`; no Firebase path, no rules
+change, no save function. Menu key **`performance`** shared.
+
+### How the source grid encodes intervals (decoded + validated, Aug 2026)
+The daily-report workbook's `HARVESTING INTERVAL-<MON>` sheet — already imported
+by `handleImportExcel` into `blocks[id].days[i] = {roundVal, hpVal}` — encodes:
+- `roundVal` = **days since the current round started**, incremented every
+  calendar day whether harvested or not; `hpVal` = manpower that day (blank = no
+  harvesting; sums to the sheet's `TOTAL MANDAY`, verified on all 33 blocks).
+- **counter back to 1 = a new round starts.** The counter on the day *before* a
+  reset is the **interval just closed** (days between two round starts) and it
+  already carries the previous month's tail, so an interval is computable from
+  one month's sheet alone — no cross-month chaining required (the engine still
+  chains when earlier months are present).
+- **The green/yellow/red fills carry no information the values don't.** Checked
+  cell by cell over `E5:AI70`: a filled cell is exactly a cell with manpower
+  under it (100% match, zero exceptions). The round number is just the order of
+  **worked** rounds within the month, and deriving it that way reproduced the
+  clerk's colouring on **60 of 61** rounds. So the module **derives** rounds
+  (SheetJS can't read fills anyway) and flags divergences — the single Aug-2026
+  mismatch, Darso blk 19 day 30, is a genuine 3rd round left yellow in the
+  workbook (its tonnage also landed in the 2ND RD column).
+- **A carried-in round counts as the month's 1st round only if harvesting
+  actually continued into the month** — a bare counter with no manpower is just
+  the tail of last month's interval (blk 1 = counter 16→22 with no work, so d8
+  is the 1st round; blk 14 worked on d1, so its carried round *is* the 1st).
+- Blocks whose counter never resets (the workbook carries two sitting at 416+
+  days) are flagged **not in rotation** and excluded from the averages.
+
+### Views (module-local `_imMode`)
+- **📅 Weekly** (default) — ISO-week picker (◀ ▶, only weeks with data), summary
+  tiles (intervals closed, average, breaches, % within target, rounds started,
+  overdue/due at week end, mandays), per-block table (round starts + the interval
+  each closed, peak days reached in the week, days at week end, status chip) and
+  a per-gang rollup. A ③ note lists 3rd-or-later rounds started that week — the
+  ones to fill **red** and bill to the **3RD RD** column in the Excel sheet.
+- **📋 Field sheet** — printable inspection sheet, longest-waiting block first,
+  with a tick box and a blank "Findings / action" column, `As at` date picker
+  (defaults to the latest day filled in; a `*` marks blocks whose days were
+  extrapolated past the last filled day) and Inspected/Date/Verified signature
+  lines.
+- **🧾 Interval log** — every completed interval for the year with month/gang
+  filters, per-block averages (min/avg/max/breaches) and the full list, longest
+  first.
+All three print via the header 🖨️ PDF button or the view's own 🖨️ Print; print
+CSS lives at the end of `style.css` (`.im-noprint` / `.im-print-head` /
+`.im-table` / `.im-box`, colour-adjust forced so the status colours survive).
+
+### Public engine API (also used by the grid and the dashboard)
+| Function | Purpose |
+|---|---|
+| `window.imTarget()` | the interval target (`state.intervalTargetDays`, default 15) |
+| `window.imDayFlags(year, monthName, blockId)` | `array(31)` of `{counter, manday, roundNo, isStart, over, interval}` — drives the grid colouring |
+| `window.imBlockStatus(year, asAtDate)` | per block: last round start, last cut, days since, status (extrapolates past the last filled day) |
+| `window.imIntervals(year)` | every closed interval `{blockId, gang, start, roundNo, interval, breach, …}` |
+| `window.imInvalidate()` | drop the memoised year analysis (called on grid edits + import) |
+
+### Harvesting Interval grid — round colouring
+`renderIntervalTable` (script.js) now paints each day's **counter** cell with the
+derived round colour (1st green `#00B050`, 2nd yellow `#FFFF00`, 3rd red
+`#FF0000`, 4th blue `#00B0F0` — only on days with manpower, exactly like the
+workbook), turns the figure red once the counter passes the target, and puts the
+interval/round explanation in the cell's tooltip. A legend + an "⏱ Interval
+Monitor →" link sit under the view heading. `paintRoundColors()` re-runs on each
+cell edit (via `imInvalidate()`), so no full table re-render and no lost focus.
+
+### Dashboard alert fix (found while building this)
+`buildHarvestAlerts` in render_dashboard.js now prefers `window.imBlockStatus`
+(days since the last round **start**, against the user's target) and only falls
+back to the old "last non-empty day" scan. That fallback was **broken**: since
+the importer moved to `{roundVal, hpVal}` objects, `String(cell)` returned
+`"[object Object]"` for every day, so every block always looked harvested on the
+last day of the month and the alert never fired. The fallback now reads `hpVal`
+via `dayHasHarvest()`.
 
 ---
 
