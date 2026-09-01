@@ -490,10 +490,27 @@ by `handleImportExcel` into `blocks[id].days[i] = {roundVal, hpVal}` — encodes
   lines.
 - **🧾 Interval log** — every completed interval for the year with month/gang
   filters, per-block averages (min/avg/max/breaches) and the full list, longest
-  first.
+  first, plus **⬇ Excel report**.
 All three print via the header 🖨️ PDF button or the view's own 🖨️ Print; print
 CSS lives at the end of `style.css` (`.im-noprint` / `.im-print-head` /
 `.im-table` / `.im-box`, colour-adjust forced so the status colours survive).
+
+### Excel export
+`window.downloadIntervalLogReport(year, month?, gang?)` (ExcelJS lazy-loaded via
+`imEnsureExcelJS`) — four sheets: **Summary** (totals + by month + by gang),
+**Per block**, **Intervals** (the full log, auto-filtered, longest first) and
+**Open now** (running intervals as at the latest day filled in — the field sheet
+in spreadsheet form). Breach figures are red/green; the log button passes the
+view's own month/gang filters; an empty scope warns instead of emitting an empty
+file. Registered in the Reports panel's Generate-All ZIP as `interval_log`
+(`ALL_REPORT_DEFS` in render_reports.js), which passes the panel's month.
+
+**Dates must be rebased to UTC midnight before writing** (`imXlDate`) — ExcelJS
+serialises a Date by its raw UTC epoch with no timezone correction, so a
+local-midnight date east of UTC (Malaysia is UTC+8) becomes the *previous* day's
+serial plus 0.667 and Excel renders it a day early under a `dd/mm/yyyy` format.
+Caught by round-tripping the generated workbook back through ExcelJS and
+checking the serial was a whole number.
 
 ### Public engine API (also used by the grid and the dashboard)
 | Function | Purpose |

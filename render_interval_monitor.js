@@ -781,6 +781,9 @@
                 <option value="__all__">All gangs</option>
                 ${gangs.map(g => `<option value="${imEsc(g)}" ${g === gangFilter ? 'selected' : ''}>${imEsc(g)}</option>`).join('')}
               </select></label>
+            <div style="flex:1;"></div>
+            <button id="im-log-excel" class="btn-primary" style="padding:0.45rem 1rem;"
+                title="Download the interval log as Excel">⬇ Excel report</button>
         </div>
 
         <div style="${CARD} background:var(--bg-main,#f7f9f7); border:2px solid var(--accent-color,#16a34a);">
@@ -846,6 +849,263 @@
         if (mSel) mSel.onchange = (e) => { state.imLogMonth = e.target.value; window.renderIntervalMonitor(); };
         const gSel = body.querySelector('#im-log-gang');
         if (gSel) gSel.onchange = (e) => { state.imLogGang = e.target.value; window.renderIntervalMonitor(); };
+
+        const xBtn = body.querySelector('#im-log-excel');
+        if (xBtn) xBtn.onclick = async () => {
+            xBtn.disabled = true;
+            const old = xBtn.textContent;
+            xBtn.textContent = '⏳ Generating…';
+            try {
+                await window.downloadIntervalLogReport(year,
+                    monthFilter === '__all__' ? null : monthFilter,
+                    gangFilter === '__all__' ? null : gangFilter);
+            } catch (err) {
+                if (window.notify) window.notify('Excel failed: ' + err.message, 'error');
+            } finally { xBtn.disabled = false; xBtn.textContent = old; }
+        };
+    };
+
+
+    // ── Excel export — the interval log ──────────────────────────────────
+    const imEnsureExcelJS = async () => {
+        if (typeof window.ExcelJS !== 'undefined') return;
+        await new Promise((res, rej) => {
+            const el = document.createElement('script');
+            el.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+            el.onload = res; el.onerror = () => rej(new Error('Failed to load ExcelJS'));
+            document.head.appendChild(el);
+        });
+    };
+
+    // ExcelJS serialises a Date by its UTC epoch with no timezone correction,
+    // so a local-midnight date east of UTC (Malaysia is UTC+8) lands on the
+    // PREVIOUS day's serial and Excel shows it a day early. Rebase every date
+    // to UTC midnight so the serial is exactly that calendar day.
+    const imXlDate = (d) => d ? new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())) : null;
+
+    // Four sheets: Summary (totals + by month + by gang), Per block, Intervals
+    // (the full log), Open now (status as at the latest day filled in — the
+    // field sheet in spreadsheet form). `month` / `gang` are optional filters;
+    // "Open now" is always the whole estate as at the latest data.
+    window.downloadIntervalLogReport = async (year, month, gang) => {
+        await imEnsureExcelJS();
+        const yr = String(year || window.state.selectedReportYear || new Date().getFullYear());
+        const mFilter = (month && IM_MONTHS.indexOf(month) >= 0) ? month : null;
+        const gFilter = gang || null;
+        const target = window.imTarget();
+
+        const all = window.imIntervals(yr);
+        const rows = all.filter(i =>
+            (!mFilter || IM_MONTHS[i.monthIdx] === mFilter) &&
+            (!gFilter || i.gang === gFilter));
+        if (!rows.length) {
+            if (window.notify) {
+                window.notify(`No completed intervals for ${mFilter ? mFilter + ' ' : ''}${yr}` +
+                    (gFilter ? ` / ${gFilter}` : '') + ' — import the Harvesting Interval sheet first.', 'warn');
+            }
+            return;
+        }
+
+        const wb = new window.ExcelJS.Workbook();
+        wb.creator = 'Monthly Harvesting Report';
+        wb.created = new Date();
+        const thin = { style: 'thin', color: { argb: 'FF999999' } };
+        const border = { top: thin, left: thin, bottom: thin, right: thin };
+        const HEAD_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } };
+        const RED = { argb: 'FFDC2626' };
+        const GREEN = { argb: 'FF16A34A' };
+        const num1 = '0.0';
+        const num2 = '#,##0.00';
+        const dateFmt = 'dd/mm/yyyy';
+
+        // header row helper — returns the row number after the header
+        const putHead = (ws, rowNo, heads, aligns) => {
+            const r = ws.getRow(rowNo);
+            heads.forEach((h, i) => {
+                const c = r.getCell(i + 1);
+                c.value = h;
+                c.font = { bold: true };
+                c.border = border;
+                c.fill = HEAD_FILL;
+                c.alignment = { horizontal: (aligns && aligns[i]) || 'left', wrapText: true, vertical: 'middle' };
+            });
+            return rowNo + 1;
+        };
+        const putRow = (ws, rowNo, vals, opts) => {
+            const o = opts || {};
+            const r = ws.getRow(rowNo);
+            vals.forEach((v, i) => {
+                const c = r.getCell(i + 1);
+                c.value = (v == null) ? '' : v;
+                c.border = border;
+                if (o.aligns && o.aligns[i]) c.alignment = { horizontal: o.aligns[i] };
+                if (o.fmts && o.fmts[i] && typeof v === 'number') c.numFmt = o.fmts[i];
+                if (o.dateCols && o.dateCols.indexOf(i) >= 0 && v instanceof Date) c.numFmt = dateFmt;
+                if (o.boldCols && o.boldCols.indexOf(i) >= 0) c.font = { bold: true };
+                if (o.flagCols && o.flagCols.indexOf(i) >= 0 && typeof v === 'number') {
+                    c.font = { bold: true, color: v > target ? RED : GREEN };
+                }
+            });
+            if (o.bold) r.font = { bold: true };
+            return rowNo + 1;
+        };
+        const stats = (vals) => ({
+            n: vals.length,
+            avg: vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null,
+            min: vals.length ? Math.min.apply(null, vals) : null,
+            max: vals.length ? Math.max.apply(null, vals) : null,
+            breaches: vals.filter(v => v > target).length
+        });
+
+        const scope = (mFilter ? mFilter + ' ' : '') + yr + (gFilter ? ' — ' + gFilter : '');
+        const vals = rows.map(r => r.interval);
+        const tot = stats(vals);
+
+        // ── Sheet 1: Summary ────────────────────────────────────────────
+        const s1 = wb.addWorksheet('Summary');
+        s1.getCell('A1').value = 'Harvesting Interval Log';
+        s1.getCell('A1').font = { bold: true, size: 14 };
+        s1.getCell('A2').value = scope;
+        s1.getCell('A2').font = { bold: true, size: 11 };
+        s1.getCell('A3').value = `Target: a block's next round must start within ${target} days of the previous round start`;
+        s1.getCell('A3').font = { italic: true, size: 9, color: { argb: 'FF666666' } };
+
+        let rn = 5;
+        rn = putHead(s1, rn, ['Completed intervals', 'Average days', 'Shortest', 'Longest',
+            `Breaches (over ${target} d)`, 'Within target'],
+            ['right', 'right', 'right', 'right', 'right', 'right']);
+        rn = putRow(s1, rn, [tot.n, tot.avg, tot.min, tot.max, tot.breaches,
+            tot.n ? (tot.n - tot.breaches) / tot.n : null],
+            { aligns: ['right', 'right', 'right', 'right', 'right', 'right'],
+              fmts: [null, num1, null, null, null, '0%'], flagCols: [1] });
+
+        rn += 2;
+        s1.getCell('A' + rn).value = 'By month';
+        s1.getCell('A' + rn).font = { bold: true };
+        rn++;
+        rn = putHead(s1, rn, ['Month', 'Intervals', 'Average days', 'Shortest', 'Longest', 'Breaches'],
+            ['left', 'right', 'right', 'right', 'right', 'right']);
+        IM_MONTHS.forEach((m, mIdx) => {
+            const v = rows.filter(r => r.monthIdx === mIdx).map(r => r.interval);
+            if (!v.length) return;
+            const st = stats(v);
+            rn = putRow(s1, rn, [m, st.n, st.avg, st.min, st.max, st.breaches],
+                { aligns: ['left', 'right', 'right', 'right', 'right', 'right'],
+                  fmts: [null, null, num1], flagCols: [2] });
+        });
+
+        rn += 2;
+        s1.getCell('A' + rn).value = 'By gang';
+        s1.getCell('A' + rn).font = { bold: true };
+        rn++;
+        rn = putHead(s1, rn, ['Gang', 'Blocks', 'Intervals', 'Average days', 'Shortest', 'Longest', 'Breaches'],
+            ['left', 'right', 'right', 'right', 'right', 'right', 'right']);
+        const gangSet = {};
+        rows.forEach(r => {
+            const g = gangSet[r.gang] || (gangSet[r.gang] = { vals: [], blocks: {} });
+            g.vals.push(r.interval); g.blocks[r.blockId] = 1;
+        });
+        Object.keys(gangSet)
+            .map(g => ({ gang: g, st: stats(gangSet[g].vals), blocks: Object.keys(gangSet[g].blocks).length }))
+            .sort((a, b) => (b.st.avg || 0) - (a.st.avg || 0))
+            .forEach(g => {
+                rn = putRow(s1, rn, [g.gang, g.blocks, g.st.n, g.st.avg, g.st.min, g.st.max, g.st.breaches],
+                    { aligns: ['left', 'right', 'right', 'right', 'right', 'right', 'right'],
+                      fmts: [null, null, null, num1], flagCols: [3] });
+            });
+        s1.columns = [{ width: 30 }, { width: 12 }, { width: 14 }, { width: 12 },
+            { width: 12 }, { width: 16 }, { width: 12 }];
+
+        // ── Sheet 2: Per block ──────────────────────────────────────────
+        const s2 = wb.addWorksheet('Per block');
+        s2.getCell('A1').value = 'Interval by block — ' + scope;
+        s2.getCell('A1').font = { bold: true, size: 12 };
+        rn = putHead(s2, 3, ['Block', 'Gang', 'Ha', 'Intervals', 'Average days', 'Shortest', 'Longest', 'Breaches'],
+            ['left', 'left', 'right', 'right', 'right', 'right', 'right', 'right']);
+        const blockSet = {};
+        rows.forEach(r => {
+            const b = blockSet[r.blockId] || (blockSet[r.blockId] = { gang: r.gang, ha: r.ha, vals: [] });
+            b.vals.push(r.interval);
+        });
+        Object.keys(blockSet)
+            .map(k => ({ blockId: k, gang: blockSet[k].gang, ha: blockSet[k].ha, st: stats(blockSet[k].vals) }))
+            .sort((a, b) => (b.st.avg || 0) - (a.st.avg || 0))
+            .forEach(b => {
+                rn = putRow(s2, rn, [b.blockId, b.gang, b.ha, b.st.n, b.st.avg, b.st.min, b.st.max, b.st.breaches],
+                    { aligns: ['left', 'left', 'right', 'right', 'right', 'right', 'right', 'right'],
+                      fmts: [null, null, num2, null, num1], flagCols: [4], boldCols: [0] });
+            });
+        s2.views = [{ state: 'frozen', ySplit: 3 }];
+        s2.columns = [{ width: 10 }, { width: 30 }, { width: 10 }, { width: 11 },
+            { width: 14 }, { width: 11 }, { width: 11 }, { width: 11 }];
+
+        // ── Sheet 3: Intervals (the full log) ───────────────────────────
+        const s3 = wb.addWorksheet('Intervals');
+        s3.getCell('A1').value = 'Every completed interval — ' + scope;
+        s3.getCell('A1').font = { bold: true, size: 12 };
+        s3.getCell('A2').value = 'An interval is the gap between two consecutive round starts on the same block; ' +
+            "a month's first interval includes the tail of the previous month.";
+        s3.getCell('A2').font = { italic: true, size: 9, color: { argb: 'FF666666' } };
+        rn = putHead(s3, 4, ['Round started', 'Month', 'Block', 'Gang', 'Ha', 'Round',
+            'Interval (days)', 'Over by', 'Work days', 'Mandays', 'Flag'],
+            ['left', 'left', 'left', 'left', 'right', 'left', 'right', 'right', 'right', 'right', 'left']);
+        rows.slice().sort((a, b) => b.interval - a.interval).forEach(r => {
+            rn = putRow(s3, rn, [
+                imXlDate(r.start), IM_MONTHS[r.monthIdx], r.blockId, r.gang, r.ha,
+                r.roundNo ? rdLabel(r.roundNo) : '', r.interval,
+                r.breach ? r.interval - target : null, r.workDays, r.manpower || null,
+                r.breach ? 'OVER TARGET' : 'within target'
+            ], {
+                aligns: ['left', 'left', 'left', 'left', 'right', 'left', 'right', 'right', 'right', 'right', 'left'],
+                fmts: [null, null, null, null, num2], dateCols: [0], flagCols: [6], boldCols: [2]
+            });
+        });
+        s3.views = [{ state: 'frozen', ySplit: 4 }];
+        s3.autoFilter = { from: { row: 4, column: 1 }, to: { row: rn - 1, column: 11 } };
+        s3.columns = [{ width: 15 }, { width: 9 }, { width: 9 }, { width: 30 }, { width: 9 },
+            { width: 9 }, { width: 15 }, { width: 10 }, { width: 11 }, { width: 11 }, { width: 16 }];
+
+        // ── Sheet 4: Open now ───────────────────────────────────────────
+        const status = window.imBlockStatus(yr, null);
+        if (status.length) {
+            const s4 = wb.addWorksheet('Open now');
+            const asAt = status.reduce((d, r) => (r.lastWork && (!d || r.lastWork > d)) ? r.lastWork : d, null);
+            s4.getCell('A1').value = 'Running intervals — status as at the latest day filled in';
+            s4.getCell('A1').font = { bold: true, size: 12 };
+            s4.getCell('A2').value = asAt ? 'Latest harvesting recorded: ' + imFmtFull(asAt) : '';
+            s4.getCell('A2').font = { italic: true, size: 9, color: { argb: 'FF666666' } };
+            rn = putHead(s4, 4, ['Block', 'Gang', 'Ha', 'Round started', 'Round', 'Last cut',
+                'Days since round start', 'Status'],
+                ['left', 'left', 'right', 'left', 'left', 'left', 'right', 'left']);
+            status.slice()
+                .sort((a, b) => (b.days == null ? -1 : b.days) - (a.days == null ? -1 : a.days))
+                .forEach(r => {
+                    rn = putRow(s4, rn, [r.blockId, r.gang, r.ha, imXlDate(r.lastStart),
+                        r.roundNo ? rdLabel(r.roundNo) : '', imXlDate(r.lastWork), r.days,
+                        r.dormant ? 'not in rotation' : r.status.label], {
+                        aligns: ['left', 'left', 'right', 'left', 'left', 'left', 'right', 'left'],
+                        fmts: [null, null, num2], dateCols: [3, 5],
+                        flagCols: r.dormant ? [] : [6], boldCols: [0]
+                    });
+                });
+            s4.views = [{ state: 'frozen', ySplit: 4 }];
+            s4.columns = [{ width: 10 }, { width: 30 }, { width: 10 }, { width: 15 },
+                { width: 9 }, { width: 14 }, { width: 22 }, { width: 18 }];
+        }
+
+        const buf = await wb.xlsx.writeBuffer();
+        const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'Harvesting_Interval_Log_' + (mFilter ? mFilter + '_' : '') +
+            (gFilter ? gFilter.replace(/[^A-Za-z0-9]+/g, '_') + '_' : '') + yr + '.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 4000);
+        if (typeof window.logAudit === 'function') {
+            window.logAudit('download', 'performance', 'Interval log ' + scope, yr);
+        }
     };
 
     // Expose the palette so the Interval grid can colour itself identically.

@@ -825,6 +825,7 @@
         { key: 'ih',       label: '🐎 Iron Horse — Cost per FFB MT', fn: (y) => window.downloadIronHorseCostPerFFBMt(y) },
         { key: 'wages',    label: '💵 Rate of Wages',              fn: (y, m) => window.downloadWagesReport(y, m) },
         { key: 'wages_var', label: '⚖️ Wages Variance (est vs actual)', fn: (y, m) => window.downloadWagesVarianceReport(y, m) },
+        { key: 'interval_log', label: '⏱ Harvesting Interval Log', fn: (y, m) => window.downloadIntervalLogReport(y, m) },
     ];
 
     // Runs each selected report generator, transparently intercepts the file it
