@@ -43,37 +43,13 @@
         return _aiResults[id];
     };
 
-    /* ── What data exists at all ─────────────────────────────────────────*/
+    /* ── What data exists at all — delegates to the Report Builder ──────*/
     const toolDataScope = () => {
         const st = window.state || {};
-        const perf = st.performance || {};
-        const years = Object.keys(perf).sort();
-        const byYear = {};
-        years.forEach((y) => {
-            const monthsWithData = MONTHS.filter((m) => {
-                const md = perf[y][perfMonthKey(m)];
-                if (!md) return false;
-                return Object.keys(md).some((k) => k !== 'gangAssignments' && md[k] && md[k].blocks
-                    && Object.keys(md[k].blocks).length);
-            });
-            const gangs = new Set();
-            const blocks = new Set();
-            monthsWithData.forEach((m) => {
-                const md = perf[y][perfMonthKey(m)] || {};
-                Object.keys(md).forEach((g) => {
-                    if (g === 'gangAssignments') return;
-                    gangs.add(g);
-                    Object.keys((md[g] && md[g].blocks) || {}).forEach((b) => blocks.add(b));
-                });
-            });
-            byYear[y] = {
-                months_with_production: monthsWithData,
-                gangs: [...gangs].sort(),
-                blocks: [...blocks].sort(),
-            };
-        });
+        const scope = typeof window.rbScope === 'function'
+            ? window.rbScope() : { years: [], detail: {} };
         return {
-            ffb_production: { years, detail: byYear },
+            ffb_production: scope,
             other_datasets: {
                 wage_calculator_years: Object.keys(st.wages || {}),
                 wage_ledger_years: Object.keys(st.wagesLedger || {}),
@@ -84,98 +60,18 @@
         };
     };
 
-    /* ── FFB production pivot — the general "different cut of the data" tool ──
-     * Walks state.performance[year][Mon][gang].blocks[id] = {r1..r4}, the same
-     * shape render_ytd_report.js reads. Each (gang, block) cell is counted once,
-     * so totals are what the sheet actually records.
+    /* ── FFB production pivot ────────────────────────────────────────────
+     * The engine lives in render_report_builder.js (window.rbPivot) so the
+     * dropdown UI and this natural-language front end can never disagree.
      */
     const toolQueryFfb = (args) => {
-        const st = window.state || {};
-        const year = String(args.year || '');
-        const perfYear = (st.performance || {})[year];
-        if (!perfYear) {
-            return { error: `No production data for ${year}. Available: ${Object.keys(st.performance || {}).join(', ') || 'none'}` };
+        if (typeof window.rbPivot !== 'function') {
+            return { error: 'Report Builder engine not loaded (render_report_builder.js).' };
         }
-
-        const wantMonths = (args.months && args.months.length ? args.months : MONTHS)
-            .map((m) => String(m).toUpperCase().slice(0, 3))
-            .filter((m) => MONTHS.includes(m));
-        const rounds = (args.rounds && args.rounds.length ? args.rounds : [1, 2, 3, 4]).map(Number);
-        const gangFilter = args.gangs && args.gangs.length
-            ? new Set(args.gangs.map((g) => String(g).toLowerCase())) : null;
-        const blockFilter = args.blocks && args.blocks.length
-            ? new Set(args.blocks.map((b) => String(b))) : null;
-        const groupBy = args.group_by || 'month';
-
-        // Collect atomic cells first, then aggregate — keeps grouping trivial.
-        const cells = [];
-        wantMonths.forEach((mon) => {
-            const md = perfYear[perfMonthKey(mon)];
-            if (!md) return;
-            Object.keys(md).forEach((gang) => {
-                if (gang === 'gangAssignments') return;
-                if (gangFilter && !gangFilter.has(gang.toLowerCase())) return;
-                const blocks = (md[gang] && md[gang].blocks) || {};
-                Object.keys(blocks).forEach((bid) => {
-                    if (blockFilter && !blockFilter.has(String(bid))) return;
-                    const b = blocks[bid] || {};
-                    let mt = 0;
-                    rounds.forEach((r) => { mt += num(b['r' + r]); });
-                    if (!mt) return;
-                    cells.push({ month: mon, gang, block: String(bid), mt });
-                });
-            });
-        });
-
-        if (!cells.length) {
-            return { error: `No production rows matched (year ${year}, months ${wantMonths.join('/')}).` };
-        }
-
-        const KEYS = {
-            month: { cols: ['Month'], of: (c) => [c.month] },
-            block: { cols: ['Block'], of: (c) => [c.block] },
-            gang: { cols: ['Gang'], of: (c) => [c.gang] },
-            month_block: { cols: ['Month', 'Block'], of: (c) => [c.month, c.block] },
-            month_gang: { cols: ['Month', 'Gang'], of: (c) => [c.month, c.gang] },
-            gang_block: { cols: ['Gang', 'Block'], of: (c) => [c.gang, c.block] },
-        };
-        const spec = KEYS[groupBy] || KEYS.month;
-
-        const agg = new Map();
-        cells.forEach((c) => {
-            const key = spec.of(c);
-            const k = key.join('\u0000');   // NUL separator: no gang or block name can contain it
-            if (!agg.has(k)) agg.set(k, { key, mt: 0, blocks: new Set() });
-            const e = agg.get(k);
-            e.mt += c.mt;
-            e.blocks.add(c.block);
-        });
-
-        let rows = [...agg.values()].map((e) => [...e.key, round2(e.mt), e.blocks.size]);
-        // Month groupings read best in calendar order; everything else by size.
-        if (spec.cols[0] === 'Month') {
-            rows.sort((a, b) => (MONTHS.indexOf(a[0]) - MONTHS.indexOf(b[0]))
-                || String(a[1] ?? '').localeCompare(String(b[1] ?? ''), undefined, { numeric: true }));
-        } else {
-            rows.sort((a, b) => b[spec.cols.length] - a[spec.cols.length]);
-        }
-
-        const columns = [...spec.cols, 'FFB (MT)', 'Blocks'];
-        const total = round2(cells.reduce((s, c) => s + c.mt, 0));
-        const title = `FFB production ${year} — by ${spec.cols.join(' + ').toLowerCase()}`
-            + (rounds.length < 4 ? ` (rounds ${rounds.join('+')})` : '');
-
-        const res = cacheResult(title, columns, rows, { total_mt: total });
-        return {
-            result_id: res.id,
-            title,
-            columns,
-            rows,
-            total_mt: total,
-            rounds_included: rounds,
-            months_covered: [...new Set(cells.map((c) => c.month))].sort((a, b) => MONTHS.indexOf(a) - MONTHS.indexOf(b)),
-            note: 'Each gang/block cell counted once. Totals are what the performance sheet records.',
-        };
+        const res = window.rbPivot(args || {});
+        if (res.error) return res;
+        const cached = cacheResult(res.title, res.columns, res.rows, { total_mt: res.total_mt });
+        return Object.assign({ result_id: cached.id }, res);
     };
 
     /* ── Harvesting intervals — delegates to the interval engine ─────────*/
@@ -289,82 +185,13 @@
     };
 
     /* ── Excel export of a cached result ────────────────────────────────*/
-    const ensureExcelJS = async () => {
-        if (typeof window.ExcelJS !== 'undefined') return;
-        await new Promise((res, rej) => {
-            const s = document.createElement('script');
-            s.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
-            s.onload = res; s.onerror = () => rej(new Error('Failed to load ExcelJS'));
-            document.head.appendChild(s);
-        });
-    };
-
     const buildExcel = async (resultId, filename) => {
         const r = _aiResults[resultId];
         if (!r) throw new Error('Unknown result_id ' + resultId);
-        await ensureExcelJS();
-
-        const wb = new window.ExcelJS.Workbook();
-        const ws = wb.addWorksheet(r.title.slice(0, 28).replace(/[\\/*?:[\]]/g, '-') || 'Data');
-
-        const titleRow = ws.addRow([r.title]);
-        ws.mergeCells(titleRow.number, 1, titleRow.number, r.columns.length);
-        Object.assign(titleRow.getCell(1), {
-            font: { bold: true, size: 13 },
-            alignment: { horizontal: 'center' },
-        });
-        titleRow.height = 22;
-        ws.addRow([`Generated ${new Date().toLocaleString()}`]);
-        ws.addRow([]);
-
-        const head = ws.addRow(r.columns);
-        head.eachCell((c) => {
-            c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-            c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E79' } };
-            c.alignment = { horizontal: 'center', wrapText: true };
-            c.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
-        });
-
-        r.rows.forEach((row) => {
-            const x = ws.addRow(row);
-            x.eachCell((c) => {
-                c.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
-                if (typeof c.value === 'number') c.numFmt = '#,##0.00';
-            });
-        });
-
-        // Numeric columns get a total row; label columns stay blank.
-        const numericCol = r.columns.map((_, i) => r.rows.every((row) => typeof row[i] === 'number'));
-        if (numericCol.some(Boolean)) {
-            const totals = r.columns.map((_, i) => (numericCol[i]
-                ? round2(r.rows.reduce((s, row) => s + num(row[i]), 0)) : ''));
-            const firstLabel = numericCol.indexOf(false);
-            if (firstLabel >= 0) totals[firstLabel] = 'TOTAL';
-            const tr = ws.addRow(totals);
-            tr.eachCell((c) => {
-                c.font = { bold: true };
-                c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
-                c.border = { top: { style: 'double' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
-                if (typeof c.value === 'number') c.numFmt = '#,##0.00';
-            });
+        if (typeof window.rbToExcel !== 'function') {
+            throw new Error('Excel exporter not loaded (render_report_builder.js).');
         }
-
-        r.columns.forEach((c, i) => {
-            const width = Math.max(String(c).length + 4,
-                ...r.rows.map((row) => String(row[i] ?? '').length + 3));
-            ws.getColumn(i + 1).width = Math.min(width, 40);
-        });
-
-        const buf = await wb.xlsx.writeBuffer();
-        const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = (filename || r.title).replace(/[^\w\-. ]/g, '_') + '.xlsx';
-        document.body.appendChild(a);
-        a.click();
-        // Deferred cleanup — same pattern as the other report downloads.
-        setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1500);
+        await window.rbToExcel(r, filename);
         return r;
     };
 

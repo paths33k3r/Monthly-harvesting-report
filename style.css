@@ -1859,3 +1859,125 @@ body.field-mode .wk-obs-actions > * { flex: 1 1 auto; text-align: center; }
 .ai-chip-off  { background: #eee; color: #666; }
 
 @media print { .ai-ask, .ai-examples, .ai-setup, #ai-setup-btn, #ai-clear-btn { display: none !important; } }
+
+/* ==========================================================================
+   Report Builder (render_report_builder.js)
+   ========================================================================== */
+.rb-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    margin: 10px 0;
+}
+.rb-preset {
+    background: var(--group-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 5px 12px;
+    font-size: 0.83rem;
+    cursor: pointer;
+}
+.rb-preset:hover { background: var(--accent); color: #fff; }
+.rb-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    align-items: flex-end;
+    padding: 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+.rb-controls > label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+.rb-controls select { min-width: 130px; }
+.rb-rounds { display: flex; gap: 10px; padding-bottom: 6px; }
+.rb-round { font-weight: normal; display: flex; align-items: center; gap: 3px; }
+.rb-filters {
+    margin: 12px 0;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px 14px;
+    background: var(--bg-card);
+}
+.rb-filters summary { cursor: pointer; font-weight: 600; color: var(--text-primary); }
+.rb-active {
+    background: var(--accent);
+    color: #fff;
+    border-radius: 999px;
+    padding: 1px 8px;
+    font-size: 0.75rem;
+}
+.rb-filter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    margin: 10px 0;
+}
+.rb-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 6px;
+    max-height: 160px;
+    overflow-y: auto;
+}
+.rb-chip {
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    color: var(--text-primary);
+}
+.rb-chip.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.rb-chip input { margin-right: 4px; }
+.rb-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 24px;
+    align-items: center;
+    margin: 16px 0 10px;
+    padding: 12px 16px;
+    background: var(--group-bg);
+    border-radius: 8px;
+    color: var(--text-primary);
+}
+.rb-big { font-size: 1.5rem; font-weight: 700; }
+.rb-summary button { margin-left: auto; }
+.rb-tbl {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.88rem;
+}
+.rb-tbl th,
+.rb-tbl td {
+    border: 1px solid var(--border-color);
+    padding: 6px 10px;
+    text-align: left;
+}
+.rb-tbl th {
+    background: var(--accent);
+    color: #fff;
+    position: sticky;
+    top: 0;
+}
+.rb-tbl td.rb-num { text-align: right; font-variant-numeric: tabular-nums; }
+.rb-tbl tfoot td {
+    font-weight: 700;
+    background: var(--grand-total-bg);
+    color: var(--grand-total-text);
+    border-top: 2px solid var(--text-primary);
+}
+.rb-note { font-size: 0.8rem; color: var(--text-secondary); }
+.rb-empty { color: var(--text-secondary); padding: 20px 0; }
+
+@media print { .rb-presets, .rb-controls, .rb-filters, .rb-summary button { display: none !important; } }

@@ -14,6 +14,7 @@ global.document = { createElement: () => ({ style: {} }), head: { appendChild() 
 global.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
 global.location = { hostname: 'localhost' };
 
+require(path.join(ROOT, 'render_report_builder.js'));   // provides window.rbPivot
 require(path.join(ROOT, 'render_ai_assist.js'));
 const { runTool } = global.window._aiTools;
 

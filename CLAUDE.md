@@ -446,6 +446,57 @@ unchanged on every export, since Phase 1/2 focused on the four live appendices f
 
 ---
 
+## Report Builder module (render_report_builder.js)
+
+**"📐 Report Builder"** — sub-item under 📈 Harvesting Performance
+(`sidebar-report-builder`, view type `report_builder`, wrapper `report-builder-wrapper`).
+Answers the whole class of "compile the production data a different way" requests —
+month-to-month, per block, per gang, per round, any combination — **without a new report
+being written each time**. Built after a live request for a month-to-month FFB summary
+that the YTD report could not produce, even though the data was already there.
+
+**Purely derived** — reads `state.performance`, stores nothing in Firebase (no path, no
+rules change, no save fn). Menu key **`performance`** shared with Harvesting Performance,
+so no permission migration. Selections persist in `state.reportBuilder`.
+
+### The engine (`window.rbPivot`) — single source of truth
+Walks `state.performance[year][Mon][gang].blocks[id] = {r1..r4}`, the same shape
+`render_ytd_report.js` reads, collecting atomic (month, gang, block, mt) cells and then
+aggregating. Each **(gang, block)** cell is counted **once** — it does *not* attribute
+blocks via `gangAssignments`, so a block worked by two gangs in one month sums correctly
+instead of double-counting through the YTD report's fallback scan.
+
+| Export | Purpose |
+|---|---|
+| `window.rbPivot(args)` | `{year, group_by, months[], rounds[], gangs[], blocks[]}` → `{title, columns, rows, total_mt, months_covered}` or `{error}` |
+| `window.rbScope()` | valid years/months-with-data/gangs/blocks — drives the dropdowns |
+| `window.rbToExcel(result, filename)` | ExcelJS export of any pivot result, with a totals row |
+| `window.renderReportBuilder()` | the view |
+
+`group_by`: `month` · `block` · `gang` · `month_block` · `month_gang` · `gang_block`.
+Group keys join on `\u0000` (written as the escape, never a raw byte — a literal NUL makes
+git treat the file as binary) so a gang or block name containing the separator cannot
+collide with another key.
+
+**`render_ai_assist.js` delegates to these** rather than carrying its own copy, so the
+optional natural-language front end and the dropdowns can never disagree.
+
+### View
+Preset chips (Month-to-month FFB / by block / by gang / month × gang), then Year,
+Group by, From/To month (only months with data are offered), Round check-boxes, and a
+collapsible gang/block filter. Live table with a totals row + ⬇ Excel. Unticking every
+round means *all* rounds, never none.
+
+### Tests
+`node scripts/test_ai_tools.js` — the 21 assertions run **through `rbPivot`**, so they
+cover this engine: grouping totals reconcile against an independent re-implementation of
+`render_ytd_report.js`'s traversal across every `group_by`, `gangAssignments` is never
+treated as a gang, a two-gang block sums once, round/gang/month filters, empty months
+omitted rather than zero-filled. Fixture-based — **re-verify against real data** by
+comparing a whole-year `month` grouping's total against the YTD report.
+
+---
+
 ## AI Assist module (render_ai_assist.js)
 
 **"🤖 AI Assist"** — top-level sidebar item under **System**, above Reports
@@ -454,6 +505,11 @@ data questions and compiles cuts of the data that no built-in report covers — 
 month-to-month FFB summary that prompted the module being the motivating case.
 **Purely derived** — reads `state`, stores nothing in Firebase (no path, no rules change,
 no save fn). Menu key **`aiassist`** (in `ALL_MENU_KEYS` + user-management `allMenuOptions`).
+
+**Optional and off by default** — with no API key or proxy configured it shows
+"not configured" and does nothing; the free 📐 Report Builder covers the same
+production questions through dropdowns. The API is paid (Opus 5 \$5/\$25 per MTok,
+roughly 3-4 cents a question) and is **not** included in a Claude.ai subscription.
 
 ### The design rule
 **The model never produces a number.** It chooses a tool and its arguments; the tool

@@ -2015,6 +2015,7 @@ const runMainApplication = () => {
             const wagesWrapper       = document.getElementById('wages-wrapper');
             const wagesLedgerWrapper = document.getElementById('wages-ledger-wrapper');
             const wagesVarianceWrapper = document.getElementById('wages-variance-wrapper');
+            const reportBuilderWrapper = document.getElementById('report-builder-wrapper');
             const aiAssistWrapper = document.getElementById('ai-assist-wrapper');
             const wagesDailyWrapper  = document.getElementById('wages-daily-wrapper');
             const wagesEmployeesWrapper = document.getElementById('wages-employees-wrapper');
@@ -2047,6 +2048,7 @@ const runMainApplication = () => {
             if (wagesWrapper)       { wagesWrapper.innerHTML = '';      wagesWrapper.classList.add('hidden'); }
             if (wagesLedgerWrapper) { wagesLedgerWrapper.innerHTML = ''; wagesLedgerWrapper.classList.add('hidden'); }
             if (wagesVarianceWrapper) { wagesVarianceWrapper.innerHTML = ''; wagesVarianceWrapper.classList.add('hidden'); }
+            if (reportBuilderWrapper) { reportBuilderWrapper.innerHTML = ''; reportBuilderWrapper.classList.add('hidden'); }
             if (aiAssistWrapper) { aiAssistWrapper.innerHTML = ''; aiAssistWrapper.classList.add('hidden'); }
             if (wagesDailyWrapper)  { wagesDailyWrapper.innerHTML = '';  wagesDailyWrapper.classList.add('hidden'); }
             if (wagesEmployeesWrapper) { wagesEmployeesWrapper.innerHTML = ''; wagesEmployeesWrapper.classList.add('hidden'); }
@@ -2094,7 +2096,7 @@ const runMainApplication = () => {
                 mntGangsWrapper, mntWorklogWrapper, mntGanttWrapper,
                 weeklyWrapper, wagesWrapper, wagesLedgerWrapper, wagesVarianceWrapper, wagesDailyWrapper, wagesEmployeesWrapper, wagesProdCostWrapper, treeLogsWrapper, pecWrapper, phcWrapper,
                 hyrReportWrapper, hyrAppendix4Wrapper, hyrAppendix5Wrapper, hyrAppendix6Wrapper, hyrAppendix9Wrapper,
-                userMgmtWrapper, excelReportsWrapper, auditLogWrapper, aiAssistWrapper,
+                userMgmtWrapper, excelReportsWrapper, auditLogWrapper, aiAssistWrapper, reportBuilderWrapper,
                 dashboardWrapper
             ];
             const showView = (targetEl, renderFn, menuKey) => {
@@ -2217,6 +2219,10 @@ const runMainApplication = () => {
                 showView(wagesLedgerWrapper, () => {
                     if (typeof window.renderWagesLedgerView === 'function') window.renderWagesLedgerView();
                 }, 'wages');
+            } else if (state.activeViewType === 'report_builder') {
+                showView(reportBuilderWrapper, () => {
+                    if (typeof window.renderReportBuilder === 'function') window.renderReportBuilder();
+                }, 'performance');
             } else if (state.activeViewType === 'ai_assist') {
                 showView(aiAssistWrapper, () => {
                     if (typeof window.renderAiAssist === 'function') window.renderAiAssist();
@@ -4220,6 +4226,16 @@ const runMainApplication = () => {
                 }
 
                 // ── Wages Variance nav handler ──────────────────────────
+                // ── Report Builder nav handler ────────────────────
+                const sidebarReportBuilder = document.getElementById('sidebar-report-builder');
+                if (sidebarReportBuilder) {
+                    sidebarReportBuilder.onclick = (e) => {
+                        e.preventDefault();
+                        state.activeViewType = 'report_builder';
+                        renderSidebar(); renderTable();
+                    };
+                }
+
                 // ── AI Assist nav handler ─────────────────────────
                 const sidebarAiAssist = document.getElementById('sidebar-ai-assist');
                 if (sidebarAiAssist) {
