@@ -4,13 +4,22 @@
 A browser-based web app (vanilla JS, no build step) for managing plantation data and downloading formatted Excel reports. Served locally via any static HTTP server (e.g. `npx serve .` or VS Code Live Server). Data persists in Firebase cloud storage and the user's browser.
 
 ## Running the app
-```
-cd "c:/Users/user/Anti Gravity/Monthly harvesting report"
-npx serve .          # then open http://localhost:3000
+Serve from the **repo root** — the folder containing `index.html`. The clone lives in
+different places on different machines, so locate it rather than assuming a path:
+```bash
+cd "$(dirname "$(find ~ -name index.html -path '*Monthly*' -not -path '*/node_modules/*' | head -1)")"
+npx serve . -l tcp://127.0.0.1:3000      # then open http://localhost:3000
 ```
 or open with VS Code Live Server (right-click index.html → Open with Live Server).
 
 **Important:** Must be served via HTTP, not opened as a file:// URL — the Excel template fetch requires an HTTP server.
+
+**Check the working directory before starting the server.** If `localhost:3000` shows a
+file listing instead of the login screen, it is serving the wrong folder. Started from the
+home directory, `serve` will happily publish `.ssh/`, `.gh_token` and `.claude.json` — and
+it binds to every network interface by default, so anyone on the same network can read
+them. The `-l tcp://127.0.0.1:3000` flag above restricts it to this machine, which
+contains the damage if the directory is ever wrong.
 
 ## Key files
 | File | Purpose |
