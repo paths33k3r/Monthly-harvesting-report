@@ -1734,3 +1734,128 @@ body.field-mode .wk-obs-actions > * { flex: 1 1 auto; text-align: center; }
         print-color-adjust: exact;
     }
 }
+/* ==========================================================================
+   AI Assist (render_ai_assist.js)
+   Uses the app's CSS variables throughout, so dark mode is inherited.
+   ========================================================================== */
+.ai-log {
+    max-height: 52vh;
+    overflow-y: auto;
+    margin: 12px 0;
+    padding: 4px;
+}
+.ai-msg {
+    margin: 8px 0;
+    padding: 10px 14px;
+    border-radius: 10px;
+    line-height: 1.5;
+    color: var(--text-primary);
+}
+.ai-msg p { margin: 0 0 8px; }
+.ai-msg p:last-child { margin-bottom: 0; }
+.ai-user {
+    background: var(--accent);
+    color: #fff;
+    margin-left: auto;
+    max-width: 75%;
+    width: fit-content;
+}
+.ai-bot {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+}
+.ai-err {
+    background: var(--bg-card);
+    border: 1px solid var(--danger);
+    color: var(--danger);
+}
+.ai-tbl {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 8px 0;
+    font-size: 0.88rem;
+}
+.ai-tbl th,
+.ai-tbl td {
+    border: 1px solid var(--border-color);
+    padding: 5px 9px;
+    text-align: left;
+    white-space: nowrap;
+}
+.ai-tbl th {
+    background: var(--group-bg);
+    color: var(--text-primary);
+    font-weight: 600;
+}
+.ai-tbl td:not(:first-child) { text-align: right; }
+.ai-result {
+    margin-top: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px;
+    background: var(--bg-main);
+}
+.ai-result-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 6px;
+}
+.ai-note {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-weight: normal;
+}
+.ai-ask {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+}
+.ai-ask textarea {
+    flex: 1;
+    resize: vertical;
+    font-family: inherit;
+}
+.ai-examples {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+.ai-example {
+    background: var(--group-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 5px 12px;
+    font-size: 0.83rem;
+    cursor: pointer;
+}
+.ai-example:hover { background: var(--accent); color: #fff; }
+.ai-setup {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 12px;
+}
+.ai-setup-row { margin-bottom: 12px; }
+.ai-setup-row label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--text-primary);
+}
+.ai-setup-row input { width: 100%; max-width: 520px; }
+.ai-chip {
+    font-size: 0.75rem;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+}
+.ai-chip-ok   { background: #d1f0d9; color: #145c2c; }
+.ai-chip-warn { background: #fdf0c8; color: #7a5b00; }
+.ai-chip-off  { background: #eee; color: #666; }
+
+@media print { .ai-ask, .ai-examples, .ai-setup, #ai-setup-btn, #ai-clear-btn { display: none !important; } }

@@ -437,6 +437,62 @@ unchanged on every export, since Phase 1/2 focused on the four live appendices f
 
 ---
 
+## AI Assist module (render_ai_assist.js)
+
+**"🤖 AI Assist"** — top-level sidebar item under **System**, above Reports
+(`sidebar-ai-assist`, view type `ai_assist`, wrapper `ai-assist-wrapper`). Answers ad-hoc
+data questions and compiles cuts of the data that no built-in report covers — the
+month-to-month FFB summary that prompted the module being the motivating case.
+**Purely derived** — reads `state`, stores nothing in Firebase (no path, no rules change,
+no save fn). Menu key **`aiassist`** (in `ALL_MENU_KEYS` + user-management `allMenuOptions`).
+
+### The design rule
+**The model never produces a number.** It chooses a tool and its arguments; the tool
+computes the answer from `window.state` using the same traversal the existing reports use.
+Excel downloads are built from the **cached tool result** (`result_id`), never from figures
+the model retyped — so a downloaded file can never disagree with what the engine computed.
+The system prompt states this as an absolute rule, and every tool returns a `result_id`.
+
+### Tools (schemas + local implementations in the module)
+| Tool | Backed by |
+|---|---|
+| `get_data_scope` | scans `state.performance` — valid years/months/gangs/blocks, so the model never guesses identifiers |
+| `query_ffb_production` | **the pivot** — `state.performance[y][Mon][gang].blocks[id]={r1..r4}`; `group_by` month/block/gang/month_block/month_gang/gang_block, plus round/block/gang filters |
+| `query_intervals` | `window.imIntervals` / `imTarget` |
+| `query_wages` | `window.wgCompute` over saved Calculator months |
+| `query_employees` | `state.wagesEmployees.list`, grouped by agent/position/category/status with GTF + permit counts |
+| `download_excel` | ExcelJS over a cached `result_id` |
+
+`query_ffb_production` counts each **(gang, block)** cell once — it does not use
+`gangAssignments` to attribute blocks, so a block worked by two gangs in one month sums
+correctly instead of double-counting via the YTD report's fallback scan.
+
+### Transport — two modes, `transportMode()`
+- **proxy** (production): posts to the URL in `localStorage.ai_assist_proxy` with the
+  caller's Firebase ID token as a bearer. `ai_proxy/worker.js` is the Cloudflare Worker —
+  it verifies the token (RS256 against Google's JWKs, issuer/audience/expiry), holds
+  `ANTHROPIC_API_KEY` as a Worker secret, caps `max_tokens`, and forwards to
+  `/v1/messages`. **Deploy it and paste the URL into ⚙ Setup** before the hosted site can
+  use AI Assist. Add the production host to `ALLOWED_ORIGINS` in the worker.
+- **local** (dev only): key in `localStorage.ai_assist_key`, calls the API directly with
+  `anthropic-dangerous-direct-browser-access`. **Hard-refuses on any host but localhost**
+  so a key can never ship on the hosted page.
+
+Model `claude-opus-5`, agentic loop capped at 8 tool rounds; all `tool_result` blocks for
+one assistant turn are returned in a single user message.
+
+### Tests
+`node scripts/test_ai_tools.js` — loads the module under fake browser globals and checks
+the pivot against an independent re-implementation of `render_ytd_report.js`'s traversal
+(21 assertions: grouping totals reconcile across every `group_by`, `gangAssignments` is
+never treated as a gang, a two-gang block sums once, round/gang/month filters, empty
+months omitted rather than zero-filled, error paths, result-cache identity).
+Fixture-based — **re-verify against real data** once loaded, via the console:
+`await window._aiTools.runTool('query_ffb_production', {year:'2026', group_by:'month'})`
+and check the year total against the YTD report.
+
+---
+
 ## Interval Monitor module (render_interval_monitor.js)
 
 ### Overview

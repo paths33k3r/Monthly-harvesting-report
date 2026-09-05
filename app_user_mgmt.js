@@ -14,7 +14,7 @@ window._initUserMgmt = function ({ auth, db }) {
         // backup filenames). Firebase validates email format, but escape anyway.
         const H = (s) => window.escapeHtml(s);
 
-        const ALL_MENU_KEYS = ['ffbBudget', 'planting', 'gangs', 'performance', 'rainfall', 'maintenance', 'weekly', 'wages', 'treelogs', 'pec', 'phc', 'hyr', 'dataManagement'];
+        const ALL_MENU_KEYS = ['ffbBudget', 'planting', 'gangs', 'performance', 'rainfall', 'maintenance', 'weekly', 'wages', 'treelogs', 'pec', 'phc', 'hyr', 'aiassist', 'dataManagement'];
 
         const loadUserRole = async (uid) => {
             try {
@@ -664,6 +664,7 @@ window._initUserMgmt = function ({ auth, db }) {
                 { key: 'phc', label: 'PHC Application' },
                 { key: 'hyr', label: 'Half-Yearly Report' },
                 { key: 'maintenance', label: 'Maintenance' },
+                { key: 'aiassist', label: 'AI Assist' },
                 { key: 'reports', label: 'Reports' },
                 { key: 'dataManagement', label: 'Data Management' }
             ];
