@@ -5,7 +5,9 @@
       "firebase.json",
       ".firebaserc",
       "**/.*",
-      "**/node_modules/**"
+      "**/node_modules/**",
+      "Report samples.zip",
+      "Report samples/Manuring 2025 Dec - no changes since Nov.xlsm"
     ],
     "headers": [
       {
