@@ -296,11 +296,56 @@
             const refDate = round ? (round.firstWork || round.start || asAt) : asAt;
             const roundNo = round ? (round.roundNoByMonth[asAt.getMonth()] ||
                 round.roundNoByMonth[refDate.getMonth()] || null) : null;
+
+            // ── the block's rounds broken out per round number ──────────
+            // Round numbers are counted WITHIN a month, so the segments are
+            // anchored to the month the block's current cycle belongs to —
+            // the same month `roundNo` above is read from. `segments` is a
+            // sparse array indexed by round number: segments[1] = 1st round.
+            let segMonthIdx = null;
+            if (round) {
+                if (roundNo != null) {
+                    segMonthIdx = (round.roundNoByMonth[asAt.getMonth()] != null)
+                        ? asAt.getMonth() : refDate.getMonth();
+                } else if (round.start && round.start <= asAt) {
+                    segMonthIdx = round.start.getMonth();   // started, not cut yet
+                }
+            }
+            const segments = [];
+            if (segMonthIdx != null) {
+                let maxNo = 0;
+                rec.rounds.forEach(r => {
+                    const n = r.roundNoByMonth[segMonthIdx];
+                    if (!n) return;
+                    if (r.start && r.start > asAt) return;        // not started yet
+                    const cuts = r.workDays.filter(w => w.date <= asAt);
+                    if (!r.start && !cuts.length) return;         // nothing to show
+                    if (n > maxNo) maxNo = n;
+                    segments[n] = {
+                        roundNo: n, start: r.start,
+                        lastCut: cuts.length ? cuts[cuts.length - 1].date : null,
+                        open: !!r.open, carriedIn: !!r.carriedIn
+                    };
+                });
+                // A round that has started this month but hasn't been cut yet
+                // carries no number of its own (numbering counts worked rounds
+                // only) — give it the next one so "started, no cut" still shows.
+                if (round && round.start && round.start <= asAt &&
+                    round.start.getMonth() === segMonthIdx &&
+                    !round.roundNoByMonth[segMonthIdx] &&
+                    !round.workDays.some(w => w.date <= asAt)) {
+                    segments[maxNo + 1] = {
+                        roundNo: maxNo + 1, start: round.start, lastCut: null,
+                        open: true, carriedIn: false
+                    };
+                }
+            }
+
             return {
                 blockId: rec.blockId, gang: rec.gang, ha: rec.ha, opYear: rec.opYear,
                 lastStart: round ? round.start : null,
                 lastWork: (round && round.workDays.length) ? round.workDays[round.workDays.length - 1].date : null,
-                roundNo, days, dormant: rec.dormant,
+                roundNo, segments, segMonthIdx, days, dormant: rec.dormant,
                 staleTo: (rd && rd.date < asAt) ? rd.date : null,
                 status: rec.dormant ? { key: 'dormant', label: 'not in rotation', color: '#6b7280' }
                     : imStatusOf(days, target)
@@ -679,16 +724,48 @@
         const over = live.filter(r => r.status.key === 'over');
         const due = live.filter(r => r.status.key === 'due');
 
+        // Two round segments by default; widen only if a block on this sheet
+        // actually reached a 3rd (or later) round in its month.
+        const segCount = Math.max(2, live.reduce((m, r) =>
+            Math.max(m, r.segments && r.segments.length ? r.segments.length - 1 : 0), 0));
+        const SEP = 'border-left:1px solid var(--border-color,#ddd);';
+
+        const segCells = (r) => {
+            let out = '';
+            for (let n = 1; n <= segCount; n++) {
+                const sg = (r.segments || [])[n];
+                if (!sg) { out += `<td style="${TD} ${SEP}"></td><td style="${TD}"></td>`; continue; }
+                const st = sg.start
+                    ? imFmtDate(sg.start)
+                    : `<span title="carried in from the previous month" style="color:var(--text-secondary);">—</span>`;
+                out += `<td style="${TD} ${SEP}${sg.open ? ' font-weight:700;' : ''}"
+                            ${sg.open ? 'title="current round — the Days column counts from here"' : ''}>${st}</td>` +
+                       `<td style="${TD}"${sg.start && !sg.lastCut ? ' title="round started — no cutting recorded yet"' : ''}>${sg.lastCut ? imFmtDate(sg.lastCut) : ''}</td>`;
+            }
+            return out;
+        };
+
+        // Header: a grouped cell per round segment over a Started / Last cut pair.
+        const THG = TH + ' vertical-align:bottom;';
+        const THS = 'padding:4px 8px; border-bottom:1px solid var(--border-color,#eee);' +
+            ' font-size:0.78rem; font-weight:700; color:var(--text-primary);' +
+            ' white-space:nowrap; text-align:center;';
+        let segHead = '', segSub = '';
+        for (let n = 1; n <= segCount; n++) {
+            segHead += `<th style="${THS} ${SEP}" colspan="2">${rdLabel(n)} round</th>`;
+            segSub += `<th style="${TH} ${SEP} text-align:left;">Started</th>` +
+                      `<th style="${TH} text-align:left;">Last cut</th>`;
+        }
+
         const rows = live.map(r => `<tr>
             <td style="${TD} text-align:center;"><span class="im-box"></span></td>
             <td style="${TD} font-weight:700;">${imEsc(r.blockId)}</td>
             <td style="${TD} text-align:right;">${imFmtHa(r.ha)}</td>
             <td style="${TD}">${imEsc(r.gang)}</td>
-            <td style="${TD}">${imFmtDate(r.lastStart)}${r.roundNo ? ` <span style="color:var(--text-secondary);">${rdLabel(r.roundNo)}</span>` : ''}</td>
-            <td style="${TD}">${imFmtDate(r.lastWork)}</td>
-            <td style="${TD} text-align:right; font-weight:700; font-size:1rem; color:${r.status.color};">${r.days == null ? '—' : r.days}</td>
+            ${segCells(r)}
+            <td style="${TD} ${SEP} text-align:right; font-weight:700; font-size:1rem; color:${r.status.color};">${r.days == null ? '—' : r.days}</td>
             <td style="${TD}">${chip(r.status)}${r.staleTo ? ` <span title="grid filled only to ${imFmtFull(r.staleTo)} — days extrapolated" style="color:#d97706;">*</span>` : ''}</td>
-            <td style="${TD} width:22%;">&nbsp;</td>
+            <td style="${TD} width:20%;">&nbsp;</td>
         </tr>`).join('');
 
         body.innerHTML = `
@@ -704,6 +781,7 @@
             <div>
               <div style="font-size:1.05rem; font-weight:700;">FIELD INSPECTION — HARVESTING INTERVAL</div>
               <div style="font-size:0.85rem; color:var(--text-secondary);">Target: next round within <strong>${target} days</strong> of the last round start</div>
+              <div style="font-size:0.78rem; color:var(--text-secondary);">Rounds shown are the ${Array.from({ length: segCount }, (_, i) => rdLabel(i + 1)).join(' / ')} round of each block's current harvesting month · <strong>bold</strong> = round still running</div>
             </div>
             <div style="text-align:right; font-size:0.85rem;">
               <div><strong>As at:</strong> ${imFmtFull(asAt)}</div>
@@ -711,17 +789,19 @@
             </div>
           </div>
           <table class="im-table im-fieldtable" style="width:100%; border-collapse:collapse;">
-            <thead><tr>
-              <th style="${TH} text-align:center; width:28px;">✓</th>
-              <th style="${TH} text-align:left;">Block</th>
-              <th style="${TH} text-align:right;">Ha</th>
-              <th style="${TH} text-align:left;">Gang</th>
-              <th style="${TH} text-align:left;">Round started</th>
-              <th style="${TH} text-align:left;">Last cut</th>
-              <th style="${TH} text-align:right;">Days</th>
-              <th style="${TH} text-align:left;">Status</th>
-              <th style="${TH} text-align:left;">Findings / action</th>
-            </tr></thead>
+            <thead>
+            <tr>
+              <th style="${THG} text-align:center; width:28px;" rowspan="2">✓</th>
+              <th style="${THG} text-align:left;" rowspan="2">Block</th>
+              <th style="${THG} text-align:right;" rowspan="2">Ha</th>
+              <th style="${THG} text-align:left;" rowspan="2">Gang</th>
+              ${segHead}
+              <th style="${THG} ${SEP} text-align:right;" rowspan="2">Days</th>
+              <th style="${THG} text-align:left;" rowspan="2">Status</th>
+              <th style="${THG} text-align:left;" rowspan="2">Findings / action</th>
+            </tr>
+            <tr>${segSub}</tr>
+            </thead>
             <tbody>${rows}</tbody>
           </table>
           ${dormant.length ? `<div style="margin-top:0.8rem; font-size:0.8rem; color:var(--text-secondary);">
@@ -1074,23 +1154,43 @@
             s4.getCell('A1').font = { bold: true, size: 12 };
             s4.getCell('A2').value = asAt ? 'Latest harvesting recorded: ' + imFmtFull(asAt) : '';
             s4.getCell('A2').font = { italic: true, size: 9, color: { argb: 'FF666666' } };
-            rn = putHead(s4, 4, ['Block', 'Gang', 'Ha', 'Round started', 'Round', 'Last cut',
-                'Days since round start', 'Status'],
-                ['left', 'left', 'right', 'left', 'left', 'left', 'right', 'left']);
+            // One Started / Last cut pair per round of the block's current
+            // month — mirrors the on-screen field sheet.
+            const segCount = Math.max(2, status.reduce((m, r) =>
+                Math.max(m, r.segments && r.segments.length ? r.segments.length - 1 : 0), 0));
+            const heads = ['Block', 'Gang', 'Ha'];
+            const aligns = ['left', 'left', 'right'];
+            const dateCols = [];
+            for (let n = 1; n <= segCount; n++) {
+                dateCols.push(heads.length, heads.length + 1);
+                heads.push(rdLabel(n) + ' round started', rdLabel(n) + ' round last cut');
+                aligns.push('left', 'left');
+            }
+            const daysCol = heads.length;
+            heads.push('Days since round start', 'Status');
+            aligns.push('right', 'left');
+
+            rn = putHead(s4, 4, heads, aligns);
             status.slice()
                 .sort((a, b) => (b.days == null ? -1 : b.days) - (a.days == null ? -1 : a.days))
                 .forEach(r => {
-                    rn = putRow(s4, rn, [r.blockId, r.gang, r.ha, imXlDate(r.lastStart),
-                        r.roundNo ? rdLabel(r.roundNo) : '', imXlDate(r.lastWork), r.days,
-                        r.dormant ? 'not in rotation' : r.status.label], {
-                        aligns: ['left', 'left', 'right', 'left', 'left', 'left', 'right', 'left'],
-                        fmts: [null, null, num2], dateCols: [3, 5],
-                        flagCols: r.dormant ? [] : [6], boldCols: [0]
+                    const vals = [r.blockId, r.gang, r.ha];
+                    for (let n = 1; n <= segCount; n++) {
+                        const sg = (r.segments || [])[n];
+                        vals.push(sg ? imXlDate(sg.start) : null,
+                                  sg ? imXlDate(sg.lastCut) : null);
+                    }
+                    vals.push(r.days, r.dormant ? 'not in rotation' : r.status.label);
+                    rn = putRow(s4, rn, vals, {
+                        aligns, fmts: [null, null, num2], dateCols,
+                        flagCols: r.dormant ? [] : [daysCol], boldCols: [0]
                     });
                 });
             s4.views = [{ state: 'frozen', ySplit: 4 }];
-            s4.columns = [{ width: 10 }, { width: 30 }, { width: 10 }, { width: 15 },
-                { width: 9 }, { width: 14 }, { width: 22 }, { width: 18 }];
+            const cols = [{ width: 10 }, { width: 30 }, { width: 10 }];
+            for (let n = 1; n <= segCount; n++) cols.push({ width: 17 }, { width: 17 });
+            cols.push({ width: 22 }, { width: 18 });
+            s4.columns = cols;
         }
 
         const buf = await wb.xlsx.writeBuffer();

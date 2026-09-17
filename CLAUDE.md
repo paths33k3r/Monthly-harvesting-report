@@ -487,7 +487,15 @@ by `handleImportExcel` into `blocks[id].days[i] = {roundVal, hpVal}` — encodes
   with a tick box and a blank "Findings / action" column, `As at` date picker
   (defaults to the latest day filled in; a `*` marks blocks whose days were
   extrapolated past the last filled day) and Inspected/Date/Verified signature
-  lines.
+  lines. **Rounds are broken out into one `Started` / `Last cut` column pair per
+  round** under a grouped two-row header (`1st round`, `2nd round`, …) instead of
+  a single round + a `1st`/`2nd` tag, so a block's whole month reads across one
+  line. The pairs come from `imBlockStatus`'s `segments` (see below), so:
+  two pairs always, a **3rd/4th only when a block on the sheet actually reached
+  one** (keeps the printout narrow); **bold** start date = the round still
+  running (the one `Days` counts from); a round that has started with no cutting
+  yet shows its start date and a **blank** Last cut; a round carried in from an
+  un-imported month shows `—` for Started.
 - **🧾 Interval log** — every completed interval for the year with month/gang
   filters, per-block averages (min/avg/max/breaches) and the full list, longest
   first, plus **⬇ Excel report**.
@@ -500,7 +508,8 @@ CSS lives at the end of `style.css` (`.im-noprint` / `.im-print-head` /
 `imEnsureExcelJS`) — four sheets: **Summary** (totals + by month + by gang),
 **Per block**, **Intervals** (the full log, auto-filtered, longest first) and
 **Open now** (running intervals as at the latest day filled in — the field sheet
-in spreadsheet form). Breach figures are red/green; the log button passes the
+in spreadsheet form, carrying the same per-round `<n> round started` /
+`<n> round last cut` column pairs, widened to match the deepest round present). Breach figures are red/green; the log button passes the
 view's own month/gang filters; an empty scope warns instead of emitting an empty
 file. Registered in the Reports panel's Generate-All ZIP as `interval_log`
 (`ALL_REPORT_DEFS` in render_reports.js), which passes the panel's month.
@@ -517,9 +526,23 @@ checking the serial was a whole number.
 |---|---|
 | `window.imTarget()` | the interval target (`state.intervalTargetDays`, default 15) |
 | `window.imDayFlags(year, monthName, blockId)` | `array(31)` of `{counter, manday, roundNo, isStart, over, interval}` — drives the grid colouring |
-| `window.imBlockStatus(year, asAtDate)` | per block: last round start, last cut, days since, status (extrapolates past the last filled day) |
+| `window.imBlockStatus(year, asAtDate)` | per block: last round start, last cut, days since, status (extrapolates past the last filled day), plus `segments` + `segMonthIdx` — see below |
 | `window.imIntervals(year)` | every closed interval `{blockId, gang, start, roundNo, interval, breach, …}` |
 | `window.imInvalidate()` | drop the memoised year analysis (called on grid edits + import) |
+
+**`segments` (per-round breakdown, used by the field sheet + its Excel sheet)** —
+a **sparse array indexed by round number** (`segments[1]` = 1st round) of
+`{ roundNo, start, lastCut, open, carriedIn }`, plus `segMonthIdx`, the month
+they belong to. Round numbers are counted **within a month**
+(`roundNoByMonth`), so the segments are anchored to the month the block's
+*current* cycle sits in — the same month `roundNo` is read from — not the month
+of the `asAt` date. That keeps the sheet populated when the counter is still
+running out a round started the previous month (a sheet dated 03 Sep shows
+August's 1st/2nd rounds). Rounds not yet started as at `asAt` are excluded and
+work days after `asAt` are ignored, so backdating the sheet never reveals later
+data. A round that has started but has no manpower yet carries **no number of
+its own** (numbering counts worked rounds only) — it is given the next number so
+"started, not cut yet" still shows.
 
 ### Harvesting Interval grid — round colouring
 `renderIntervalTable` (script.js) now paints each day's **counter** cell with the
